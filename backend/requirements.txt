@@ -8,7 +8,8 @@ email-validator==2.1.0
 # Database & ORM
 sqlalchemy==2.0.52
 alembic==1.13.1  # Database migrations
-psycopg2-binary==2.9.9  # PostgreSQL adapter (optional)
+# PostgreSQL-Treiber für Production siehe requirements-postgres.txt
+# (lokal nicht nötig, da SQLite genutzt wird)
 
 # Document Generation
 python-docx==0.8.11
