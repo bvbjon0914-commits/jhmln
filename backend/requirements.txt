@@ -1,0 +1,41 @@
+# FastAPI & Web Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.13.4
+pydantic-settings==2.15.0
+email-validator==2.1.0
+
+# Database & ORM
+sqlalchemy==2.0.52
+alembic==1.13.1  # Database migrations
+psycopg2-binary==2.9.9  # PostgreSQL adapter (optional)
+
+# Document Generation
+python-docx==0.8.11
+docxtpl==0.16.5
+
+# File Handling
+openpyxl==3.1.5  # Excel
+pandas==3.0.5  # CSV & Data processing
+
+# Utilities
+python-multipart==0.0.6  # File uploads
+pytz==2023.3  # Timezone handling
+python-dateutil==2.8.2
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.2
+
+# Logging & Monitoring
+python-json-logger==2.0.7
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# Development
+black==23.12.0  # Code formatter
+flake8==6.1.0   # Linter
+mypy==1.7.1     # Type checker
+isort==5.13.2   # Import sorter

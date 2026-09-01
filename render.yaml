@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: authority-matching
+    runtime: python
+    plan: free
+    buildCommand: >-
+      cd frontend && npm install && npm run build &&
+      cd ../backend && pip install -r requirements.txt -r requirements-postgres.txt &&
+      python scripts/generate_templates.py
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false # in Render-Dashboard eintragen: die Postgres-Connection-URL von Neon o.ä.
+      - key: SHARED_PASSWORD
+        generateValue: true
+      - key: MAIN_PASSWORD
+        generateValue: true
+      - key: AUTH_SECRET_KEY
+        generateValue: true

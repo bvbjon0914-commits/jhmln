@@ -1,0 +1,4 @@
+# Zusätzlicher Treiber nur für Production-Deployments mit PostgreSQL
+# (z.B. Render + Neon). Lokal nicht nötig, da SQLite genutzt wird, und auf
+# Windows/Python 3.14 gibt es dafür noch keinen fertigen Wheel.
+psycopg2-binary==2.9.10
