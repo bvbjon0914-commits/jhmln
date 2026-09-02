@@ -27,7 +27,7 @@ AGS_SPLIT_RE = re.compile(r"[,;/\s]+")
 @dataclass
 class ImportRowResult:
     row_index: int
-    status: str  # IMPORTED, DUPLICATE, NEEDS_REVIEW, ERROR
+    status: str  # IMPORTED, UPDATED, DUPLICATE, NEEDS_REVIEW, ERROR
     message: str
     data: dict = field(default_factory=dict)
 
@@ -39,6 +39,7 @@ class ImportSummary:
     duplicates: int
     needs_review: int
     errors: int
+    updated: int = 0
     details: List[ImportRowResult] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -48,6 +49,7 @@ class ImportSummary:
             "duplicates": self.duplicates,
             "needs_review": self.needs_review,
             "errors": self.errors,
+            "updated": self.updated,
             "details": [
                 {"row_index": d.row_index, "status": d.status, "message": d.message}
                 for d in self.details
@@ -275,13 +277,27 @@ class ImportService:
             details=details,
         )
 
-    def import_authorities(self, df: pd.DataFrame, mapping: dict) -> ImportSummary:
-        """Importiert Behörden. Pflichtfeld: authority_name."""
-        details: List[ImportRowResult] = []
-        imported = duplicates = needs_review = errors = 0
+    # Felder, die bei fill_gaps=True auf bestehenden Behörden nachgetragen werden dürfen.
+    _FILLABLE_AUTHORITY_FIELDS = (
+        "department_name", "street", "house_number", "postal_code", "state",
+        "email", "phone", "website",
+    )
 
-        existing_names = {
-            (a.authority_name, a.city) for a in self.db.query(Authority.authority_name, Authority.city).all()
+    def import_authorities(self, df: pd.DataFrame, mapping: dict, fill_gaps: bool = False) -> ImportSummary:
+        """
+        Importiert Behörden. Pflichtfeld: authority_name.
+
+        fill_gaps=True (nur Haupt-Account): bei einer bereits existierenden
+        Behörde (gleicher Name + Ort) werden NUR aktuell leere Felder aus der
+        importierten Zeile nachgetragen (z.B. eine recherchierte E-Mail-
+        Adresse) – bereits vorhandene Werte werden nie überschrieben.
+        """
+        details: List[ImportRowResult] = []
+        imported = duplicates = needs_review = errors = updated = 0
+
+        existing_by_key = {
+            (a.authority_name, a.city): a
+            for a in self.db.query(Authority).all()
         }
 
         for idx, row in df.iterrows():
@@ -294,9 +310,33 @@ class ImportService:
                     needs_review += 1
                     continue
 
-                if (name, city) in existing_names:
-                    details.append(ImportRowResult(idx, "DUPLICATE", f"'{name}' in '{city}' existiert bereits"))
-                    duplicates += 1
+                existing = existing_by_key.get((name, city))
+                if existing is not None:
+                    if not fill_gaps:
+                        details.append(ImportRowResult(idx, "DUPLICATE", f"'{name}' in '{city}' existiert bereits"))
+                        duplicates += 1
+                        continue
+
+                    filled_fields = []
+                    for field_name in self._FILLABLE_AUTHORITY_FIELDS:
+                        current_value = getattr(existing, field_name)
+                        if current_value:
+                            continue
+                        new_value = row.get(mapping.get(field_name, ""), "").strip()
+                        if new_value:
+                            setattr(existing, field_name, new_value)
+                            filled_fields.append(field_name)
+
+                    if filled_fields:
+                        details.append(
+                            ImportRowResult(idx, "UPDATED", f"Ergänzt: {', '.join(filled_fields)}")
+                        )
+                        updated += 1
+                    else:
+                        details.append(
+                            ImportRowResult(idx, "DUPLICATE", f"'{name}' in '{city}' hatte keine Lücken zu füllen")
+                        )
+                        duplicates += 1
                     continue
 
                 authority = Authority(
@@ -314,7 +354,7 @@ class ImportService:
                     source=row.get(mapping.get("source", ""), "").strip() or "Import",
                 )
                 self.db.add(authority)
-                existing_names.add((name, city))
+                existing_by_key[(name, city)] = authority
 
                 details.append(ImportRowResult(idx, "IMPORTED", "OK"))
                 imported += 1
@@ -331,5 +371,6 @@ class ImportService:
             duplicates=duplicates,
             needs_review=needs_review,
             errors=errors,
+            updated=updated,
             details=details,
         )

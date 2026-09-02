@@ -7,6 +7,7 @@ import json
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
+from app.api.auth import get_is_main
 from app.database import get_db_session
 from app.services import ImportService
 
@@ -51,9 +52,17 @@ async def import_buildings(
 async def import_authorities(
     file: UploadFile = File(...),
     mapping: str = Form(...),
+    fill_gaps: bool = Form(False, description="Nur Haupt-Account: fehlende Felder bei bestehenden Behörden ergänzen"),
     db: Session = Depends(get_db_session),
+    is_main: bool = Depends(get_is_main),
 ):
     """Importiert Behörden aus einer CSV/Excel-Datei."""
+    if fill_gaps and not is_main:
+        raise HTTPException(
+            status_code=403,
+            detail="Nur der Haupt-Account darf fehlende Daten bei bestehenden Behörden ergänzen.",
+        )
+
     content = await file.read()
     service = ImportService(db)
 
@@ -63,7 +72,7 @@ async def import_authorities(
     except (ValueError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    summary = service.import_authorities(df, mapping_dict)
+    summary = service.import_authorities(df, mapping_dict, fill_gaps=fill_gaps)
     return summary.to_dict()
 
 
