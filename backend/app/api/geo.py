@@ -11,14 +11,19 @@ damit der Nutzer selbst auswählen kann, statt dass das System einen
 falschen Treffer automatisch übernimmt.
 """
 
+import math
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
 from app.models.administrative_unit import AdministrativeUnit
+from app.models.authority import Authority
+from app.models.authority_location import AuthorityLocation
+from app.models.building import Building
+from app.services.geocoding import geocode_address
 
 router = APIRouter()
 
@@ -81,3 +86,96 @@ def resolve_ags(
         status = "AMBIGUOUS"
 
     return {"status": status, "query": {"city": city_norm, "state": state}, "candidates": candidates}
+
+
+@router.get("/geo/administrative-unit/{ags}", tags=["Geo"])
+def get_administrative_unit_area(ags: str, db: Session = Depends(get_db_session)):
+    """
+    Liefert die Gemeindefläche zu einem AGS, inkl. eines daraus abgeleiteten
+    "flächengleichen" Kreisradius (r = sqrt(Fläche / π)).
+
+    WICHTIG: Das ist NUR eine grobe Visualisierungshilfe, kein echter
+    Amtsbezirk – Gemeindegrenzen sind unregelmäßige Polygone, kein Kreis.
+    """
+    unit = db.query(AdministrativeUnit).filter(AdministrativeUnit.ags == ags).first()
+    if not unit:
+        raise HTTPException(status_code=404, detail=f"Keine Gemeinde mit AGS {ags} gefunden")
+    if not unit.area_km2:
+        return {
+            "ags": ags,
+            "municipality_name": unit.municipality_name,
+            "area_km2": None,
+            "approx_radius_meters": None,
+        }
+
+    radius_meters = math.sqrt(unit.area_km2 * 1_000_000 / math.pi)
+    return {
+        "ags": ags,
+        "municipality_name": unit.municipality_name,
+        "area_km2": unit.area_km2,
+        "approx_radius_meters": round(radius_meters),
+    }
+
+
+@router.post("/geo/geocode-building/{building_id}", tags=["Geo"])
+def geocode_building(building_id: str, db: Session = Depends(get_db_session)):
+    """
+    Ermittelt Lat/Lng für ein Gebäude über dessen Adresse und speichert sie.
+    Überspringt die Anfrage, wenn bereits Koordinaten hinterlegt sind.
+    """
+    building = db.query(Building).filter(Building.building_id == building_id).first()
+    if not building:
+        raise HTTPException(status_code=404, detail=f"Gebäude {building_id} nicht gefunden")
+
+    if building.latitude is not None and building.longitude is not None:
+        return {"latitude": building.latitude, "longitude": building.longitude, "cached": True}
+
+    address_parts = [
+        f"{building.street} {building.house_number}",
+        building.postal_code,
+        building.city,
+        "Deutschland",
+    ]
+    query = ", ".join(p for p in address_parts if p)
+
+    coords = geocode_address(query)
+    if not coords:
+        raise HTTPException(status_code=404, detail="Adresse konnte nicht geocodiert werden.")
+
+    building.latitude, building.longitude = coords
+    db.commit()
+    return {"latitude": coords[0], "longitude": coords[1], "cached": False}
+
+
+@router.get("/geo/authority-location/{authority_id}", tags=["Geo"])
+def get_authority_location(authority_id: str, db: Session = Depends(get_db_session)):
+    """
+    Ermittelt und cached die Koordinaten einer Behörde über deren Adresse.
+    """
+    authority = db.query(Authority).filter(Authority.authority_id == authority_id).first()
+    if not authority:
+        raise HTTPException(status_code=404, detail=f"Behörde {authority_id} nicht gefunden")
+
+    existing = (
+        db.query(AuthorityLocation)
+        .filter(AuthorityLocation.authority_id == authority_id)
+        .first()
+    )
+    if existing:
+        return {"latitude": existing.latitude, "longitude": existing.longitude, "cached": True}
+
+    street_line = None
+    if authority.street:
+        street_line = f"{authority.street} {authority.house_number}" if authority.house_number else authority.street
+
+    address_parts = [street_line, authority.postal_code, authority.city, "Deutschland"]
+    query = ", ".join(p for p in address_parts if p)
+
+    coords = geocode_address(query)
+    if not coords:
+        raise HTTPException(status_code=404, detail="Adresse konnte nicht geocodiert werden.")
+
+    location = AuthorityLocation(authority_id=authority_id, latitude=coords[0], longitude=coords[1])
+    db.add(location)
+    db.commit()
+    return {"latitude": coords[0], "longitude": coords[1], "cached": False}

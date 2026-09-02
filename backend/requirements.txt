@@ -23,6 +23,7 @@ pandas==3.0.5  # CSV & Data processing
 python-multipart==0.0.6  # File uploads
 pytz==2023.3  # Timezone handling
 python-dateutil==2.8.2
+requests==2.32.3  # Geocoding (Nominatim/OpenStreetMap)
 
 # Testing
 pytest==7.4.3

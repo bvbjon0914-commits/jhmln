@@ -63,7 +63,7 @@ def init_db():
     """
     from app.models import (
         Building, RequestType, Authority, Jurisdiction, Request, RequestItem,
-        AdministrativeUnit, AppSettings,
+        AdministrativeUnit, AppSettings, AuthorityLocation,
     )
 
     # Metadaten aller Models
@@ -75,6 +75,7 @@ def init_db():
     RequestItem.metadata.create_all(bind=engine)
     AdministrativeUnit.metadata.create_all(bind=engine)
     AppSettings.metadata.create_all(bind=engine)
+    AuthorityLocation.metadata.create_all(bind=engine)
 
     print("✓ Datenbank initialisiert")
 
@@ -85,7 +86,7 @@ def drop_all_tables():
     """
     from app.models import (
         Building, RequestType, Authority, Jurisdiction, Request, RequestItem,
-        AdministrativeUnit, AppSettings,
+        AdministrativeUnit, AppSettings, AuthorityLocation,
     )
 
     Building.metadata.drop_all(bind=engine)
@@ -95,6 +96,7 @@ def drop_all_tables():
     Request.metadata.drop_all(bind=engine)
     RequestItem.metadata.drop_all(bind=engine)
     AdministrativeUnit.metadata.drop_all(bind=engine)
+    AuthorityLocation.metadata.drop_all(bind=engine)
     AppSettings.metadata.drop_all(bind=engine)
 
     print("⚠ Alle Tabellen gelöscht!")
