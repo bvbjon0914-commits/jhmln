@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FileText, Download, DownloadCloud, AlertTriangle, Mail, Eye } from "lucide-react";
+import { FileText, Download, DownloadCloud, AlertTriangle, Mail, Eye, RotateCw, Loader2 } from "lucide-react";
 import type { GeneratedDocumentInfo } from "../types/matching";
 import type { Authority } from "../types/authority";
 import { api } from "../services/api";
@@ -18,9 +18,18 @@ interface Props {
   documents: GeneratedDocumentInfo[];
   failed: FailedDocument[];
   requestTypeNames: Record<string, string>;
+  onRetryFailed?: () => void;
+  retrying?: boolean;
 }
 
-export function GeneratedDocuments({ requestId, documents, failed, requestTypeNames }: Props) {
+export function GeneratedDocuments({
+  requestId,
+  documents,
+  failed,
+  requestTypeNames,
+  onRetryFailed,
+  retrying,
+}: Props) {
   const { showToast } = useToast();
   const [authorities, setAuthorities] = useState<Record<string, Authority>>({});
   const [previewDoc, setPreviewDoc] = useState<GeneratedDocumentInfo | null>(null);
@@ -53,13 +62,41 @@ export function GeneratedDocuments({ requestId, documents, failed, requestTypeNa
     return `mailto:${authority?.email ?? ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   };
 
+  const handleOpenAllEmails = () => {
+    const withEmail = documents.filter((d) => authorities[d.authority_id]?.email);
+    if (withEmail.length === 0) {
+      showToast("error", "Für keines dieser Schreiben ist eine E-Mail-Adresse hinterlegt.");
+      return;
+    }
+    withEmail.forEach((doc, i) => {
+      setTimeout(() => {
+        window.open(mailtoUrl(doc, authorities[doc.authority_id]), "_blank");
+      }, i * 400);
+    });
+    const withoutEmail = documents.length - withEmail.length;
+    if (withoutEmail > 0) {
+      showToast(
+        "error",
+        `${withoutEmail} Schreiben ohne hinterlegte E-Mail-Adresse — diese bitte manuell versenden.`
+      );
+    }
+  };
+
   return (
     <div className="rounded-lg border border-line bg-surface p-5 shadow-sm">
       {failed.length > 0 && (
         <div className="mb-4 rounded-md border border-status-conflict/30 bg-status-conflictBg px-4 py-3">
-          <div className="flex items-center gap-2 text-sm font-medium text-status-conflict">
-            <AlertTriangle size={15} />
-            {failed.length} Schreiben konnten nicht generiert werden
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-status-conflict">
+              <AlertTriangle size={15} />
+              {failed.length} Schreiben konnten nicht generiert werden
+            </div>
+            {onRetryFailed && (
+              <Button variant="secondary" className="text-xs" onClick={onRetryFailed} disabled={retrying}>
+                {retrying ? <Loader2 size={13} className="animate-spin" /> : <RotateCw size={13} />}
+                Erneut versuchen
+              </Button>
+            )}
           </div>
           <ul className="mt-1.5 space-y-0.5 text-xs text-status-conflict/90">
             {failed.map((f) => (
@@ -77,12 +114,20 @@ export function GeneratedDocuments({ requestId, documents, failed, requestTypeNa
             <h3 className="font-display text-sm font-semibold text-ink">
               Generierte Schreiben ({documents.length})
             </h3>
-            <a href={api.downloadAllUrl(requestId)} download>
-              <Button variant="secondary">
-                <DownloadCloud size={15} />
-                Alle als ZIP herunterladen
-              </Button>
-            </a>
+            <div className="flex items-center gap-2">
+              {documents.some((d) => authorities[d.authority_id]?.email) && (
+                <Button variant="secondary" onClick={handleOpenAllEmails}>
+                  <Mail size={15} />
+                  Alle E-Mails öffnen
+                </Button>
+              )}
+              <a href={api.downloadAllUrl(requestId)} download>
+                <Button variant="secondary">
+                  <DownloadCloud size={15} />
+                  Alle als ZIP herunterladen
+                </Button>
+              </a>
+            </div>
           </div>
 
           <div className="space-y-2">

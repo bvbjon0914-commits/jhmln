@@ -7,10 +7,11 @@ und stellt sie zum Download bereit (einzeln oder als ZIP).
 
 import io
 import os
+import re
 import zipfile
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -28,6 +29,7 @@ router = APIRouter()
 
 class DocumentGenerationPayload(BaseModel):
     request_id: str
+    retry_failed_only: bool = False
 
 
 @router.post("/documents/generate", tags=["Documents"])
@@ -38,6 +40,10 @@ def generate_documents(payload: DocumentGenerationPayload, db: Session = Depends
     Ein Dokument wird nur generiert, wenn der RequestItem-Status
     MATCHED ist (also entweder automatisch eindeutig zugeordnet oder
     manuell bestätigt wurde).
+
+    Mit retry_failed_only=True werden bereits erfolgreich generierte
+    Dokumente übersprungen (document_status == GENERATED) – nur zuvor
+    fehlgeschlagene bzw. noch nicht versuchte Items werden neu erzeugt.
     """
     request_record = db.query(Request).filter(Request.request_id == payload.request_id).first()
     if not request_record:
@@ -53,6 +59,9 @@ def generate_documents(payload: DocumentGenerationPayload, db: Session = Depends
     failed = []
 
     for item in request_record.items:
+        if payload.retry_failed_only and item.document_status == "GENERATED":
+            continue
+
         if item.matching_status != "MATCHED":
             failed.append({
                 "request_item_id": item.request_item_id,
@@ -143,4 +152,59 @@ def download_all_documents(request_id: str, db: Session = Depends(get_db_session
         buffer,
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename={zip_filename}"},
+    )
+
+
+def _sanitize_folder_name(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9äöüÄÖÜß_\- ]", "_", value).strip() or "Gebaeude"
+
+
+@router.get("/documents/download-all-combined", tags=["Documents"])
+def download_all_combined(
+    request_ids: str = Query(..., description="Kommagetrennte Liste von Request-IDs"),
+    db: Session = Depends(get_db_session),
+):
+    """
+    Lädt die generierten Dokumente mehrerer Requests (z.B. mehrere Gebäude
+    in einem Durchlauf) als eine einzige ZIP-Datei herunter, mit einem
+    Unterordner pro Gebäude.
+    """
+    ids = [r.strip() for r in request_ids.split(",") if r.strip()]
+    if not ids:
+        raise HTTPException(status_code=400, detail="Keine request_ids angegeben")
+
+    request_records = db.query(Request).filter(Request.request_id.in_(ids)).all()
+    if not request_records:
+        raise HTTPException(status_code=404, detail="Keine der angegebenen Requests gefunden")
+
+    buffer = io.BytesIO()
+    added_any = False
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for request_record in request_records:
+            items_with_docs = [
+                i for i in request_record.items if i.document_path and os.path.exists(i.document_path)
+            ]
+            if not items_with_docs:
+                continue
+
+            building = db.query(Building).filter(Building.building_id == request_record.building_id).first()
+            folder = (
+                _sanitize_folder_name(f"{building.street} {building.house_number}, {building.city}")
+                if building
+                else request_record.building_id
+            )
+
+            for item in items_with_docs:
+                arcname = f"{folder}/{os.path.basename(item.document_path)}"
+                zip_file.write(item.document_path, arcname=arcname)
+                added_any = True
+
+    if not added_any:
+        raise HTTPException(status_code=404, detail="Keine generierten Dokumente für diese Requests gefunden")
+
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=alle_schreiben.zip"},
     )

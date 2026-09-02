@@ -15,10 +15,14 @@ import type {
 } from "../types/matching";
 import type { ImportPreview, ImportSummary } from "../types/import";
 import type { AuthStatus } from "../types/auth";
+import type { DataQualitySummary } from "../types/dataQuality";
 
 const client = axios.create({
   baseURL: "/api",
   withCredentials: true,
+  // Verhindert, dass der Browser GET-Antworten (insb. bei Proxy-/Deploy-Übergängen
+  // fälschlich gecachte HTML-Fallbacks) heuristisch zwischenspeichert.
+  headers: { "Cache-Control": "no-cache" },
 });
 
 let onUnauthorized: (() => void) | null = null;
@@ -141,10 +145,13 @@ export const api = {
     });
   },
 
-  async generateDocuments(requestId: string): Promise<DocumentGenerationResponse> {
+  async generateDocuments(
+    requestId: string,
+    options?: { retryFailedOnly?: boolean }
+  ): Promise<DocumentGenerationResponse> {
     const { data } = await client.post<DocumentGenerationResponse>(
       "/documents/generate",
-      { request_id: requestId }
+      { request_id: requestId, retry_failed_only: options?.retryFailedOnly ?? false }
     );
     return data;
   },
@@ -155,6 +162,14 @@ export const api = {
 
   downloadAllUrl(requestId: string): string {
     return `/api/documents/request/${requestId}/download-all`;
+  },
+
+  downloadAllCombinedUrl(requestIds: string[]): string {
+    return `/api/documents/download-all-combined?request_ids=${encodeURIComponent(requestIds.join(","))}`;
+  },
+
+  exportResultsCsvUrl(requestIds: string[]): string {
+    return `/api/matching/export-csv?request_ids=${encodeURIComponent(requestIds.join(","))}`;
   },
 
   async previewImport(file: File): Promise<ImportPreview> {
@@ -279,6 +294,17 @@ export const api = {
   async purgeOrphanedRequests(): Promise<{ deleted: number }> {
     const { data } = await client.post<{ deleted: number }>("/requests/purge-orphaned");
     return data;
+  },
+
+  // ========== Verwaltung: Datenqualität ==========
+
+  async getDataQualitySummary(): Promise<DataQualitySummary> {
+    const { data } = await client.get<DataQualitySummary>("/data-quality/summary");
+    return data;
+  },
+
+  exportDataQualityXlsxUrl(): string {
+    return "/api/data-quality/export-xlsx";
   },
 
   // ========== Auth ==========

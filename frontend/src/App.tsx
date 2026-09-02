@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Landmark, FileSearch2, Upload, Settings, LogOut } from "lucide-react";
+import { Landmark, FileSearch2, Upload, Settings, LogOut, DownloadCloud, FileSpreadsheet, RotateCcw } from "lucide-react";
 import { Stepper } from "./components/Stepper";
 import { BuildingSearch } from "./components/BuildingSearch";
 import { BuildingDetails } from "./components/BuildingDetails";
@@ -9,6 +9,7 @@ import { RequestTypeSelector } from "./components/RequestTypeSelector";
 import { MatchingResults } from "./components/MatchingResults";
 import { GeneratedDocuments } from "./components/GeneratedDocuments";
 import { Button } from "./components/common/Button";
+import { CollapsibleSection } from "./components/common/CollapsibleSection";
 import { useToast, errorMessage } from "./components/common/Toast";
 import { ImportPage } from "./components/import/ImportPage";
 import { AdminPage } from "./components/admin/AdminPage";
@@ -27,21 +28,70 @@ function buildingLabel(b: Building): string {
   return `${b.street} ${b.house_number}, ${b.city}`;
 }
 
+function matchSummary(results: MatchingResult[]): { matched: number; total: number } {
+  return { matched: results.filter((r) => r.matching_status === "MATCHED").length, total: results.length };
+}
+
+const STORAGE_KEY = "zustaendigkeitsfinder:wizard-state:v1";
+
+interface PersistedState {
+  buildings: Building[];
+  requestTypeIds: string[];
+  requestIds: Record<string, string>;
+  resultsByBuilding: Record<string, MatchingResult[]>;
+  documentsByBuilding: Record<string, GeneratedDocumentInfo[]>;
+  failedByBuilding: Record<string, FailedDoc[]>;
+}
+
+function loadPersistedState(): PersistedState | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as PersistedState) : null;
+  } catch {
+    return null;
+  }
+}
+
 function App() {
   const { showToast } = useToast();
   const { isMain, logout } = useAuth();
   const [view, setView] = useState<"wizard" | "import" | "admin">("wizard");
-  const [buildings, setBuildings] = useState<Building[]>([]);
-  const [requestTypeIds, setRequestTypeIds] = useState<string[]>([]);
+  const [buildings, setBuildings] = useState<Building[]>(() => loadPersistedState()?.buildings ?? []);
+  const [requestTypeIds, setRequestTypeIds] = useState<string[]>(
+    () => loadPersistedState()?.requestTypeIds ?? []
+  );
   const [requestTypes, setRequestTypes] = useState<RequestType[]>([]);
-  const [requestIds, setRequestIds] = useState<Record<string, string>>({});
-  const [resultsByBuilding, setResultsByBuilding] = useState<Record<string, MatchingResult[]>>({});
+  const [requestIds, setRequestIds] = useState<Record<string, string>>(
+    () => loadPersistedState()?.requestIds ?? {}
+  );
+  const [resultsByBuilding, setResultsByBuilding] = useState<Record<string, MatchingResult[]>>(
+    () => loadPersistedState()?.resultsByBuilding ?? {}
+  );
   const [documentsByBuilding, setDocumentsByBuilding] = useState<
     Record<string, GeneratedDocumentInfo[]>
-  >({});
-  const [failedByBuilding, setFailedByBuilding] = useState<Record<string, FailedDoc[]>>({});
+  >(() => loadPersistedState()?.documentsByBuilding ?? {});
+  const [failedByBuilding, setFailedByBuilding] = useState<Record<string, FailedDoc[]>>(
+    () => loadPersistedState()?.failedByBuilding ?? {}
+  );
+  const [retryingByBuilding, setRetryingByBuilding] = useState<Record<string, boolean>>({});
   const [matchingLoading, setMatchingLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+
+  useEffect(() => {
+    const state: PersistedState = {
+      buildings,
+      requestTypeIds,
+      requestIds,
+      resultsByBuilding,
+      documentsByBuilding,
+      failedByBuilding,
+    };
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch {
+      // Speicher voll oder nicht verfügbar (z.B. privater Modus) – Persistenz einfach überspringen
+    }
+  }, [buildings, requestTypeIds, requestIds, resultsByBuilding, documentsByBuilding, failedByBuilding]);
 
   useEffect(() => {
     api
@@ -161,7 +211,56 @@ function App() {
     setGenerating(false);
   };
 
+  const handleRetryFailed = async (buildingId: string) => {
+    const reqId = requestIds[buildingId];
+    if (!reqId) return;
+    setRetryingByBuilding((prev) => ({ ...prev, [buildingId]: true }));
+    try {
+      const response = await api.generateDocuments(reqId, { retryFailedOnly: true });
+      setDocumentsByBuilding((prev) => ({
+        ...prev,
+        [buildingId]: [...(prev[buildingId] || []), ...response.documents],
+      }));
+      setFailedByBuilding((prev) => ({ ...prev, [buildingId]: response.failed }));
+      if (response.failed.length === 0) {
+        showToast("success", "Alle Schreiben erfolgreich generiert.");
+      } else if (response.documents.length > 0) {
+        showToast("success", `${response.documents.length} weitere Schreiben generiert.`);
+      } else {
+        showToast("error", "Erneuter Versuch hat keine weiteren Schreiben erzeugt.");
+      }
+    } catch (error) {
+      const b = buildings.find((x) => x.building_id === buildingId);
+      showToast(
+        "error",
+        `${b ? buildingLabel(b) : buildingId}: ${errorMessage(error, "Erneuter Versuch fehlgeschlagen.")}`
+      );
+    } finally {
+      setRetryingByBuilding((prev) => ({ ...prev, [buildingId]: false }));
+    }
+  };
+
+  const handleReset = () => {
+    if (!window.confirm("Aktuelle Auswahl und Ergebnisse wirklich verwerfen?")) return;
+    setBuildings([]);
+    setRequestTypeIds([]);
+    setRequestIds({});
+    setResultsByBuilding({});
+    setDocumentsByBuilding({});
+    setFailedByBuilding({});
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // ignorieren
+    }
+  };
+
   const buildingsWithResults = buildings.filter((b) => (resultsByBuilding[b.building_id]?.length ?? 0) > 0);
+  const buildingsWithDocuments = buildings.filter(
+    (b) =>
+      (documentsByBuilding[b.building_id]?.length ?? 0) > 0 ||
+      (failedByBuilding[b.building_id]?.length ?? 0) > 0
+  );
   const allMatched =
     buildingsWithResults.length > 0 &&
     buildingsWithResults.every((b) =>
@@ -247,8 +346,19 @@ function App() {
         </main>
       ) : (
       <main className="mx-auto max-w-4xl px-6 py-10">
-        <div className="mb-10 overflow-x-auto">
-          <Stepper current={currentStep} />
+        <div className="mb-10 flex items-center gap-4">
+          <div className="flex-1 overflow-x-auto">
+            <Stepper current={currentStep} />
+          </div>
+          {buildings.length > 0 && (
+            <button
+              onClick={handleReset}
+              className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-ink-faint hover:text-status-conflict"
+            >
+              <RotateCcw size={12} />
+              Neu starten
+            </button>
+          )}
         </div>
 
         <div className="space-y-8">
@@ -315,42 +425,68 @@ function App() {
               <h2 className="font-display text-sm font-semibold text-ink">
                 3. Zuständigkeiten prüfen
               </h2>
-              {buildingsWithResults.map((b) => (
-                <div key={b.building_id}>
-                  {buildingsWithResults.length > 1 && (
-                    <h3 className="mb-2 text-sm font-medium text-ink-soft">{buildingLabel(b)}</h3>
-                  )}
-                  <MatchingResults
-                    results={resultsByBuilding[b.building_id]}
-                    requestTypeNames={requestTypeNames}
-                    onAssigned={(itemId, authorityId) =>
-                      handleAssigned(b.building_id, itemId, authorityId)
-                    }
-                  />
-                  <div className="mt-3">
-                    <BuildingMap
-                      building={b}
-                      authorityRefs={resultsByBuilding[b.building_id]
-                        .filter((r) => r.authority_id)
-                        .map((r) => ({
-                          authorityId: r.authority_id as string,
-                          label: requestTypeNames[r.request_type_id] || r.request_type_id,
-                        }))}
-                    />
-                  </div>
-                </div>
-              ))}
-              <div>
+              <div className="space-y-2">
+                {buildingsWithResults.map((b) => {
+                  const results = resultsByBuilding[b.building_id];
+                  const { matched, total } = matchSummary(results);
+                  const done = matched === total;
+                  return (
+                    <CollapsibleSection
+                      key={b.building_id}
+                      defaultExpanded={buildingsWithResults.length === 1}
+                      title={buildingLabel(b)}
+                      summary={
+                        <span
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${
+                            done
+                              ? "bg-status-matchedBg text-status-matched"
+                              : "bg-status-reviewBg text-status-review"
+                          }`}
+                        >
+                          {matched}/{total} eindeutig
+                        </span>
+                      }
+                    >
+                      <MatchingResults
+                        results={results}
+                        requestTypeNames={requestTypeNames}
+                        onAssigned={(itemId, authorityId) =>
+                          handleAssigned(b.building_id, itemId, authorityId)
+                        }
+                      />
+                      <BuildingMap
+                        building={b}
+                        authorityRefs={results
+                          .filter((r) => r.authority_id)
+                          .map((r) => ({
+                            authorityId: r.authority_id as string,
+                            label: requestTypeNames[r.request_type_id] || r.request_type_id,
+                          }))}
+                      />
+                    </CollapsibleSection>
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
                 <Button onClick={handleGenerate} disabled={!allMatched || generating}>
                   {generating ? "Generiere Schreiben…" : "Schreiben generieren"}
                 </Button>
-                {!allMatched && (
-                  <p className="mt-2 text-xs text-ink-faint">
-                    Alle Zuständigkeiten müssen eindeutig oder manuell bestätigt sein,
-                    bevor Schreiben generiert werden können.
-                  </p>
-                )}
+                <a
+                  href={api.exportResultsCsvUrl(buildingsWithResults.map((b) => requestIds[b.building_id]))}
+                  download
+                >
+                  <Button variant="secondary">
+                    <FileSpreadsheet size={16} />
+                    Ergebnisse als CSV exportieren
+                  </Button>
+                </a>
               </div>
+              {!allMatched && (
+                <p className="-mt-3 text-xs text-ink-faint">
+                  Alle Zuständigkeiten müssen eindeutig oder manuell bestätigt sein, bevor
+                  Schreiben generiert werden können.
+                </p>
+              )}
             </section>
           )}
 
@@ -360,25 +496,53 @@ function App() {
               <h2 className="font-display text-sm font-semibold text-ink">
                 4. Schreiben herunterladen
               </h2>
-              {buildings
-                .filter(
-                  (b) =>
-                    (documentsByBuilding[b.building_id]?.length ?? 0) > 0 ||
-                    (failedByBuilding[b.building_id]?.length ?? 0) > 0
-                )
-                .map((b) => (
-                  <div key={b.building_id}>
-                    {buildings.length > 1 && (
-                      <h3 className="mb-2 text-sm font-medium text-ink-soft">{buildingLabel(b)}</h3>
+              <div className="space-y-2">
+                {buildingsWithDocuments.map((b) => {
+                  const docs = documentsByBuilding[b.building_id] || [];
+                  const failedDocs = failedByBuilding[b.building_id] || [];
+                  return (
+                    <CollapsibleSection
+                      key={b.building_id}
+                      defaultExpanded={buildingsWithDocuments.length === 1}
+                      title={buildingLabel(b)}
+                      summary={
+                        <span
+                          className={`shrink-0 text-xs font-medium ${
+                            failedDocs.length > 0 ? "text-status-conflict" : "text-ink-faint"
+                          }`}
+                        >
+                          {docs.length} Schreiben
+                          {failedDocs.length > 0 ? `, ${failedDocs.length} fehlgeschlagen` : ""}
+                        </span>
+                      }
+                    >
+                      <GeneratedDocuments
+                        requestId={requestIds[b.building_id]}
+                        documents={docs}
+                        failed={failedDocs}
+                        requestTypeNames={requestTypeNames}
+                        onRetryFailed={() => handleRetryFailed(b.building_id)}
+                        retrying={!!retryingByBuilding[b.building_id]}
+                      />
+                    </CollapsibleSection>
+                  );
+                })}
+              </div>
+              {buildingsWithDocuments.length > 1 && (
+                <div className="flex justify-end">
+                  <a
+                    href={api.downloadAllCombinedUrl(
+                      buildingsWithDocuments.map((b) => requestIds[b.building_id])
                     )}
-                    <GeneratedDocuments
-                      requestId={requestIds[b.building_id]}
-                      documents={documentsByBuilding[b.building_id] || []}
-                      failed={failedByBuilding[b.building_id] || []}
-                      requestTypeNames={requestTypeNames}
-                    />
-                  </div>
-                ))}
+                    download
+                  >
+                    <Button>
+                      <DownloadCloud size={16} />
+                      Alle Schreiben aller Gebäude als ZIP herunterladen
+                    </Button>
+                  </a>
+                </div>
+              )}
             </section>
           )}
         </div>
