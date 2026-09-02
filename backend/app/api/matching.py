@@ -5,21 +5,32 @@ Kernfunktion: ermittelt zuständige Behörden für ein Gebäude + Auskunftsarten
 und speichert das Ergebnis als Request/RequestItem für die Historie.
 """
 
+import csv
+import io
 import uuid
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
+from app.models.authority import Authority
 from app.models.building import Building
 from app.models.request import Request, RequestItem
 from app.models.request_type import RequestType
 from app.services import JurisdictionMatchingService
 
 router = APIRouter()
+
+STATUS_LABELS = {
+    "MATCHED": "Eindeutig",
+    "REVIEW_REQUIRED": "Prüfung nötig",
+    "MULTIPLE_MATCHES": "Konflikt",
+    "NO_MATCH": "Kein Treffer",
+}
 
 
 class MatchingRequestPayload(BaseModel):
@@ -96,6 +107,65 @@ def run_matching(payload: MatchingRequestPayload, db: Session = Depends(get_db_s
         ],
         "timestamp": datetime.utcnow().isoformat(),
     }
+
+
+@router.get("/matching/export-csv", tags=["Matching"])
+def export_results_csv(
+    request_ids: str = Query(..., description="Kommagetrennte Liste von Request-IDs"),
+    db: Session = Depends(get_db_session),
+):
+    """
+    Exportiert die Zuordnungsergebnisse mehrerer Requests (z.B. mehrere
+    Gebäude eines Durchlaufs) als CSV – unabhängig davon, ob bereits
+    Schreiben generiert wurden. Für Reporting/Dokumentation.
+    """
+    ids = [r.strip() for r in request_ids.split(",") if r.strip()]
+    if not ids:
+        raise HTTPException(status_code=400, detail="Keine request_ids angegeben")
+
+    request_records = db.query(Request).filter(Request.request_id.in_(ids)).all()
+    if not request_records:
+        raise HTTPException(status_code=404, detail="Keine der angegebenen Requests gefunden")
+
+    buffer = io.StringIO()
+    buffer.write("﻿")  # UTF-8 BOM, damit Excel Umlaute korrekt anzeigt
+    writer = csv.writer(buffer, delimiter=";")
+    writer.writerow(
+        ["Gebäude", "AGS", "Auskunftsart", "Status", "Zugeordnete Behörde", "Behörde E-Mail", "Manuell geändert"]
+    )
+
+    for request_record in request_records:
+        building = db.query(Building).filter(Building.building_id == request_record.building_id).first()
+        building_label = f"{building.street} {building.house_number}, {building.city}" if building else request_record.building_id
+        ags = building.ags if building else ""
+
+        for item in request_record.items:
+            request_type = db.query(RequestType).filter(RequestType.request_type_id == item.request_type_id).first()
+            authority = (
+                db.query(Authority).filter(Authority.authority_id == item.authority_id).first()
+                if item.authority_id
+                else None
+            )
+            writer.writerow(
+                [
+                    building_label,
+                    ags or "",
+                    request_type.name if request_type else item.request_type_id,
+                    STATUS_LABELS.get(item.matching_status, item.matching_status),
+                    authority.authority_name if authority else "",
+                    authority.email if authority and authority.email else "",
+                    "Ja" if item.manually_changed else "",
+                ]
+            )
+
+    buffer.seek(0)
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        headers={
+            "Content-Disposition": "attachment; filename=zuordnungsergebnisse.csv",
+            "Content-Type": "text/csv; charset=utf-8",
+        },
+    )
 
 
 @router.put("/matching/items/{request_item_id}/assign", tags=["Matching"])
