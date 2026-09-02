@@ -8,10 +8,12 @@ import {
   Copy,
   AlertTriangle,
   XCircle,
+  Sparkles,
 } from "lucide-react";
 import { api } from "../../services/api";
 import { useToast, errorMessage } from "../common/Toast";
 import { Button } from "../common/Button";
+import { useAuth } from "../auth/AuthContext";
 import type { RequestType } from "../../types/matching";
 import {
   AUTHORITY_FIELDS,
@@ -29,6 +31,7 @@ const STATUS_META: Record<
   { label: string; icon: React.ElementType; text: string; bg: string }
 > = {
   IMPORTED: { label: "Importiert", icon: CheckCircle2, text: "text-status-matched", bg: "bg-status-matchedBg" },
+  UPDATED: { label: "Ergänzt", icon: Sparkles, text: "text-status-matched", bg: "bg-status-matchedBg" },
   DUPLICATE: { label: "Duplikat", icon: Copy, text: "text-status-neutral", bg: "bg-status-neutralBg" },
   NEEDS_REVIEW: { label: "Prüfung nötig", icon: AlertTriangle, text: "text-status-review", bg: "bg-status-reviewBg" },
   ERROR: { label: "Fehler", icon: XCircle, text: "text-status-conflict", bg: "bg-status-conflictBg" },
@@ -36,6 +39,7 @@ const STATUS_META: Record<
 
 export function ImportPage() {
   const { showToast } = useToast();
+  const { isMain } = useAuth();
   const [step, setStep] = useState<Step>("upload");
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -45,6 +49,7 @@ export function ImportPage() {
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [requestTypes, setRequestTypes] = useState<RequestType[]>([]);
   const [requestTypeId, setRequestTypeId] = useState("");
+  const [fillGaps, setFillGaps] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -89,7 +94,7 @@ export function ImportPage() {
     try {
       const result =
         kind === "authorities"
-          ? await api.importAuthorities(file, mapping)
+          ? await api.importAuthorities(file, mapping, isMain && fillGaps)
           : kind === "buildings"
             ? await api.importBuildings(file, mapping)
             : await api.importJurisdictions(file, mapping, requestTypeId);
@@ -107,6 +112,7 @@ export function ImportPage() {
     setPreview(null);
     setMapping({});
     setRequestTypeId("");
+    setFillGaps(false);
     setSummary(null);
     setStep("upload");
   };
@@ -215,6 +221,27 @@ export function ImportPage() {
             </div>
           </div>
 
+          {kind === "authorities" && isMain && (
+            <label className="flex items-start gap-2.5 rounded-lg border border-line bg-surface px-3.5 py-3 text-sm shadow-sm">
+              <input
+                type="checkbox"
+                checked={fillGaps}
+                onChange={(e) => setFillGaps(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-ink">
+                  Fehlende Daten bei bestehenden Behörden ergänzen
+                </span>
+                <span className="block text-xs text-ink-faint">
+                  Bei einer Behörde, die schon existiert (gleicher Name + Ort), werden nur
+                  aktuell leere Felder (z. B. E-Mail) aus dieser Datei nachgetragen. Bereits
+                  vorhandene Werte werden nie überschrieben. Nur für den Haupt-Account sichtbar.
+                </span>
+              </span>
+            </label>
+          )}
+
           {kind === "jurisdictions" && (
             <div>
               <label className="mb-1.5 block text-xs font-medium text-ink-soft">
@@ -303,9 +330,10 @@ export function ImportPage() {
 
       {step === "result" && summary && (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             {[
               { label: "Importiert", value: summary.imported, className: "text-status-matched" },
+              { label: "Ergänzt", value: summary.updated, className: "text-status-matched" },
               { label: "Duplikate", value: summary.duplicates, className: "text-status-neutral" },
               { label: "Zur Prüfung", value: summary.needs_review, className: "text-status-review" },
               { label: "Fehler", value: summary.errors, className: "text-status-conflict" },

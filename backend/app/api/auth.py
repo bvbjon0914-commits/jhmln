@@ -46,6 +46,16 @@ def require_main(request: Request, db: Session = Depends(get_db_session)) -> Non
         raise HTTPException(status_code=403, detail="Nur der Haupt-Account darf das.")
 
 
+def get_is_main(request: Request) -> bool:
+    """
+    FastAPI-Dependency, die (im Gegensatz zu require_main) NICHT sperrt –
+    für Routen, die für alle nutzbar sind, aber einzelne Zusatzoptionen
+    nur dem Haupt-Account erlauben sollen.
+    """
+    session = _current_session(request)
+    return bool(session and session.get("is_main"))
+
+
 @router.get("/auth/status", tags=["Auth"])
 def auth_status(request: Request, db: Session = Depends(get_db_session)):
     """Öffentlich: sagt dem Frontend, ob ein Login-Screen gezeigt werden muss."""

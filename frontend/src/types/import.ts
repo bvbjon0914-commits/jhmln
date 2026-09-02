@@ -4,7 +4,7 @@ export interface ImportPreview {
   preview_rows: Record<string, unknown>[];
 }
 
-export type ImportRowStatus = "IMPORTED" | "DUPLICATE" | "NEEDS_REVIEW" | "ERROR";
+export type ImportRowStatus = "IMPORTED" | "UPDATED" | "DUPLICATE" | "NEEDS_REVIEW" | "ERROR";
 
 export interface ImportRowResult {
   row_index: number;
@@ -18,6 +18,7 @@ export interface ImportSummary {
   duplicates: number;
   needs_review: number;
   errors: number;
+  updated: number;
   details: ImportRowResult[];
 }
 

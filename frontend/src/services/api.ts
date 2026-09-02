@@ -187,10 +187,15 @@ export const api = {
     return data;
   },
 
-  async importAuthorities(file: File, mapping: Record<string, string>): Promise<ImportSummary> {
+  async importAuthorities(
+    file: File,
+    mapping: Record<string, string>,
+    fillGaps = false
+  ): Promise<ImportSummary> {
     const form = new FormData();
     form.append("file", file);
     form.append("mapping", JSON.stringify(mapping));
+    form.append("fill_gaps", String(fillGaps));
     const { data } = await client.post<ImportSummary>("/import/authorities", form);
     return data;
   },
