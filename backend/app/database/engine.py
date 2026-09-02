@@ -6,7 +6,6 @@ Unterstützt SQLite (MVP) und PostgreSQL (Production)
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool
 
 # Umgebungsvariablen für Datenbankverbindung
 DATABASE_URL = os.getenv(
@@ -16,10 +15,17 @@ DATABASE_URL = os.getenv(
 
 # SQLite für MVP
 if DATABASE_URL.startswith("sqlite://"):
+    # WICHTIG: kein StaticPool hier! StaticPool zwingt ALLE Sessions auf eine
+    # einzige physische Verbindung – das ist nur für :memory:-Datenbanken
+    # nötig (die sonst pro Verbindung neu/leer wären). Bei der Datei-DB führt
+    # das dazu, dass gleichzeitige Requests (z.B. Matching für mehrere
+    # Gebäude parallel) sich denselben Cursor teilen und mit kryptischen
+    # SQLAlchemy-Fehlern kollidieren. Der Standard-Pool erzeugt bei Bedarf
+    # separate Verbindungen; SQLite regelt die Nebenläufigkeit dann selbst
+    # über Datei-Locking.
     engine = create_engine(
         DATABASE_URL,
         connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
     )
 # PostgreSQL für Production
 else:

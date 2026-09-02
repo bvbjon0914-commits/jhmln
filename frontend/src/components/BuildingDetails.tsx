@@ -1,7 +1,26 @@
-import { MapPin, Hash, Layers, StickyNote } from "lucide-react";
+import { useEffect, useState } from "react";
+import { MapPin, Hash, Layers, StickyNote, History } from "lucide-react";
 import type { Building } from "../types/building";
+import { api } from "../services/api";
 
 export function BuildingDetails({ building }: { building: Building }) {
+  const [history, setHistory] = useState<{ total: number; lastCreatedAt: string | null } | null>(
+    null
+  );
+
+  useEffect(() => {
+    setHistory(null);
+    api
+      .listRequestsPaged({ building_id: building.building_id, limit: 1, offset: 0 })
+      .then((res) =>
+        setHistory({
+          total: res.total,
+          lastCreatedAt: res.items[0]?.created_at ?? null,
+        })
+      )
+      .catch(() => setHistory({ total: 0, lastCreatedAt: null }));
+  }, [building.building_id]);
+
   return (
     <div className="rounded-lg border border-line bg-surface p-5 shadow-sm">
       <div className="flex items-start justify-between">
@@ -21,6 +40,29 @@ export function BuildingDetails({ building }: { building: Building }) {
           </span>
         )}
       </div>
+
+      {history && (
+        <div className="mt-3 flex items-center gap-1.5 text-xs text-ink-faint">
+          <History size={13} />
+          {history.total === 0 ? (
+            <span>Noch keine Anfragen für dieses Gebäude</span>
+          ) : (
+            <span>
+              {history.total} {history.total === 1 ? "Anfrage" : "Anfragen"} bisher
+              {history.lastCreatedAt && (
+                <>
+                  {" "}
+                  · zuletzt am{" "}
+                  {new Date(history.lastCreatedAt).toLocaleString("de-DE", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                </>
+              )}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="mt-4 grid grid-cols-2 gap-4 border-t border-line pt-4 sm:grid-cols-4">
         <Field icon={<Hash size={13} />} label="Objekt-ID" value={building.building_id} mono />
