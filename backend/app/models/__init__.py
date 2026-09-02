@@ -9,6 +9,7 @@ from .jurisdiction import Jurisdiction, MatchingLevel
 from .request import Request, RequestItem
 from .administrative_unit import AdministrativeUnit
 from .settings import AppSettings
+from .authority_location import AuthorityLocation
 
 __all__ = [
     "Building",
@@ -20,5 +21,6 @@ __all__ = [
     "MatchingLevel",
     "AdministrativeUnit",
     "AppSettings",
+    "AuthorityLocation",
     "STANDARD_REQUEST_TYPES",
 ]

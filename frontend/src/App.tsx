@@ -3,6 +3,7 @@ import { Landmark, FileSearch2, Upload, Settings, LogOut } from "lucide-react";
 import { Stepper } from "./components/Stepper";
 import { BuildingSearch } from "./components/BuildingSearch";
 import { BuildingDetails } from "./components/BuildingDetails";
+import { BuildingMap } from "./components/BuildingMap";
 import { SelectedBuildingsList } from "./components/SelectedBuildingsList";
 import { RequestTypeSelector } from "./components/RequestTypeSelector";
 import { MatchingResults } from "./components/MatchingResults";
@@ -266,11 +267,12 @@ function App() {
               excludeIds={buildings.map((b) => b.building_id)}
             />
             {buildings.length === 1 && (
-              <div className="mt-4">
+              <div className="mt-4 space-y-4">
                 <BuildingDetails building={buildings[0]} />
+                <BuildingMap building={buildings[0]} />
                 <button
                   onClick={() => handleRemoveBuilding(buildings[0].building_id)}
-                  className="mt-2 text-xs font-medium text-ink-faint hover:text-status-conflict"
+                  className="text-xs font-medium text-ink-faint hover:text-status-conflict"
                 >
                   Entfernen
                 </button>
@@ -325,6 +327,17 @@ function App() {
                       handleAssigned(b.building_id, itemId, authorityId)
                     }
                   />
+                  <div className="mt-3">
+                    <BuildingMap
+                      building={b}
+                      authorityRefs={resultsByBuilding[b.building_id]
+                        .filter((r) => r.authority_id)
+                        .map((r) => ({
+                          authorityId: r.authority_id as string,
+                          label: requestTypeNames[r.request_type_id] || r.request_type_id,
+                        }))}
+                    />
+                  </div>
                 </div>
               ))}
               <div>

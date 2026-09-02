@@ -72,6 +72,27 @@ export const api = {
     return data;
   },
 
+  async geocodeBuilding(buildingId: string): Promise<{ latitude: number; longitude: number }> {
+    const { data } = await client.post<{ latitude: number; longitude: number }>(
+      `/geo/geocode-building/${buildingId}`
+    );
+    return data;
+  },
+
+  async getAuthorityLocation(authorityId: string): Promise<{ latitude: number; longitude: number }> {
+    const { data } = await client.get<{ latitude: number; longitude: number }>(
+      `/geo/authority-location/${authorityId}`
+    );
+    return data;
+  },
+
+  async getAdministrativeUnitArea(
+    ags: string
+  ): Promise<{ ags: string; municipality_name: string; area_km2: number | null; approx_radius_meters: number | null }> {
+    const { data } = await client.get(`/geo/administrative-unit/${ags}`);
+    return data;
+  },
+
   async listRequestTypes(): Promise<RequestType[]> {
     const { data } = await client.get<RequestType[]>("/request-types");
     return data;

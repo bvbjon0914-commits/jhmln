@@ -7,6 +7,8 @@ export interface Building {
   district?: string | null;
   state?: string | null;
   ags?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   property_name?: string | null;
   internal_reference?: string | null;
   notes?: string | null;
