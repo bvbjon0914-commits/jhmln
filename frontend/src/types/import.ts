@@ -21,13 +21,26 @@ export interface ImportSummary {
   details: ImportRowResult[];
 }
 
-export type ImportKind = "authorities" | "jurisdictions";
+export type ImportKind = "authorities" | "jurisdictions" | "buildings";
 
 export interface FieldSpec {
   key: string;
   label: string;
   required: boolean;
 }
+
+export const BUILDING_FIELDS: FieldSpec[] = [
+  { key: "street", label: "Straße", required: true },
+  { key: "house_number", label: "Hausnummer", required: true },
+  { key: "city", label: "Ort", required: true },
+  { key: "postal_code", label: "PLZ", required: false },
+  { key: "district", label: "Stadtteil", required: false },
+  { key: "state", label: "Bundesland", required: false },
+  { key: "ags", label: "AGS-Schlüssel", required: false },
+  { key: "property_name", label: "Objektname", required: false },
+  { key: "internal_reference", label: "Interne Referenz", required: false },
+  { key: "notes", label: "Notizen", required: false },
+];
 
 export const AUTHORITY_FIELDS: FieldSpec[] = [
   { key: "authority_name", label: "Behördenname", required: true },

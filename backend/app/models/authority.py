@@ -35,7 +35,7 @@ class Authority(Base):
 
     # Kontaktdaten
     email = Column(String(255), nullable=True)
-    phone = Column(String(20), nullable=True)
+    phone = Column(String(100), nullable=True)
     website = Column(String(500), nullable=True)
 
     # Metadaten zur Datenqualität

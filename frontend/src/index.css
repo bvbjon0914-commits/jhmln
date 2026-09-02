@@ -24,3 +24,18 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+/* docx-preview: Word-Seiten in der Vorschau sauber skalieren/zentrieren */
+.docx-preview-container .docx-wrapper {
+  background: transparent;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+.docx-preview-container .docx-wrapper > section.docx {
+  max-width: 100%;
+  box-shadow: 0 1px 3px rgba(28, 39, 36, 0.15);
+  margin: 0 !important;
+}

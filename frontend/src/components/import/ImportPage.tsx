@@ -15,6 +15,7 @@ import { Button } from "../common/Button";
 import type { RequestType } from "../../types/matching";
 import {
   AUTHORITY_FIELDS,
+  BUILDING_FIELDS,
   JURISDICTION_FIELDS,
   type ImportKind,
   type ImportPreview,
@@ -40,7 +41,7 @@ export function ImportPage() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
-  const [kind, setKind] = useState<ImportKind>("authorities");
+  const [kind, setKind] = useState<ImportKind>("buildings");
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [requestTypes, setRequestTypes] = useState<RequestType[]>([]);
   const [requestTypeId, setRequestTypeId] = useState("");
@@ -52,7 +53,8 @@ export function ImportPage() {
     api.listRequestTypes().then(setRequestTypes).catch(() => undefined);
   }, []);
 
-  const fields = kind === "authorities" ? AUTHORITY_FIELDS : JURISDICTION_FIELDS;
+  const fields =
+    kind === "authorities" ? AUTHORITY_FIELDS : kind === "buildings" ? BUILDING_FIELDS : JURISDICTION_FIELDS;
 
   const loadFile = async (f: File) => {
     setFile(f);
@@ -79,7 +81,7 @@ export function ImportPage() {
 
   const missingRequired = fields.filter((f) => f.required && !mapping[f.key]);
   const canSubmit =
-    missingRequired.length === 0 && (kind === "authorities" || requestTypeId !== "");
+    missingRequired.length === 0 && (kind !== "jurisdictions" || requestTypeId !== "");
 
   const handleSubmit = async () => {
     if (!file || !canSubmit) return;
@@ -88,7 +90,9 @@ export function ImportPage() {
       const result =
         kind === "authorities"
           ? await api.importAuthorities(file, mapping)
-          : await api.importJurisdictions(file, mapping, requestTypeId);
+          : kind === "buildings"
+            ? await api.importBuildings(file, mapping)
+            : await api.importJurisdictions(file, mapping, requestTypeId);
       setSummary(result);
       setStep("result");
     } catch (error) {
@@ -112,7 +116,7 @@ export function ImportPage() {
       <div>
         <h2 className="font-display text-lg font-semibold text-ink">Datenimport</h2>
         <p className="mt-1 text-sm text-ink-soft">
-          Behörden, Kontaktdaten und AGS-Zuständigkeiten aus einer CSV- oder Excel-Datei
+          Gebäude, Behörden, Kontaktdaten und AGS-Zuständigkeiten aus einer CSV- oder Excel-Datei
           importieren.
         </p>
       </div>
@@ -184,9 +188,10 @@ export function ImportPage() {
 
           <div>
             <h3 className="mb-2 font-display text-sm font-semibold text-ink">Was wird importiert?</h3>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               {(
                 [
+                  { value: "buildings" as const, label: "Gebäude", desc: "Adressliste der Gebäude, für die angefragt werden soll" },
                   { value: "authorities" as const, label: "Nur Behörden", desc: "Name & Kontaktdaten, ohne Zuständigkeiten" },
                   { value: "jurisdictions" as const, label: "Zuständigkeiten (Ämter + AGS)", desc: "Behörde, Kontaktdaten und AGS-Zuordnung" },
                 ]

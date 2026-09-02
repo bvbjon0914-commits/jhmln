@@ -143,6 +143,14 @@ export const api = {
     return data;
   },
 
+  async importBuildings(file: File, mapping: Record<string, string>): Promise<ImportSummary> {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("mapping", JSON.stringify(mapping));
+    const { data } = await client.post<ImportSummary>("/import/buildings", form);
+    return data;
+  },
+
   async importAuthorities(file: File, mapping: Record<string, string>): Promise<ImportSummary> {
     const form = new FormData();
     form.append("file", file);
@@ -234,6 +242,7 @@ export const api = {
   // ========== Verwaltung: Anfragen ==========
 
   async listRequestsPaged(params: {
+    building_id?: string;
     orphaned_only?: boolean;
     limit: number;
     offset: number;

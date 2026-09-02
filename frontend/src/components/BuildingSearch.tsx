@@ -7,9 +7,10 @@ import { NewBuildingForm } from "./NewBuildingForm";
 
 interface Props {
   onSelect: (building: Building) => void;
+  excludeIds?: string[];
 }
 
-export function BuildingSearch({ onSelect }: Props) {
+export function BuildingSearch({ onSelect, excludeIds = [] }: Props) {
   const { showToast } = useToast();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Building[]>([]);
@@ -67,7 +68,7 @@ export function BuildingSearch({ onSelect }: Props) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => results.length > 0 && setIsOpen(true)}
-          placeholder="Adresse, Objekt-ID, PLZ oder Ort suchen…"
+          placeholder="Weiteres Gebäude suchen und hinzufügen…"
           role="combobox"
           aria-expanded={isOpen}
           aria-autocomplete="list"
@@ -86,34 +87,43 @@ export function BuildingSearch({ onSelect }: Props) {
           role="listbox"
           className="absolute z-10 mt-2 w-full overflow-hidden rounded-lg border border-line bg-surface shadow-lg"
         >
-          {results.map((b) => (
-            <button
-              key={b.building_id}
-              role="option"
-              aria-selected={false}
-              onClick={() => {
-                onSelect(b);
-                setIsOpen(false);
-                setQuery(`${b.street} ${b.house_number}, ${b.city}`);
-              }}
-              className="flex w-full items-start gap-3 border-b border-line px-4 py-3 text-left last:border-0 hover:bg-brand-light/40"
-            >
-              <Building2 size={16} className="mt-0.5 shrink-0 text-brand" />
-              <div>
-                <div className="text-sm font-medium text-ink">
-                  {b.street} {b.house_number}
+          {results.map((b) => {
+            const alreadySelected = excludeIds.includes(b.building_id);
+            return (
+              <button
+                key={b.building_id}
+                role="option"
+                aria-selected={false}
+                disabled={alreadySelected}
+                onClick={() => {
+                  onSelect(b);
+                  setIsOpen(false);
+                  setQuery("");
+                }}
+                className="flex w-full items-start gap-3 border-b border-line px-4 py-3 text-left last:border-0 hover:bg-brand-light/40 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+              >
+                <Building2 size={16} className="mt-0.5 shrink-0 text-brand" />
+                <div>
+                  <div className="text-sm font-medium text-ink">
+                    {b.street} {b.house_number}
+                    {alreadySelected && (
+                      <span className="ml-2 text-xs font-normal text-ink-faint">
+                        bereits ausgewählt
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-ink-soft">
+                    {b.postal_code} {b.city}
+                    {b.internal_reference && (
+                      <span className="ml-2 font-mono text-ink-faint">
+                        {b.internal_reference}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="text-xs text-ink-soft">
-                  {b.postal_code} {b.city}
-                  {b.internal_reference && (
-                    <span className="ml-2 font-mono text-ink-faint">
-                      {b.internal_reference}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -150,7 +160,7 @@ export function BuildingSearch({ onSelect }: Props) {
             onCreated={(building) => {
               setShowNewBuilding(false);
               onSelect(building);
-              setQuery(`${building.street} ${building.house_number}, ${building.city}`);
+              setQuery("");
             }}
             onCancel={() => setShowNewBuilding(false)}
           />

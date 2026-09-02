@@ -3,6 +3,7 @@ import { Landmark, FileSearch2, Upload, Settings, LogOut } from "lucide-react";
 import { Stepper } from "./components/Stepper";
 import { BuildingSearch } from "./components/BuildingSearch";
 import { BuildingDetails } from "./components/BuildingDetails";
+import { SelectedBuildingsList } from "./components/SelectedBuildingsList";
 import { RequestTypeSelector } from "./components/RequestTypeSelector";
 import { MatchingResults } from "./components/MatchingResults";
 import { GeneratedDocuments } from "./components/GeneratedDocuments";
@@ -15,19 +16,29 @@ import { api } from "./services/api";
 import type { Building } from "./types/building";
 import type { MatchingResult, GeneratedDocumentInfo, RequestType } from "./types/matching";
 
+interface FailedDoc {
+  request_item_id: string;
+  request_type_id: string;
+  reason: string;
+}
+
+function buildingLabel(b: Building): string {
+  return `${b.street} ${b.house_number}, ${b.city}`;
+}
+
 function App() {
   const { showToast } = useToast();
   const { isMain, logout } = useAuth();
   const [view, setView] = useState<"wizard" | "import" | "admin">("wizard");
-  const [building, setBuilding] = useState<Building | null>(null);
+  const [buildings, setBuildings] = useState<Building[]>([]);
   const [requestTypeIds, setRequestTypeIds] = useState<string[]>([]);
   const [requestTypes, setRequestTypes] = useState<RequestType[]>([]);
-  const [requestId, setRequestId] = useState<string | null>(null);
-  const [results, setResults] = useState<MatchingResult[]>([]);
-  const [documents, setDocuments] = useState<GeneratedDocumentInfo[]>([]);
-  const [failedDocuments, setFailedDocuments] = useState<
-    { request_item_id: string; request_type_id: string; reason: string }[]
-  >([]);
+  const [requestIds, setRequestIds] = useState<Record<string, string>>({});
+  const [resultsByBuilding, setResultsByBuilding] = useState<Record<string, MatchingResult[]>>({});
+  const [documentsByBuilding, setDocumentsByBuilding] = useState<
+    Record<string, GeneratedDocumentInfo[]>
+  >({});
+  const [failedByBuilding, setFailedByBuilding] = useState<Record<string, FailedDoc[]>>({});
   const [matchingLoading, setMatchingLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
 
@@ -42,62 +53,119 @@ function App() {
     requestTypes.map((t) => [t.request_type_id, t.name])
   );
 
-  const currentStep =
-    documents.length > 0 || failedDocuments.length > 0
-      ? 4
-      : results.length > 0
-        ? 3
-        : building
-          ? 2
-          : 1;
-
-  const handleRunMatching = async () => {
-    if (!building || requestTypeIds.length === 0) return;
-    setMatchingLoading(true);
-    try {
-      const response = await api.runMatching(building.building_id, requestTypeIds);
-      setRequestId(response.request_id);
-      setResults(response.results);
-      setDocuments([]);
-    } catch (error) {
-      showToast("error", errorMessage(error, "Zuständigkeiten konnten nicht ermittelt werden."));
-    } finally {
-      setMatchingLoading(false);
-    }
+  const handleAddBuilding = (b: Building) => {
+    setBuildings((prev) => (prev.some((x) => x.building_id === b.building_id) ? prev : [...prev, b]));
   };
 
-  const handleAssigned = (requestItemId: string, authorityId: string) => {
-    setResults((prev) =>
-      prev.map((r) =>
+  const handleRemoveBuilding = (buildingId: string) => {
+    setBuildings((prev) => prev.filter((b) => b.building_id !== buildingId));
+    setRequestIds((prev) => {
+      const next = { ...prev };
+      delete next[buildingId];
+      return next;
+    });
+    setResultsByBuilding((prev) => {
+      const next = { ...prev };
+      delete next[buildingId];
+      return next;
+    });
+    setDocumentsByBuilding((prev) => {
+      const next = { ...prev };
+      delete next[buildingId];
+      return next;
+    });
+    setFailedByBuilding((prev) => {
+      const next = { ...prev };
+      delete next[buildingId];
+      return next;
+    });
+  };
+
+  const hasAnyResults = Object.values(resultsByBuilding).some((r) => r.length > 0);
+  const hasAnyDocuments =
+    Object.values(documentsByBuilding).some((d) => d.length > 0) ||
+    Object.values(failedByBuilding).some((f) => f.length > 0);
+
+  const currentStep = hasAnyDocuments ? 4 : hasAnyResults ? 3 : buildings.length > 0 ? 2 : 1;
+
+  const handleRunMatching = async () => {
+    if (buildings.length === 0 || requestTypeIds.length === 0) return;
+    setMatchingLoading(true);
+    const newRequestIds: Record<string, string> = {};
+    const newResults: Record<string, MatchingResult[]> = {};
+
+    await Promise.all(
+      buildings.map(async (b) => {
+        try {
+          const response = await api.runMatching(b.building_id, requestTypeIds);
+          newRequestIds[b.building_id] = response.request_id;
+          newResults[b.building_id] = response.results;
+        } catch (error) {
+          showToast(
+            "error",
+            `${buildingLabel(b)}: ${errorMessage(error, "Zuständigkeiten konnten nicht ermittelt werden.")}`
+          );
+        }
+      })
+    );
+
+    setRequestIds((prev) => ({ ...prev, ...newRequestIds }));
+    setResultsByBuilding((prev) => ({ ...prev, ...newResults }));
+    setDocumentsByBuilding({});
+    setFailedByBuilding({});
+    setMatchingLoading(false);
+  };
+
+  const handleAssigned = (buildingId: string, requestItemId: string, authorityId: string) => {
+    setResultsByBuilding((prev) => ({
+      ...prev,
+      [buildingId]: (prev[buildingId] || []).map((r) =>
         r.request_item_id === requestItemId
           ? { ...r, authority_id: authorityId, matching_status: "MATCHED", matching_confidence: 1.0 }
           : r
-      )
-    );
+      ),
+    }));
   };
 
   const handleGenerate = async () => {
-    if (!requestId) return;
+    const entries = Object.entries(requestIds);
+    if (entries.length === 0) return;
     setGenerating(true);
-    try {
-      const response = await api.generateDocuments(requestId);
-      setDocuments(response.documents);
-      setFailedDocuments(response.failed);
-      if (response.failed.length > 0) {
-        showToast(
-          "error",
-          `${response.failed.length} Schreiben konnten nicht generiert werden.`
-        );
-      }
-    } catch (error) {
-      showToast("error", errorMessage(error, "Schreiben konnten nicht generiert werden."));
-    } finally {
-      setGenerating(false);
+    const newDocuments: Record<string, GeneratedDocumentInfo[]> = {};
+    const newFailed: Record<string, FailedDoc[]> = {};
+    let totalFailed = 0;
+
+    await Promise.all(
+      entries.map(async ([buildingId, reqId]) => {
+        try {
+          const response = await api.generateDocuments(reqId);
+          newDocuments[buildingId] = response.documents;
+          newFailed[buildingId] = response.failed;
+          totalFailed += response.failed.length;
+        } catch (error) {
+          const b = buildings.find((x) => x.building_id === buildingId);
+          showToast(
+            "error",
+            `${b ? buildingLabel(b) : buildingId}: ${errorMessage(error, "Schreiben konnten nicht generiert werden.")}`
+          );
+        }
+      })
+    );
+
+    setDocumentsByBuilding(newDocuments);
+    setFailedByBuilding(newFailed);
+    if (totalFailed > 0) {
+      showToast("error", `${totalFailed} Schreiben konnten nicht generiert werden.`);
     }
+    setGenerating(false);
   };
 
+  const buildingsWithResults = buildings.filter((b) => (resultsByBuilding[b.building_id]?.length ?? 0) > 0);
   const allMatched =
-    results.length > 0 && results.every((r) => r.matching_status === "MATCHED");
+    buildingsWithResults.length > 0 &&
+    buildingsWithResults.every((b) =>
+      resultsByBuilding[b.building_id].every((r) => r.matching_status === "MATCHED")
+    );
 
   return (
     <div className="min-h-screen">
@@ -187,25 +255,36 @@ function App() {
           <section>
             <h2 className="mb-3 font-display text-sm font-semibold text-ink">
               1. Gebäude auswählen
+              {buildings.length > 0 && (
+                <span className="ml-1.5 font-sans text-xs font-normal text-ink-faint">
+                  ({buildings.length} ausgewählt)
+                </span>
+              )}
             </h2>
             <BuildingSearch
-              onSelect={(b) => {
-                setBuilding(b);
-                setResults([]);
-                setDocuments([]);
-                setFailedDocuments([]);
-                setRequestId(null);
-              }}
+              onSelect={handleAddBuilding}
+              excludeIds={buildings.map((b) => b.building_id)}
             />
-            {building && (
+            {buildings.length === 1 && (
               <div className="mt-4">
-                <BuildingDetails building={building} />
+                <BuildingDetails building={buildings[0]} />
+                <button
+                  onClick={() => handleRemoveBuilding(buildings[0].building_id)}
+                  className="mt-2 text-xs font-medium text-ink-faint hover:text-status-conflict"
+                >
+                  Entfernen
+                </button>
+              </div>
+            )}
+            {buildings.length > 1 && (
+              <div className="mt-4">
+                <SelectedBuildingsList buildings={buildings} onRemove={handleRemoveBuilding} />
               </div>
             )}
           </section>
 
           {/* Schritt 2: Auskünfte wählen */}
-          {building && (
+          {buildings.length > 0 && (
             <section>
               <RequestTypeSelector
                 types={requestTypes}
@@ -218,24 +297,37 @@ function App() {
                   disabled={requestTypeIds.length === 0 || matchingLoading}
                 >
                   <FileSearch2 size={16} />
-                  {matchingLoading ? "Ermittle Zuständigkeiten…" : "Zuständige Ämter ermitteln"}
+                  {matchingLoading
+                    ? "Ermittle Zuständigkeiten…"
+                    : buildings.length > 1
+                      ? `Zuständige Ämter für ${buildings.length} Gebäude ermitteln`
+                      : "Zuständige Ämter ermitteln"}
                 </Button>
               </div>
             </section>
           )}
 
           {/* Schritt 3: Matching-Ergebnisse */}
-          {results.length > 0 && (
-            <section>
-              <h2 className="mb-3 font-display text-sm font-semibold text-ink">
+          {hasAnyResults && (
+            <section className="space-y-6">
+              <h2 className="font-display text-sm font-semibold text-ink">
                 3. Zuständigkeiten prüfen
               </h2>
-              <MatchingResults
-                results={results}
-                requestTypeNames={requestTypeNames}
-                onAssigned={handleAssigned}
-              />
-              <div className="mt-4">
+              {buildingsWithResults.map((b) => (
+                <div key={b.building_id}>
+                  {buildingsWithResults.length > 1 && (
+                    <h3 className="mb-2 text-sm font-medium text-ink-soft">{buildingLabel(b)}</h3>
+                  )}
+                  <MatchingResults
+                    results={resultsByBuilding[b.building_id]}
+                    requestTypeNames={requestTypeNames}
+                    onAssigned={(itemId, authorityId) =>
+                      handleAssigned(b.building_id, itemId, authorityId)
+                    }
+                  />
+                </div>
+              ))}
+              <div>
                 <Button onClick={handleGenerate} disabled={!allMatched || generating}>
                   {generating ? "Generiere Schreiben…" : "Schreiben generieren"}
                 </Button>
@@ -250,17 +342,30 @@ function App() {
           )}
 
           {/* Schritt 4: Dokumente */}
-          {(documents.length > 0 || failedDocuments.length > 0) && requestId && (
-            <section>
-              <h2 className="mb-3 font-display text-sm font-semibold text-ink">
+          {hasAnyDocuments && (
+            <section className="space-y-6">
+              <h2 className="font-display text-sm font-semibold text-ink">
                 4. Schreiben herunterladen
               </h2>
-              <GeneratedDocuments
-                requestId={requestId}
-                documents={documents}
-                failed={failedDocuments}
-                requestTypeNames={requestTypeNames}
-              />
+              {buildings
+                .filter(
+                  (b) =>
+                    (documentsByBuilding[b.building_id]?.length ?? 0) > 0 ||
+                    (failedByBuilding[b.building_id]?.length ?? 0) > 0
+                )
+                .map((b) => (
+                  <div key={b.building_id}>
+                    {buildings.length > 1 && (
+                      <h3 className="mb-2 text-sm font-medium text-ink-soft">{buildingLabel(b)}</h3>
+                    )}
+                    <GeneratedDocuments
+                      requestId={requestIds[b.building_id]}
+                      documents={documentsByBuilding[b.building_id] || []}
+                      failed={failedByBuilding[b.building_id] || []}
+                      requestTypeNames={requestTypeNames}
+                    />
+                  </div>
+                ))}
             </section>
           )}
         </div>
