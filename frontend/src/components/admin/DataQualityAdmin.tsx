@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Loader2, MailWarning, Link2Off, FileSpreadsheet } from "lucide-react";
+import { Loader2, MailWarning, Link2Off, MapPinOff, FileSpreadsheet, Eraser } from "lucide-react";
 import { api } from "../../services/api";
 import { Button } from "../common/Button";
+import { useAuth } from "../auth/AuthContext";
 import { useToast, errorMessage } from "../common/Toast";
 import type { DataQualitySummary, DataQualityGroup, AuthorityRef } from "../../types/dataQuality";
 
@@ -70,17 +71,47 @@ function GroupCard({
 
 export function DataQualityAdmin() {
   const { showToast } = useToast();
+  const { isMain } = useAuth();
   const [summary, setSummary] = useState<DataQualitySummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [clearing, setClearing] = useState(false);
 
-  useEffect(() => {
+  const load = () => {
     api
       .getDataQualitySummary()
       .then(setSummary)
       .catch((error) => showToast("error", errorMessage(error, "Datenqualität konnte nicht geladen werden.")))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleClearBadGeocoding = async () => {
+    if (
+      !window.confirm(
+        "Gecachte Kartenkoordinaten von Behörden ohne Adresse entfernen? Diese könnten fälschlich auf den geografischen Mittelpunkt Deutschlands zeigen."
+      )
+    ) {
+      return;
+    }
+    setClearing(true);
+    try {
+      const result = await api.clearBadGeocoding();
+      showToast(
+        "success",
+        result.deleted > 0
+          ? `${result.deleted} fehlerhafte Kartenpins entfernt.`
+          : "Keine fehlerhaften Kartenpins gefunden."
+      );
+    } catch (error) {
+      showToast("error", errorMessage(error, "Bereinigung fehlgeschlagen."));
+    } finally {
+      setClearing(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -94,7 +125,9 @@ export function DataQualityAdmin() {
   if (!summary) return null;
 
   const hasGaps =
-    summary.authorities_without_email.count > 0 || summary.authorities_without_jurisdiction.count > 0;
+    summary.authorities_without_email.count > 0 ||
+    summary.authorities_without_jurisdiction.count > 0 ||
+    summary.authorities_without_address.count > 0;
 
   return (
     <div className="space-y-4">
@@ -112,7 +145,7 @@ export function DataQualityAdmin() {
           </a>
         )}
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-3">
         <GroupCard
           icon={<MailWarning size={16} />}
           title="Behörden ohne E-Mail"
@@ -125,7 +158,34 @@ export function DataQualityAdmin() {
           description="Diese Behörden sind in keiner Zuständigkeitsregel hinterlegt und werden vom Matching nie gefunden."
           group={summary.authorities_without_jurisdiction}
         />
+        <GroupCard
+          icon={<MapPinOff size={16} />}
+          title="Behörden ohne Adresse"
+          description="Ohne Straße und Ort kann kein korrekter Kartenpin ermittelt werden."
+          group={summary.authorities_without_address}
+        />
       </div>
+
+      {isMain && summary.authorities_without_address.count > 0 && (
+        <div className="rounded-lg border border-line bg-surface p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="font-display text-sm font-semibold text-ink">
+                Fehlerhafte Kartenpins bereinigen
+              </h3>
+              <p className="mt-0.5 text-xs text-ink-faint">
+                Behörden ohne Adresse konnten bisher fälschlich auf den geografischen Mittelpunkt
+                Deutschlands (nahe Erfurt) geocodiert werden. Dieser Fehler ist behoben, bereits
+                gecachte Fehltreffer bleiben aber bis zur Bereinigung bestehen.
+              </p>
+            </div>
+            <Button variant="secondary" onClick={handleClearBadGeocoding} disabled={clearing}>
+              {clearing ? <Loader2 size={14} className="animate-spin" /> : <Eraser size={14} />}
+              Bereinigen
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

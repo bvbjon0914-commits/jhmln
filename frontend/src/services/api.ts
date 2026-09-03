@@ -312,6 +312,11 @@ export const api = {
     return "/api/data-quality/export-xlsx";
   },
 
+  async clearBadGeocoding(): Promise<{ deleted: number }> {
+    const { data } = await client.post<{ deleted: number }>("/data-quality/clear-bad-geocoding");
+    return data;
+  },
+
   // ========== Auth ==========
 
   async authStatus(): Promise<AuthStatus> {

@@ -168,6 +168,13 @@ def get_authority_location(authority_id: str, db: Session = Depends(get_db_sessi
     if authority.street:
         street_line = f"{authority.street} {authority.house_number}" if authority.house_number else authority.street
 
+    # Ohne Straße UND Ort bliebe nur "Deutschland" übrig – das würde Nominatim
+    # auf den geografischen Mittelpunkt Deutschlands auflösen und einen
+    # irreführenden, falschen Kartenpin erzeugen. Lieber ehrlich "keine
+    # Adresse" melden als eine erfundene Genauigkeit vortäuschen.
+    if not street_line and not authority.city:
+        raise HTTPException(status_code=404, detail="Keine Adresse für diese Behörde hinterlegt.")
+
     address_parts = [street_line, authority.postal_code, authority.city, "Deutschland"]
     query = ", ".join(p for p in address_parts if p)
 
