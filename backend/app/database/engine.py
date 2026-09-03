@@ -64,6 +64,8 @@ def init_db():
     from app.models import (
         Building, RequestType, Authority, Jurisdiction, Request, RequestItem,
         AdministrativeUnit, AppSettings, AuthorityLocation,
+        Case, CaseBuilding, CaseRequest, RequestItemProgress,
+        DataSource, DataSourceRouting,
     )
 
     # Metadaten aller Models
@@ -76,6 +78,12 @@ def init_db():
     AdministrativeUnit.metadata.create_all(bind=engine)
     AppSettings.metadata.create_all(bind=engine)
     AuthorityLocation.metadata.create_all(bind=engine)
+    Case.metadata.create_all(bind=engine)
+    CaseBuilding.metadata.create_all(bind=engine)
+    CaseRequest.metadata.create_all(bind=engine)
+    RequestItemProgress.metadata.create_all(bind=engine)
+    DataSource.metadata.create_all(bind=engine)
+    DataSourceRouting.metadata.create_all(bind=engine)
 
     print("✓ Datenbank initialisiert")
 
@@ -87,8 +95,16 @@ def drop_all_tables():
     from app.models import (
         Building, RequestType, Authority, Jurisdiction, Request, RequestItem,
         AdministrativeUnit, AppSettings, AuthorityLocation,
+        Case, CaseBuilding, CaseRequest, RequestItemProgress,
+        DataSource, DataSourceRouting,
     )
 
+    DataSourceRouting.metadata.drop_all(bind=engine)
+    DataSource.metadata.drop_all(bind=engine)
+    CaseRequest.metadata.drop_all(bind=engine)
+    CaseBuilding.metadata.drop_all(bind=engine)
+    Case.metadata.drop_all(bind=engine)
+    RequestItemProgress.metadata.drop_all(bind=engine)
     Building.metadata.drop_all(bind=engine)
     RequestType.metadata.drop_all(bind=engine)
     Authority.metadata.drop_all(bind=engine)

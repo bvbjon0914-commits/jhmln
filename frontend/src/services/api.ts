@@ -16,6 +16,7 @@ import type {
 import type { ImportPreview, ImportSummary } from "../types/import";
 import type { AuthStatus } from "../types/auth";
 import type { DataQualitySummary } from "../types/dataQuality";
+import type { Case, CaseListItem, CaseDetail } from "../types/case";
 
 const client = axios.create({
   baseURL: "/api",
@@ -315,6 +316,69 @@ export const api = {
   async clearBadGeocoding(): Promise<{ deleted: number }> {
     const { data } = await client.post<{ deleted: number }>("/data-quality/clear-bad-geocoding");
     return data;
+  },
+
+  // ========== Aufträge (Cases) ==========
+
+  async listCasesPaged(params: {
+    search?: string;
+    limit: number;
+    offset: number;
+  }): Promise<Paged<CaseListItem>> {
+    const { data, headers } = await client.get<CaseListItem[]>("/cases", { params });
+    return paged(data, headers);
+  },
+
+  async createCase(input: { name: string; notes?: string | null }): Promise<Case> {
+    const { data } = await client.post<Case>("/cases", input);
+    return data;
+  },
+
+  async getCase(caseId: string): Promise<CaseDetail> {
+    const { data } = await client.get<CaseDetail>(`/cases/${caseId}`);
+    return data;
+  },
+
+  async updateCase(
+    caseId: string,
+    patch: { name?: string; notes?: string | null; status?: "OPEN" | "CLOSED" }
+  ): Promise<Case> {
+    const { data } = await client.put<Case>(`/cases/${caseId}`, patch);
+    return data;
+  },
+
+  async deleteCase(caseId: string): Promise<void> {
+    await client.delete(`/cases/${caseId}`);
+  },
+
+  async addBuildingToCase(caseId: string, buildingId: string): Promise<void> {
+    await client.post(`/cases/${caseId}/buildings`, { building_id: buildingId });
+  },
+
+  async removeBuildingFromCase(caseId: string, buildingId: string): Promise<void> {
+    await client.delete(`/cases/${caseId}/buildings/${buildingId}`);
+  },
+
+  async linkRequestToCase(caseId: string, requestId: string): Promise<void> {
+    await client.post(`/cases/${caseId}/link-request`, { request_id: requestId });
+  },
+
+  async markItemSent(requestItemId: string): Promise<void> {
+    await client.put(`/matching/items/${requestItemId}/mark-sent`);
+  },
+
+  async uploadItemResponse(requestItemId: string, file: File): Promise<void> {
+    const form = new FormData();
+    form.append("file", file);
+    await client.post(`/matching/items/${requestItemId}/upload-response`, form);
+  },
+
+  async markItemReviewed(requestItemId: string): Promise<void> {
+    await client.put(`/matching/items/${requestItemId}/mark-reviewed`);
+  },
+
+  itemResponseDownloadUrl(requestItemId: string): string {
+    return `/api/matching/items/${requestItemId}/response-download`;
   },
 
   // ========== Auth ==========

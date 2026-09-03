@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -20,6 +20,7 @@ from app.database import get_db_session
 from app.models.authority import Authority
 from app.models.building import Building
 from app.models.request import Request, RequestItem
+from app.models.request_item_progress import RequestItemProgress
 from app.models.request_type import RequestType
 from app.services import JurisdictionMatchingService
 
@@ -192,3 +193,74 @@ def manually_assign_authority(
     db.refresh(item)
 
     return item.to_dict()
+
+
+def _get_or_create_progress(db: Session, request_item_id: str) -> RequestItemProgress:
+    item = db.query(RequestItem).filter(RequestItem.request_item_id == request_item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail=f"RequestItem {request_item_id} nicht gefunden")
+
+    progress = (
+        db.query(RequestItemProgress)
+        .filter(RequestItemProgress.request_item_id == request_item_id)
+        .first()
+    )
+    if not progress:
+        progress = RequestItemProgress(request_item_id=request_item_id)
+        db.add(progress)
+    return progress
+
+
+@router.put("/matching/items/{request_item_id}/mark-sent", tags=["Matching"])
+def mark_item_sent(request_item_id: str, db: Session = Depends(get_db_session)):
+    """Markiert ein Anschreiben manuell als versendet (Auftrags-Fortschritt)."""
+    progress = _get_or_create_progress(db, request_item_id)
+    progress.sent_at = datetime.utcnow()
+    db.commit()
+    return progress.to_dict()
+
+
+@router.post("/matching/items/{request_item_id}/upload-response", tags=["Matching"])
+async def upload_item_response(
+    request_item_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db_session),
+):
+    """
+    Lädt die Antwort einer Behörde (PDF) hoch und hinterlegt sie am Auftrags-
+    Fortschritt. Wird als Bytes in der Datenbank gespeichert (nicht auf
+    Festplatte), damit sie einen Redeploy übersteht.
+    """
+    content = await file.read()
+    progress = _get_or_create_progress(db, request_item_id)
+    progress.response_document = content
+    progress.response_document_filename = file.filename or "antwort.pdf"
+    progress.response_received_at = datetime.utcnow()
+    db.commit()
+    return progress.to_dict()
+
+
+@router.get("/matching/items/{request_item_id}/response-download", tags=["Matching"])
+def download_item_response(request_item_id: str, db: Session = Depends(get_db_session)):
+    progress = (
+        db.query(RequestItemProgress)
+        .filter(RequestItemProgress.request_item_id == request_item_id)
+        .first()
+    )
+    if not progress or not progress.response_document:
+        raise HTTPException(status_code=404, detail="Keine Antwort hinterlegt")
+
+    filename = progress.response_document_filename or "antwort.pdf"
+    return Response(
+        content=progress.response_document,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.put("/matching/items/{request_item_id}/mark-reviewed", tags=["Matching"])
+def mark_item_reviewed(request_item_id: str, db: Session = Depends(get_db_session)):
+    progress = _get_or_create_progress(db, request_item_id)
+    progress.reviewed_at = datetime.utcnow()
+    db.commit()
+    return progress.to_dict()
