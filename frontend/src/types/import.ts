@@ -75,3 +75,54 @@ export const JURISDICTION_FIELDS: FieldSpec[] = [
   { key: "source", label: "Quelle", required: false },
   { key: "notes", label: "Notizen", required: false },
 ];
+
+// Zusätzliche, von den sichtbaren Feld-Labels abweichende Spaltennamen, die
+// trotzdem eindeutig demselben Feld zugeordnet werden sollen – insbesondere
+// die Spaltenüberschriften des eigenen "Als Excel exportieren"-Features
+// (Datenqualität-Tab), damit eine ausgefüllte Export-Datei beim Reimport
+// automatisch korrekt zugeordnet wird, ohne dass jedes Feld manuell per
+// Dropdown ausgewählt werden muss.
+const FIELD_ALIASES: Record<string, string[]> = {
+  authority_name: ["Behörde", "Behördenname", "Name", "Amt"],
+  department_name: ["Abteilung"],
+  city: ["Ort", "Stadt"],
+  street: ["Straße", "Strasse"],
+  house_number: ["Hausnummer", "Nr", "Nr."],
+  postal_code: ["PLZ", "Postleitzahl"],
+  state: ["Bundesland"],
+  email: ["E-Mail", "Email", "Mail"],
+  phone: ["Telefon", "Tel"],
+  website: ["Website", "Web"],
+  source: ["Quelle"],
+  ags: ["AGS-Schlüssel", "AGS", "Amtlicher Gemeindeschlüssel"],
+  district: ["Stadtteil"],
+  property_name: ["Objektname"],
+  internal_reference: ["Interne Referenz"],
+  notes: ["Notizen"],
+  municipality: ["Gemeindename"],
+  priority: ["Priorität"],
+  matching_level: ["Matching-Level"],
+};
+
+/**
+ * Ordnet Datei-Spalten automatisch den bekannten Feldern zu, sofern der
+ * Spaltenname (Groß-/Kleinschreibung und Leerzeichen ignoriert) dem
+ * Feld-Label, -Key oder einem hinterlegten Alias entspricht. Jede Spalte
+ * wird höchstens einem Feld zugeordnet. Restliche Felder bleiben leer und
+ * können weiterhin manuell per Dropdown gesetzt werden.
+ */
+export function autoMapColumns(fields: FieldSpec[], columns: string[]): Record<string, string> {
+  const normalize = (s: string) => s.trim().toLowerCase();
+  const remaining = [...columns];
+  const mapping: Record<string, string> = {};
+
+  for (const field of fields) {
+    const candidates = [field.label, field.key, ...(FIELD_ALIASES[field.key] || [])].map(normalize);
+    const matchIndex = remaining.findIndex((col) => candidates.includes(normalize(col)));
+    if (matchIndex !== -1) {
+      mapping[field.key] = remaining[matchIndex];
+      remaining.splice(matchIndex, 1);
+    }
+  }
+  return mapping;
+}
