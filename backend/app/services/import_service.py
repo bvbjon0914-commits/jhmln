@@ -172,9 +172,13 @@ class ImportService:
         details: List[ImportRowResult] = []
         imported = duplicates = needs_review = errors = 0
 
-        authorities_by_key = {
-            (a.authority_name, a.city): a
-            for a in self.db.query(Authority).all()
+        # Leichtgewichtiger Lookup (nur IDs) statt voller ORM-Objekte für
+        # alle Behörden – siehe import_authorities für die Begründung.
+        authority_ids_by_key = {
+            (name, city): authority_id
+            for authority_id, name, city in self.db.query(
+                Authority.authority_id, Authority.authority_name, Authority.city
+            ).all()
         }
         existing_jurisdictions = {
             (j.authority_id, j.ags)
@@ -182,6 +186,10 @@ class ImportService:
                 Jurisdiction.request_type_id == request_type_id
             )
         }
+        # Innerhalb eines Batches wiederverwendetes Authority-Objekt, damit
+        # dieselbe Behörde (mehrere AGS-Zeilen hintereinander) nicht bei
+        # jeder Zeile neu geladen werden muss.
+        batch_authority_cache: dict = {}
 
         def mapped(row, field_name: str) -> Optional[str]:
             col = mapping.get(field_name, "")
@@ -189,6 +197,8 @@ class ImportService:
                 return None
             value = str(row.get(col, "")).strip()
             return value or None
+
+        pending = 0
 
         for idx, row in df.iterrows():
             try:
@@ -204,17 +214,24 @@ class ImportService:
 
                 city = mapped(row, "city")
                 key = (name, city)
-                authority = authorities_by_key.get(key)
+                authority_id = authority_ids_by_key.get(key)
 
-                if authority is None:
+                if authority_id is None:
+                    authority_id = str(uuid.uuid4())
                     authority = Authority(
-                        authority_id=str(uuid.uuid4()),
+                        authority_id=authority_id,
                         authority_name=name,
                         city=city,
                         source=mapped(row, "source") or "Import",
                     )
                     self.db.add(authority)
-                    authorities_by_key[key] = authority
+                    authority_ids_by_key[key] = authority_id
+                    batch_authority_cache[authority_id] = authority
+                else:
+                    authority = batch_authority_cache.get(authority_id)
+                    if authority is None:
+                        authority = self.db.query(Authority).filter(Authority.authority_id == authority_id).first()
+                        batch_authority_cache[authority_id] = authority
 
                 for contact_field in (
                     "department_name", "street", "house_number", "postal_code",
@@ -230,7 +247,7 @@ class ImportService:
 
                 new_count = dup_count = 0
                 for ags in ags_values:
-                    jkey = (authority.authority_id, ags)
+                    jkey = (authority_id, ags)
                     if jkey in existing_jurisdictions:
                         dup_count += 1
                         continue
@@ -238,7 +255,7 @@ class ImportService:
                     jurisdiction = Jurisdiction(
                         jurisdiction_id=str(uuid.uuid4()),
                         request_type_id=request_type_id,
-                        authority_id=authority.authority_id,
+                        authority_id=authority_id,
                         ags=ags,
                         municipality=mapped(row, "municipality"),
                         priority=int(priority) if priority else default_priority,
@@ -262,9 +279,17 @@ class ImportService:
                     details.append(ImportRowResult(idx, "IMPORTED", msg))
                     imported += 1
 
+                pending += 1
+
             except Exception as exc:
                 details.append(ImportRowResult(idx, "ERROR", str(exc)))
                 errors += 1
+
+            if pending >= self._IMPORT_BATCH_SIZE:
+                self.db.commit()
+                self.db.expunge_all()
+                batch_authority_cache.clear()
+                pending = 0
 
         self.db.commit()
 
@@ -283,6 +308,12 @@ class ImportService:
         "email", "phone", "website",
     )
 
+    # Nach so vielen verarbeiteten Zeilen wird zwischen-committet und der
+    # SQLAlchemy-Session-Cache geleert – bei mehreren tausend Zeilen sonst
+    # ein Speicher- und Transaktions-Risiko (insb. auf speicherbegrenzten
+    # Hosting-Instanzen).
+    _IMPORT_BATCH_SIZE = 200
+
     def import_authorities(self, df: pd.DataFrame, mapping: dict, fill_gaps: bool = False) -> ImportSummary:
         """
         Importiert Behörden. Pflichtfeld: authority_name.
@@ -295,10 +326,17 @@ class ImportService:
         details: List[ImportRowResult] = []
         imported = duplicates = needs_review = errors = updated = 0
 
-        existing_by_key = {
-            (a.authority_name, a.city): a
-            for a in self.db.query(Authority).all()
+        # Leichtgewichtiger Lookup (nur IDs, keine vollen ORM-Objekte) –
+        # bei mehreren tausend Behörden spart das deutlich Arbeitsspeicher
+        # gegenüber dem Laden aller Spalten für jede einzelne Behörde.
+        existing_ids_by_key = {
+            (name, city): authority_id
+            for authority_id, name, city in self.db.query(
+                Authority.authority_id, Authority.authority_name, Authority.city
+            ).all()
         }
+
+        pending = 0
 
         for idx, row in df.iterrows():
             try:
@@ -310,13 +348,14 @@ class ImportService:
                     needs_review += 1
                     continue
 
-                existing = existing_by_key.get((name, city))
-                if existing is not None:
+                existing_id = existing_ids_by_key.get((name, city))
+                if existing_id is not None:
                     if not fill_gaps:
                         details.append(ImportRowResult(idx, "DUPLICATE", f"'{name}' in '{city}' existiert bereits"))
                         duplicates += 1
                         continue
 
+                    existing = self.db.query(Authority).filter(Authority.authority_id == existing_id).first()
                     filled_fields = []
                     for field_name in self._FILLABLE_AUTHORITY_FIELDS:
                         current_value = getattr(existing, field_name)
@@ -332,6 +371,7 @@ class ImportService:
                             ImportRowResult(idx, "UPDATED", f"Ergänzt: {', '.join(filled_fields)}")
                         )
                         updated += 1
+                        pending += 1
                     else:
                         details.append(
                             ImportRowResult(idx, "DUPLICATE", f"'{name}' in '{city}' hatte keine Lücken zu füllen")
@@ -354,7 +394,8 @@ class ImportService:
                     source=row.get(mapping.get("source", ""), "").strip() or "Import",
                 )
                 self.db.add(authority)
-                existing_by_key[(name, city)] = authority
+                existing_ids_by_key[(name, city)] = authority.authority_id
+                pending += 1
 
                 details.append(ImportRowResult(idx, "IMPORTED", "OK"))
                 imported += 1
@@ -362,6 +403,11 @@ class ImportService:
             except Exception as exc:
                 details.append(ImportRowResult(idx, "ERROR", str(exc)))
                 errors += 1
+
+            if pending >= self._IMPORT_BATCH_SIZE:
+                self.db.commit()
+                self.db.expunge_all()
+                pending = 0
 
         self.db.commit()
 
