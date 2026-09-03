@@ -1,21 +1,25 @@
 import { useEffect, useState } from "react";
-import { Loader2, MailWarning, Link2Off, MapPinOff, FileSpreadsheet, Eraser } from "lucide-react";
+import { Loader2, MailWarning, Link2Off, MapPinOff, FileSpreadsheet, Eraser, Copy, AlertTriangle } from "lucide-react";
 import { api } from "../../services/api";
 import { Button } from "../common/Button";
 import { useAuth } from "../auth/AuthContext";
 import { useToast, errorMessage } from "../common/Toast";
-import type { DataQualitySummary, DataQualityGroup, AuthorityRef } from "../../types/dataQuality";
+import type { DataQualitySummary, DataQualityGroup, AuthorityRef, BuildingRef } from "../../types/dataQuality";
 
-function GroupCard({
+function GroupCard<T extends { }>({
   icon,
   title,
   description,
   group,
+  itemKey,
+  renderItem,
 }: {
   icon: React.ReactNode;
   title: string;
   description: string;
-  group: DataQualityGroup;
+  group: { count: number; items: T[] };
+  itemKey: (item: T) => string;
+  renderItem: (item: T) => React.ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -49,13 +53,12 @@ function GroupCard({
       </div>
       {expanded && group.count > 0 && (
         <div className="max-h-72 overflow-y-auto border-t border-line">
-          {group.items.map((a: AuthorityRef) => (
+          {group.items.map((item) => (
             <div
-              key={a.authority_id}
+              key={itemKey(item)}
               className="flex items-center justify-between gap-3 border-b border-line px-4 py-2 text-sm last:border-0"
             >
-              <span className="text-ink">{a.authority_name}</span>
-              <span className="shrink-0 text-xs text-ink-faint">{a.city || "—"}</span>
+              {renderItem(item)}
             </div>
           ))}
           {group.count > group.items.length && (
@@ -69,12 +72,35 @@ function GroupCard({
   );
 }
 
+function renderAuthorityRow(a: AuthorityRef) {
+  return (
+    <>
+      <span className="text-ink">{a.authority_name}</span>
+      <span className="shrink-0 text-xs text-ink-faint">{a.city || "—"}</span>
+    </>
+  );
+}
+
+function renderBuildingRow(b: BuildingRef) {
+  const address = [b.street, b.house_number].filter(Boolean).join(" ") || "—";
+  return (
+    <>
+      <span className="text-ink">{address}</span>
+      <span className="shrink-0 text-xs text-ink-faint">
+        {[b.postal_code, b.city].filter(Boolean).join(" ") || "—"}
+      </span>
+    </>
+  );
+}
+
 export function DataQualityAdmin() {
   const { showToast } = useToast();
   const { isMain } = useAuth();
   const [summary, setSummary] = useState<DataQualitySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
+  const [merging, setMerging] = useState(false);
+  const [deletingBuildings, setDeletingBuildings] = useState(false);
 
   const load = () => {
     api
@@ -110,6 +136,56 @@ export function DataQualityAdmin() {
       showToast("error", errorMessage(error, "Bereinigung fehlgeschlagen."));
     } finally {
       setClearing(false);
+    }
+  };
+
+  const handleMergeDuplicates = async () => {
+    if (
+      !window.confirm(
+        "Erkannte Behörden-Duplikate zusammenführen? Die jeweils vollständigere Zeile wird gelöscht, nachdem ihre Daten in die verbleibende Behörde übernommen wurden."
+      )
+    ) {
+      return;
+    }
+    setMerging(true);
+    try {
+      const result = await api.mergeDuplicateAuthorities();
+      showToast(
+        "success",
+        result.removed > 0
+          ? `${result.removed} Duplikate in ${result.merged_groups} Behörden zusammengeführt.`
+          : "Keine automatisch auflösbaren Duplikate gefunden."
+      );
+      load();
+    } catch (error) {
+      showToast("error", errorMessage(error, "Zusammenführen fehlgeschlagen."));
+    } finally {
+      setMerging(false);
+    }
+  };
+
+  const handleDeleteReviewRequiredBuildings = async () => {
+    if (
+      !window.confirm(
+        "Gebäude löschen, deren zuletzt ermittelte Zuständigkeit 'Prüfung nötig' ist? Das Gebäude sowie seine Anfrage-Historie werden dabei entfernt. Gebäude mit bereits versendeten Anfragen oder erhaltenen Antworten werden übersprungen."
+      )
+    ) {
+      return;
+    }
+    setDeletingBuildings(true);
+    try {
+      const result = await api.deleteReviewRequiredBuildings();
+      showToast(
+        "success",
+        result.deleted > 0
+          ? `${result.deleted} Gebäude gelöscht.${result.skipped > 0 ? ` ${result.skipped} übersprungen (bereits in Bearbeitung).` : ""}`
+          : "Keine automatisch löschbaren Gebäude gefunden."
+      );
+      load();
+    } catch (error) {
+      showToast("error", errorMessage(error, "Löschen fehlgeschlagen."));
+    } finally {
+      setDeletingBuildings(false);
     }
   };
 
@@ -151,20 +227,86 @@ export function DataQualityAdmin() {
           title="Behörden ohne E-Mail"
           description="Für diese Behörden kann kein „E-Mail öffnen“-Button angezeigt werden."
           group={summary.authorities_without_email}
+          itemKey={(a) => a.authority_id}
+          renderItem={renderAuthorityRow}
         />
         <GroupCard
           icon={<Link2Off size={16} />}
           title="Behörden ohne Zuständigkeit"
           description="Diese Behörden sind in keiner Zuständigkeitsregel hinterlegt und werden vom Matching nie gefunden."
           group={summary.authorities_without_jurisdiction}
+          itemKey={(a) => a.authority_id}
+          renderItem={renderAuthorityRow}
         />
         <GroupCard
           icon={<MapPinOff size={16} />}
           title="Behörden ohne Adresse"
           description="Ohne Straße und Ort kann kein korrekter Kartenpin ermittelt werden."
           group={summary.authorities_without_address}
+          itemKey={(a) => a.authority_id}
+          renderItem={renderAuthorityRow}
+        />
+        <GroupCard
+          icon={<Copy size={16} />}
+          title="Behörden-Duplikate"
+          description="Entstehen z.B., wenn ein Import eine bisher adresslose Behörde nicht wiedererkennt und sie doppelt anlegt."
+          group={summary.duplicate_authorities}
+          itemKey={(a) => a.authority_id}
+          renderItem={renderAuthorityRow}
+        />
+        <GroupCard
+          icon={<AlertTriangle size={16} />}
+          title="Gebäude mit Prüfung nötig"
+          description="Die zuletzt ermittelte Zuständigkeit war nicht eindeutig (keine Behörde gefunden)."
+          group={summary.buildings_review_required}
+          itemKey={(b) => b.building_id}
+          renderItem={renderBuildingRow}
         />
       </div>
+
+      {isMain && summary.duplicate_authorities.count > 0 && (
+        <div className="rounded-lg border border-line bg-surface p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="font-display text-sm font-semibold text-ink">Duplikate zusammenführen</h3>
+              <p className="mt-0.5 text-xs text-ink-faint">
+                {summary.duplicate_authorities.count} Behörden werden als Duplikat einer bestehenden
+                Behörde erkannt und können automatisch zusammengeführt werden (Adressdaten werden
+                übernommen, die Duplikat-Zeile gelöscht).
+                {summary.duplicate_authorities.needs_review_count > 0 &&
+                  ` ${summary.duplicate_authorities.needs_review_count} weitere Fälle sind nicht eindeutig und bleiben zur manuellen Prüfung stehen.`}
+              </p>
+            </div>
+            <Button variant="secondary" onClick={handleMergeDuplicates} disabled={merging}>
+              {merging ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />}
+              Zusammenführen
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isMain && summary.buildings_review_required.count > 0 && (
+        <div className="rounded-lg border border-line bg-surface p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="font-display text-sm font-semibold text-ink">
+                Gebäude mit Prüfung nötig löschen
+              </h3>
+              <p className="mt-0.5 text-xs text-ink-faint">
+                {summary.buildings_review_required.count} Gebäude, deren zuletzt ermittelte
+                Zuständigkeit keine eindeutige Behörde ergab, können samt ihrer Anfrage-Historie
+                gelöscht werden.
+                {summary.buildings_review_required.needs_review_count > 0 &&
+                  ` ${summary.buildings_review_required.needs_review_count} davon haben bereits versendete Anfragen oder Antworten und werden übersprungen.`}
+              </p>
+            </div>
+            <Button variant="secondary" onClick={handleDeleteReviewRequiredBuildings} disabled={deletingBuildings}>
+              {deletingBuildings ? <Loader2 size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
+              Löschen
+            </Button>
+          </div>
+        </div>
+      )}
 
       {isMain && summary.authorities_without_address.count > 0 && (
         <div className="rounded-lg border border-line bg-surface p-4 shadow-sm">

@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import List, Optional
 
 import pandas as pd
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.authority import Authority
@@ -71,22 +72,79 @@ class ImportService:
         self.db = db
 
     @staticmethod
-    def read_file(file_content: bytes, filename: str) -> pd.DataFrame:
-        """Liest eine CSV- oder Excel-Datei in einen DataFrame ein."""
+    def list_sheets(file_content: bytes, filename: str) -> Optional[List[dict]]:
+        """
+        Liefert bei Excel-Dateien mit mehr als einem Arbeitsblatt dessen Namen
+        und Zeilenzahl (None bei CSV oder einblättrigen Excel-Dateien).
+
+        Wichtig, weil das eigene "Als Excel exportieren"-Feature (Datenqualität-
+        Tab) mehrblättrige Dateien erzeugt (z.B. "Ohne E-Mail" + "Ohne Adresse")
+        - ohne explizite Auswahl würde sonst immer nur das erste Blatt gelesen
+        und ein Reimport der Lücken auf einem hinteren Blatt liefe scheinbar
+        erfolgreich durch, ohne dass tatsächlich Daten übernommen werden.
+        """
+        if not filename.lower().endswith((".xlsx", ".xls")):
+            return None
+
+        excel_file = pd.ExcelFile(io.BytesIO(file_content))
+        if len(excel_file.sheet_names) < 2:
+            return None
+
+        sheets = []
+        for name in excel_file.sheet_names:
+            sheet_df = excel_file.parse(name, dtype=str, nrows=None)
+            sheets.append({"name": name, "rows": len(sheet_df)})
+        return sheets
+
+    @staticmethod
+    def read_file(file_content: bytes, filename: str, sheet_name: Optional[str] = None) -> pd.DataFrame:
+        """
+        Liest eine CSV- oder Excel-Datei in einen DataFrame ein.
+
+        sheet_name: bei Excel-Dateien mit mehreren Arbeitsblättern das zu
+        lesende Blatt. Ohne Angabe wird bei mehreren Blättern das erste mit
+        Inhalt gewählt (nie stillschweigend ein leeres erstes Blatt), bei
+        genau einem Blatt dieses.
+        """
         if filename.lower().endswith(".csv"):
             return pd.read_csv(io.BytesIO(file_content), dtype=str, keep_default_na=False)
         elif filename.lower().endswith((".xlsx", ".xls")):
-            return pd.read_excel(io.BytesIO(file_content), dtype=str, keep_default_na=False)
+            if sheet_name is not None:
+                return pd.read_excel(
+                    io.BytesIO(file_content), sheet_name=sheet_name, dtype=str, keep_default_na=False
+                )
+            all_sheets = pd.read_excel(io.BytesIO(file_content), sheet_name=None, dtype=str, keep_default_na=False)
+            for df in all_sheets.values():
+                if len(df) > 0:
+                    return df
+            return next(iter(all_sheets.values()))
         else:
             raise ValueError(f"Nicht unterstütztes Dateiformat: {filename}")
 
-    def preview(self, df: pd.DataFrame, max_rows: int = 5) -> dict:
+    def preview(
+        self,
+        df: pd.DataFrame,
+        max_rows: int = 5,
+        sheets: Optional[List[dict]] = None,
+        selected_sheet: Optional[str] = None,
+    ) -> dict:
         """Gibt eine Vorschau der ersten Zeilen zurück."""
         return {
             "total_rows": len(df),
             "columns": list(df.columns),
             "preview_rows": df.head(max_rows).to_dict(orient="records"),
+            "sheets": sheets,
+            "selected_sheet": selected_sheet or self.pick_default_sheet(sheets),
         }
+
+    @staticmethod
+    def pick_default_sheet(sheets: Optional[List[dict]]) -> Optional[str]:
+        if not sheets:
+            return None
+        for s in sheets:
+            if s["rows"] > 0:
+                return s["name"]
+        return sheets[0]["name"]
 
     def import_buildings(self, df: pd.DataFrame, mapping: dict) -> ImportSummary:
         """
@@ -305,7 +363,7 @@ class ImportService:
 
     # Felder, die bei fill_gaps=True auf bestehenden Behörden nachgetragen werden dürfen.
     _FILLABLE_AUTHORITY_FIELDS = (
-        "department_name", "street", "house_number", "postal_code", "state",
+        "department_name", "street", "house_number", "postal_code", "city", "state",
         "email", "phone", "website",
     )
 
@@ -340,6 +398,26 @@ class ImportService:
             ).all()
         }
 
+        # Unlokalisierte Bestandsbehörden (weder Straße noch Ort hinterlegt)
+        # zusätzlich nur über den Namen auffindbar machen: sonst würde ein
+        # fill_gaps-Import, der für so eine Behörde erstmals eine Adresse
+        # mitbringt, die bestehende Zeile über den Name+Ort-Schlüssel nicht
+        # finden (Ort war ja bisher leer) und fälschlich eine zweite,
+        # doppelte Behörde anlegen. Nur eindeutige Fälle (genau eine
+        # unlokalisierte Behörde mit diesem Namen) werden so verknüpft.
+        unlocated_ids_by_name: dict = {}
+        _ambiguous_names: set = set()
+        for authority_id, name in self.db.query(Authority.authority_id, Authority.authority_name).filter(
+            or_(Authority.city.is_(None), Authority.city == ""),
+            or_(Authority.street.is_(None), Authority.street == ""),
+        ).all():
+            if name in unlocated_ids_by_name:
+                _ambiguous_names.add(name)
+            else:
+                unlocated_ids_by_name[name] = authority_id
+        for name in _ambiguous_names:
+            unlocated_ids_by_name.pop(name, None)
+
         # ---------- Pass 1: Zeilen klassifizieren, ohne DB-Zugriffe ----------
         new_rows: List[tuple] = []  # (idx, name, city, row)
         duplicate_candidates: List[tuple] = []  # (idx, existing_id, name, city, row)
@@ -355,6 +433,8 @@ class ImportService:
                     continue
 
                 existing_id = existing_ids_by_key.get((name, city))
+                if existing_id is None and city and fill_gaps:
+                    existing_id = unlocated_ids_by_name.get(name)
                 if existing_id is not None:
                     if not fill_gaps:
                         details.append(ImportRowResult(idx, "DUPLICATE", f"'{name}' in '{city}' existiert bereits"))

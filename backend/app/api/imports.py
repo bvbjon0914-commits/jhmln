@@ -15,23 +15,29 @@ router = APIRouter()
 
 
 @router.post("/import/preview", tags=["Imports"])
-async def preview_import(file: UploadFile = File(...), db: Session = Depends(get_db_session)):
+async def preview_import(
+    file: UploadFile = File(...),
+    sheet: str = Form(None, description="Bei mehrblättrigen Excel-Dateien: das zu lesende Arbeitsblatt"),
+    db: Session = Depends(get_db_session),
+):
     """Liest die Datei ein und zeigt eine Vorschau + verfügbare Spalten."""
     content = await file.read()
     service = ImportService(db)
 
     try:
-        df = service.read_file(content, file.filename)
+        sheets = service.list_sheets(content, file.filename)
+        df = service.read_file(content, file.filename, sheet_name=sheet)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    return service.preview(df)
+    return service.preview(df, sheets=sheets, selected_sheet=sheet)
 
 
 @router.post("/import/buildings", tags=["Imports"])
 async def import_buildings(
     file: UploadFile = File(...),
     mapping: str = Form(..., description="JSON: {db_field: csv_column}"),
+    sheet: str = Form(None, description="Bei mehrblättrigen Excel-Dateien: das zu lesende Arbeitsblatt"),
     db: Session = Depends(get_db_session),
 ):
     """Importiert Gebäude aus einer CSV/Excel-Datei."""
@@ -39,7 +45,7 @@ async def import_buildings(
     service = ImportService(db)
 
     try:
-        df = service.read_file(content, file.filename)
+        df = service.read_file(content, file.filename, sheet_name=sheet)
         mapping_dict = json.loads(mapping)
     except (ValueError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -53,6 +59,7 @@ async def import_authorities(
     file: UploadFile = File(...),
     mapping: str = Form(...),
     fill_gaps: bool = Form(False, description="Nur Haupt-Account: fehlende Felder bei bestehenden Behörden ergänzen"),
+    sheet: str = Form(None, description="Bei mehrblättrigen Excel-Dateien: das zu lesende Arbeitsblatt"),
     db: Session = Depends(get_db_session),
     is_main: bool = Depends(get_is_main),
 ):
@@ -67,7 +74,7 @@ async def import_authorities(
     service = ImportService(db)
 
     try:
-        df = service.read_file(content, file.filename)
+        df = service.read_file(content, file.filename, sheet_name=sheet)
         mapping_dict = json.loads(mapping)
     except (ValueError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -81,6 +88,7 @@ async def import_jurisdictions(
     file: UploadFile = File(...),
     mapping: str = Form(..., description="JSON: {db_field: csv_column}"),
     request_type_id: str = Form(..., description="Auskunftsart, für die dieser Import gilt"),
+    sheet: str = Form(None, description="Bei mehrblättrigen Excel-Dateien: das zu lesende Arbeitsblatt"),
     db: Session = Depends(get_db_session),
 ):
     """Importiert Zuständigkeiten (Behörde + Kontaktdaten + AGS) aus einer CSV/Excel-Datei."""
@@ -88,7 +96,7 @@ async def import_jurisdictions(
     service = ImportService(db)
 
     try:
-        df = service.read_file(content, file.filename)
+        df = service.read_file(content, file.filename, sheet_name=sheet)
         mapping_dict = json.loads(mapping)
     except (ValueError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
