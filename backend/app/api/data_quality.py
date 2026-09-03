@@ -16,8 +16,10 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.api.auth import require_main
 from app.database import get_db_session
 from app.models.authority import Authority
+from app.models.authority_location import AuthorityLocation
 from app.models.jurisdiction import Jurisdiction
 
 router = APIRouter()
@@ -51,11 +53,28 @@ def _authorities_without_jurisdiction(db: Session) -> List[Authority]:
     return without_jurisdiction
 
 
+def _authorities_without_address(db: Session) -> List[Authority]:
+    """
+    Behörden ganz ohne Straße UND Ort. Wichtig: genau diese führen beim
+    Kartenpin-Geocoding sonst zu einer irreführenden Auflösung auf den
+    geografischen Mittelpunkt Deutschlands (siehe get_authority_location).
+    """
+    return (
+        db.query(Authority)
+        .filter(Authority.active.is_(True))
+        .filter(or_(Authority.street.is_(None), Authority.street == ""))
+        .filter(or_(Authority.city.is_(None), Authority.city == ""))
+        .order_by(Authority.authority_name)
+        .all()
+    )
+
+
 @router.get("/data-quality/summary", tags=["DataQuality"])
 def data_quality_summary(db: Session = Depends(get_db_session)):
     total_authorities = db.query(Authority).filter(Authority.active.is_(True)).count()
     without_email = _authorities_without_email(db)
     without_jurisdiction = _authorities_without_jurisdiction(db)
+    without_address = _authorities_without_address(db)
 
     return {
         "total_authorities": total_authorities,
@@ -67,7 +86,34 @@ def data_quality_summary(db: Session = Depends(get_db_session)):
             "count": len(without_jurisdiction),
             "items": [_serialize(a) for a in without_jurisdiction[:MAX_ITEMS]],
         },
+        "authorities_without_address": {
+            "count": len(without_address),
+            "items": [_serialize(a) for a in without_address[:MAX_ITEMS]],
+        },
     }
+
+
+@router.post("/data-quality/clear-bad-geocoding", tags=["DataQuality"])
+def clear_bad_geocoding(db: Session = Depends(get_db_session), _: None = Depends(require_main)):
+    """
+    Nur Haupt-Account: entfernt gecachte Kartenkoordinaten von Behörden ohne
+    hinterlegte Adresse. Bis zu einem Fix in get_authority_location konnten
+    solche Behörden fälschlich auf den geografischen Mittelpunkt Deutschlands
+    (nahe Erfurt) geocodiert werden – dieser Aufruf räumt bereits gecachte
+    Fehltreffer auf, damit die Karte sie danach korrekt als "keine Adresse"
+    behandelt statt einen falschen Pin zu zeigen.
+    """
+    affected_ids = [a.authority_id for a in _authorities_without_address(db)]
+    if not affected_ids:
+        return {"deleted": 0}
+
+    deleted = (
+        db.query(AuthorityLocation)
+        .filter(AuthorityLocation.authority_id.in_(affected_ids))
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return {"deleted": deleted}
 
 
 @router.get("/data-quality/export-xlsx", tags=["DataQuality"])
@@ -102,11 +148,13 @@ def export_data_quality_xlsx(db: Session = Depends(get_db_session)):
 
     without_email_df = pd.DataFrame(to_rows(_authorities_without_email(db)), columns=columns)
     without_jurisdiction_df = pd.DataFrame(to_rows(_authorities_without_jurisdiction(db)), columns=columns)
+    without_address_df = pd.DataFrame(to_rows(_authorities_without_address(db)), columns=columns)
 
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         without_email_df.to_excel(writer, sheet_name="Ohne E-Mail", index=False)
         without_jurisdiction_df.to_excel(writer, sheet_name="Ohne Zuständigkeit", index=False)
+        without_address_df.to_excel(writer, sheet_name="Ohne Adresse", index=False)
     buffer.seek(0)
 
     return StreamingResponse(
