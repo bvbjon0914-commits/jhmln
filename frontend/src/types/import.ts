@@ -1,7 +1,14 @@
+export interface ImportSheetInfo {
+  name: string;
+  rows: number;
+}
+
 export interface ImportPreview {
   total_rows: number;
   columns: string[];
   preview_rows: Record<string, unknown>[];
+  sheets: ImportSheetInfo[] | null;
+  selected_sheet: string | null;
 }
 
 export type ImportRowStatus = "IMPORTED" | "UPDATED" | "DUPLICATE" | "NEEDS_REVIEW" | "ERROR";

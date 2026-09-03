@@ -52,6 +52,7 @@ export function ImportPage() {
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [kind, setKind] = useState<ImportKind>("buildings");
+  const [sheet, setSheet] = useState<string | undefined>(undefined);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [requestTypes, setRequestTypes] = useState<RequestType[]>([]);
   const [requestTypeId, setRequestTypeId] = useState("");
@@ -72,11 +73,27 @@ export function ImportPage() {
     try {
       const p = await api.previewImport(f);
       setPreview(p);
+      setSheet(p.selected_sheet ?? undefined);
       setMapping(autoMapColumns(fields, p.columns));
       setStep("configure");
     } catch (error) {
       showToast("error", errorMessage(error, "Datei konnte nicht gelesen werden."));
       setFile(null);
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  const handleSheetChange = async (nextSheet: string) => {
+    if (!file) return;
+    setSheet(nextSheet);
+    setLoadingPreview(true);
+    try {
+      const p = await api.previewImport(file, nextSheet);
+      setPreview(p);
+      setMapping(autoMapColumns(fields, p.columns));
+    } catch (error) {
+      showToast("error", errorMessage(error, "Arbeitsblatt konnte nicht gelesen werden."));
     } finally {
       setLoadingPreview(false);
     }
@@ -99,10 +116,10 @@ export function ImportPage() {
     try {
       const result =
         kind === "authorities"
-          ? await api.importAuthorities(file, mapping, isMain && fillGaps)
+          ? await api.importAuthorities(file, mapping, isMain && fillGaps, sheet)
           : kind === "buildings"
-            ? await api.importBuildings(file, mapping)
-            : await api.importJurisdictions(file, mapping, requestTypeId);
+            ? await api.importBuildings(file, mapping, sheet)
+            : await api.importJurisdictions(file, mapping, requestTypeId, sheet);
       setSummary(result);
       setStep("result");
     } catch (error) {
@@ -115,6 +132,7 @@ export function ImportPage() {
   const reset = () => {
     setFile(null);
     setPreview(null);
+    setSheet(undefined);
     setMapping({});
     setRequestTypeId("");
     setFillGaps(false);
@@ -196,6 +214,26 @@ export function ImportPage() {
               </span>
             </div>
           </div>
+
+          {preview.sheets && preview.sheets.length > 1 && (
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-ink-soft">
+                Arbeitsblatt (diese Datei enthält mehrere)
+              </label>
+              <select
+                value={sheet || ""}
+                onChange={(e) => handleSheetChange(e.target.value)}
+                disabled={loadingPreview}
+                className="w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-brand focus:outline-none sm:w-96"
+              >
+                {preview.sheets.map((s) => (
+                  <option key={s.name} value={s.name}>
+                    {s.name} ({s.rows} {s.rows === 1 ? "Zeile" : "Zeilen"})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <h3 className="mb-2 font-display text-sm font-semibold text-ink">Was wird importiert?</h3>

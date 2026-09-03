@@ -173,17 +173,19 @@ export const api = {
     return `/api/matching/export-csv?request_ids=${encodeURIComponent(requestIds.join(","))}`;
   },
 
-  async previewImport(file: File): Promise<ImportPreview> {
+  async previewImport(file: File, sheet?: string): Promise<ImportPreview> {
     const form = new FormData();
     form.append("file", file);
+    if (sheet) form.append("sheet", sheet);
     const { data } = await client.post<ImportPreview>("/import/preview", form);
     return data;
   },
 
-  async importBuildings(file: File, mapping: Record<string, string>): Promise<ImportSummary> {
+  async importBuildings(file: File, mapping: Record<string, string>, sheet?: string): Promise<ImportSummary> {
     const form = new FormData();
     form.append("file", file);
     form.append("mapping", JSON.stringify(mapping));
+    if (sheet) form.append("sheet", sheet);
     const { data } = await client.post<ImportSummary>("/import/buildings", form);
     return data;
   },
@@ -191,12 +193,14 @@ export const api = {
   async importAuthorities(
     file: File,
     mapping: Record<string, string>,
-    fillGaps = false
+    fillGaps = false,
+    sheet?: string
   ): Promise<ImportSummary> {
     const form = new FormData();
     form.append("file", file);
     form.append("mapping", JSON.stringify(mapping));
     form.append("fill_gaps", String(fillGaps));
+    if (sheet) form.append("sheet", sheet);
     const { data } = await client.post<ImportSummary>("/import/authorities", form);
     return data;
   },
@@ -204,12 +208,14 @@ export const api = {
   async importJurisdictions(
     file: File,
     mapping: Record<string, string>,
-    requestTypeId: string
+    requestTypeId: string,
+    sheet?: string
   ): Promise<ImportSummary> {
     const form = new FormData();
     form.append("file", file);
     form.append("mapping", JSON.stringify(mapping));
     form.append("request_type_id", requestTypeId);
+    if (sheet) form.append("sheet", sheet);
     const { data } = await client.post<ImportSummary>("/import/jurisdictions", form);
     return data;
   },
