@@ -47,6 +47,7 @@ export interface GeneratedDocumentInfo {
   authority_id: string;
   filename: string;
   filepath: string;
+  aktenzeichen: string | null;
 }
 
 export interface DocumentGenerationResponse {

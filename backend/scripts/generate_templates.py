@@ -326,6 +326,10 @@ def build_template(code: str, texts: dict) -> str:
     date_p = doc.add_paragraph("Bochum, den {{ current_date }}")
     date_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
+    # --- Aktenzeichen, rechtsbündig --------------------------------------
+    az_p = doc.add_paragraph("Unser Zeichen: {{ aktenzeichen }}")
+    az_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
     doc.add_paragraph()
 
     # --- Betreff (zweizeilig, fett) --------------------------------------

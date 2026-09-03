@@ -17,12 +17,13 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
+from app.models.aktenzeichen import RequestSequence
 from app.models.authority import Authority
 from app.models.building import Building
 from app.models.request import Request, RequestItem
 from app.models.request_item_progress import RequestItemProgress
 from app.models.request_type import RequestType
-from app.services import JurisdictionMatchingService
+from app.services import JurisdictionMatchingService, next_year_number
 
 router = APIRouter()
 
@@ -81,6 +82,16 @@ def run_matching(payload: MatchingRequestPayload, db: Session = Depends(get_db_s
     )
     db.add(request_record)
     db.flush()  # damit request_id verfügbar ist, ohne bereits zu committen
+
+    # Fortlaufende, jahresbezogene Nummer für das Aktenzeichen-Schema - wird
+    # einmalig hier vergeben, unabhängig davon ob der Request später einem
+    # Case zugeordnet wird (das passiert oft erst nachträglich).
+    year = request_record.created_at.year
+    db.add(RequestSequence(
+        request_id=request_record.request_id,
+        sequence_number=next_year_number(db, year),
+        year=year,
+    ))
 
     for result in results:
         item = RequestItem(

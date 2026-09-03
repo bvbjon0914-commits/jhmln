@@ -145,6 +145,11 @@ export function GeneratedDocuments({
                         {requestTypeNames[doc.request_type_id] || doc.request_type_id}
                       </div>
                       <div className="truncate font-mono text-xs text-ink-faint">{doc.filename}</div>
+                      {doc.aktenzeichen && (
+                        <div className="truncate font-mono text-xs text-ink-faint">
+                          Aktenzeichen: {doc.aktenzeichen}
+                        </div>
+                      )}
                       {authority && (
                         <div className="mt-0.5 truncate text-xs text-ink-soft">
                           {authority.authority_name}

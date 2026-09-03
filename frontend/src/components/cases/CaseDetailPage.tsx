@@ -299,7 +299,12 @@ function CaseItemRow({ item, onChanged }: { item: CaseRequestItem; onChanged: ()
 
   return (
     <tr className="border-b border-line last:border-0">
-      <td className="px-3 py-2.5 font-medium text-ink">{item.request_type_name}</td>
+      <td className="px-3 py-2.5">
+        <div className="font-medium text-ink">{item.request_type_name}</div>
+        {item.aktenzeichen && (
+          <div className="mt-0.5 font-mono text-[11px] text-ink-faint">{item.aktenzeichen}</div>
+        )}
+      </td>
       <td className="px-3 py-2.5 text-ink-soft">{item.authority_name || "—"}</td>
       <td className="px-3 py-2.5">
         <ProgressBadge status={item.status} />
