@@ -75,7 +75,7 @@ class ImportService:
         if filename.lower().endswith(".csv"):
             return pd.read_csv(io.BytesIO(file_content), dtype=str, keep_default_na=False)
         elif filename.lower().endswith((".xlsx", ".xls")):
-            return pd.read_excel(io.BytesIO(file_content), dtype=str)
+            return pd.read_excel(io.BytesIO(file_content), dtype=str, keep_default_na=False)
         else:
             raise ValueError(f"Nicht unterstütztes Dateiformat: {filename}")
 
