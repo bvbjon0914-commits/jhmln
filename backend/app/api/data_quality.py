@@ -14,15 +14,18 @@ from typing import List
 import pandas as pd
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.api.auth import require_main
 from app.database import get_db_session
 from app.models.authority import Authority
 from app.models.authority_location import AuthorityLocation
+from app.models.building import Building
+from app.models.case import CaseBuilding, CaseRequest
 from app.models.jurisdiction import Jurisdiction
-from app.models.request import RequestItem
+from app.models.request import Request, RequestItem
+from app.models.request_item_progress import RequestItemProgress
 
 router = APIRouter()
 
@@ -41,6 +44,16 @@ def _serialize(a: Authority) -> dict:
         "authority_id": a.authority_id,
         "authority_name": a.authority_name,
         "city": a.city,
+    }
+
+
+def _serialize_building(b: Building) -> dict:
+    return {
+        "building_id": b.building_id,
+        "street": b.street,
+        "house_number": b.house_number,
+        "postal_code": b.postal_code,
+        "city": b.city,
     }
 
 
@@ -133,6 +146,75 @@ def _find_duplicate_authority_groups(db: Session):
     return resolvable, needs_review
 
 
+def _buildings_with_review_required(db: Session) -> List[Building]:
+    """
+    Gebäude, deren zuletzt durchgeführtes Matching (neuester Request) für
+    mindestens eine Auskunftsart "Prüfung nötig" (REVIEW_REQUIRED) ergab -
+    also keine eindeutige Behörde gefunden wurde.
+    """
+    latest_per_building = (
+        db.query(Request.building_id, func.max(Request.created_at).label("latest_at"))
+        .group_by(Request.building_id)
+        .subquery()
+    )
+    latest_requests = (
+        db.query(Request.request_id, Request.building_id)
+        .join(
+            latest_per_building,
+            (Request.building_id == latest_per_building.c.building_id)
+            & (Request.created_at == latest_per_building.c.latest_at),
+        )
+        .all()
+    )
+    if not latest_requests:
+        return []
+
+    request_to_building = {r.request_id: r.building_id for r in latest_requests}
+    review_request_ids = {
+        row[0]
+        for row in db.query(RequestItem.request_id)
+        .filter(RequestItem.request_id.in_(request_to_building.keys()))
+        .filter(RequestItem.matching_status == "REVIEW_REQUIRED")
+        .distinct()
+        .all()
+    }
+    building_ids = {request_to_building[rid] for rid in review_request_ids}
+    if not building_ids:
+        return []
+
+    return (
+        db.query(Building)
+        .filter(Building.building_id.in_(building_ids))
+        .order_by(Building.city, Building.street)
+        .all()
+    )
+
+
+def _building_has_real_progress(db: Session, building_id: str) -> bool:
+    """
+    True, wenn für dieses Gebäude schon einmal ein Schreiben tatsächlich als
+    versendet markiert wurde oder eine Antwort hinterlegt ist - solche
+    Gebäude werden von der automatischen Bereinigung übersprungen, auch wenn
+    das aktuelle Matching "Prüfung nötig" zeigt (nie echte Arbeit löschen).
+    """
+    request_ids = [r[0] for r in db.query(Request.request_id).filter(Request.building_id == building_id).all()]
+    if not request_ids:
+        return False
+    item_ids = [
+        r[0]
+        for r in db.query(RequestItem.request_item_id).filter(RequestItem.request_id.in_(request_ids)).all()
+    ]
+    if not item_ids:
+        return False
+    return (
+        db.query(RequestItemProgress)
+        .filter(RequestItemProgress.request_item_id.in_(item_ids))
+        .filter(or_(RequestItemProgress.sent_at.isnot(None), RequestItemProgress.response_received_at.isnot(None)))
+        .first()
+        is not None
+    )
+
+
 @router.get("/data-quality/summary", tags=["DataQuality"])
 def data_quality_summary(db: Session = Depends(get_db_session)):
     total_authorities = db.query(Authority).filter(Authority.active.is_(True)).count()
@@ -141,6 +223,8 @@ def data_quality_summary(db: Session = Depends(get_db_session)):
     without_address = _authorities_without_address(db)
     duplicate_groups, needs_review_groups = _find_duplicate_authority_groups(db)
     duplicate_items = [dup for g in duplicate_groups for dup in g["remove"]]
+    review_buildings = _buildings_with_review_required(db)
+    review_buildings_skipped = sum(1 for b in review_buildings if _building_has_real_progress(db, b.building_id))
 
     return {
         "total_authorities": total_authorities,
@@ -160,6 +244,11 @@ def data_quality_summary(db: Session = Depends(get_db_session)):
             "count": len(duplicate_items),
             "items": [_serialize(a) for a in duplicate_items[:MAX_ITEMS]],
             "needs_review_count": len(needs_review_groups),
+        },
+        "buildings_review_required": {
+            "count": len(review_buildings),
+            "items": [_serialize_building(b) for b in review_buildings[:MAX_ITEMS]],
+            "needs_review_count": review_buildings_skipped,
         },
     }
 
@@ -189,6 +278,53 @@ def merge_duplicate_authorities(db: Session = Depends(get_db_session), _: None =
 
     db.commit()
     return {"merged_groups": len(resolvable), "removed": removed, "needs_review": len(needs_review)}
+
+
+@router.post("/data-quality/delete-review-required-buildings", tags=["DataQuality"])
+def delete_review_required_buildings(db: Session = Depends(get_db_session), _: None = Depends(require_main)):
+    """
+    Nur Haupt-Account: löscht Gebäude, deren zuletzt ermittelte Zuständigkeit
+    als "Prüfung nötig" markiert ist (siehe _buildings_with_review_required),
+    zusammen mit ihrer Anfrage-Historie (Requests/RequestItems/Progress) und
+    Auftrags-Verknüpfungen. Gebäude, für die schon einmal ein Schreiben real
+    versendet wurde oder eine Antwort hinterlegt ist, werden übersprungen und
+    bleiben zur manuellen Prüfung stehen (nie echte Arbeit löschen).
+    """
+    candidates = _buildings_with_review_required(db)
+
+    deleted = 0
+    skipped = 0
+    for building in candidates:
+        if _building_has_real_progress(db, building.building_id):
+            skipped += 1
+            continue
+
+        request_ids = [
+            r[0] for r in db.query(Request.request_id).filter(Request.building_id == building.building_id).all()
+        ]
+        if request_ids:
+            item_ids = [
+                r[0]
+                for r in db.query(RequestItem.request_item_id)
+                .filter(RequestItem.request_id.in_(request_ids))
+                .all()
+            ]
+            if item_ids:
+                db.query(RequestItemProgress).filter(
+                    RequestItemProgress.request_item_id.in_(item_ids)
+                ).delete(synchronize_session=False)
+            db.query(CaseRequest).filter(CaseRequest.request_id.in_(request_ids)).delete(synchronize_session=False)
+            db.query(RequestItem).filter(RequestItem.request_id.in_(request_ids)).delete(synchronize_session=False)
+            db.query(Request).filter(Request.building_id == building.building_id).delete(synchronize_session=False)
+
+        db.query(CaseBuilding).filter(CaseBuilding.building_id == building.building_id).delete(
+            synchronize_session=False
+        )
+        db.delete(building)
+        deleted += 1
+
+    db.commit()
+    return {"deleted": deleted, "skipped": skipped}
 
 
 @router.post("/data-quality/clear-bad-geocoding", tags=["DataQuality"])

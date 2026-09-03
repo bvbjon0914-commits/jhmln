@@ -331,6 +331,13 @@ export const api = {
     return data;
   },
 
+  async deleteReviewRequiredBuildings(): Promise<{ deleted: number; skipped: number }> {
+    const { data } = await client.post<{ deleted: number; skipped: number }>(
+      "/data-quality/delete-review-required-buildings"
+    );
+    return data;
+  },
+
   // ========== Aufträge (Cases) ==========
 
   async listCasesPaged(params: {
