@@ -12,6 +12,7 @@ import io
 import re
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import List, Optional
 
 import pandas as pd
@@ -322,13 +323,16 @@ class ImportService:
         Behörde (gleicher Name + Ort) werden NUR aktuell leere Felder aus der
         importierten Zeile nachgetragen (z.B. eine recherchierte E-Mail-
         Adresse) – bereits vorhandene Werte werden nie überschrieben.
+
+        Arbeitet bewusst mit Bulk-Operationen (eine Sammel-Anfrage statt
+        einer pro Zeile): bei mehreren tausend Zeilen und einer entfernten
+        Datenbank (Neon) summieren sich einzelne Round-Trips sonst zu Minuten
+        und riskieren einen Timeout/Absturz auf speicherbegrenzten Hosts.
         """
         details: List[ImportRowResult] = []
         imported = duplicates = needs_review = errors = updated = 0
 
-        # Leichtgewichtiger Lookup (nur IDs, keine vollen ORM-Objekte) –
-        # bei mehreren tausend Behörden spart das deutlich Arbeitsspeicher
-        # gegenüber dem Laden aller Spalten für jede einzelne Behörde.
+        # Leichtgewichtiger Lookup (nur IDs, keine vollen ORM-Objekte).
         existing_ids_by_key = {
             (name, city): authority_id
             for authority_id, name, city in self.db.query(
@@ -336,7 +340,9 @@ class ImportService:
             ).all()
         }
 
-        pending = 0
+        # ---------- Pass 1: Zeilen klassifizieren, ohne DB-Zugriffe ----------
+        new_rows: List[tuple] = []  # (idx, name, city, row)
+        duplicate_candidates: List[tuple] = []  # (idx, existing_id, name, city, row)
 
         for idx, row in df.iterrows():
             try:
@@ -354,62 +360,84 @@ class ImportService:
                         details.append(ImportRowResult(idx, "DUPLICATE", f"'{name}' in '{city}' existiert bereits"))
                         duplicates += 1
                         continue
-
-                    existing = self.db.query(Authority).filter(Authority.authority_id == existing_id).first()
-                    filled_fields = []
-                    for field_name in self._FILLABLE_AUTHORITY_FIELDS:
-                        current_value = getattr(existing, field_name)
-                        if current_value:
-                            continue
-                        new_value = row.get(mapping.get(field_name, ""), "").strip()
-                        if new_value:
-                            setattr(existing, field_name, new_value)
-                            filled_fields.append(field_name)
-
-                    if filled_fields:
-                        details.append(
-                            ImportRowResult(idx, "UPDATED", f"Ergänzt: {', '.join(filled_fields)}")
-                        )
-                        updated += 1
-                        pending += 1
-                    else:
-                        details.append(
-                            ImportRowResult(idx, "DUPLICATE", f"'{name}' in '{city}' hatte keine Lücken zu füllen")
-                        )
-                        duplicates += 1
-                    continue
-
-                authority = Authority(
-                    authority_id=str(uuid.uuid4()),
-                    authority_name=name,
-                    department_name=row.get(mapping.get("department_name", ""), "").strip() or None,
-                    street=row.get(mapping.get("street", ""), "").strip() or None,
-                    house_number=row.get(mapping.get("house_number", ""), "").strip() or None,
-                    postal_code=row.get(mapping.get("postal_code", ""), "").strip() or None,
-                    city=city,
-                    state=row.get(mapping.get("state", ""), "").strip() or None,
-                    email=row.get(mapping.get("email", ""), "").strip() or None,
-                    phone=row.get(mapping.get("phone", ""), "").strip() or None,
-                    website=row.get(mapping.get("website", ""), "").strip() or None,
-                    source=row.get(mapping.get("source", ""), "").strip() or "Import",
-                )
-                self.db.add(authority)
-                existing_ids_by_key[(name, city)] = authority.authority_id
-                pending += 1
-
-                details.append(ImportRowResult(idx, "IMPORTED", "OK"))
-                imported += 1
+                    duplicate_candidates.append((idx, existing_id, name, city, row))
+                else:
+                    new_rows.append((idx, name, city, row))
 
             except Exception as exc:
                 details.append(ImportRowResult(idx, "ERROR", str(exc)))
                 errors += 1
 
-            if pending >= self._IMPORT_BATCH_SIZE:
-                self.db.commit()
-                self.db.expunge_all()
-                pending = 0
+        # ---------- Pass 2: betroffene bestehende Behörden in EINER Anfrage laden ----------
+        authorities_by_id = {}
+        needed_ids = list({c[1] for c in duplicate_candidates})
+        for i in range(0, len(needed_ids), 1000):
+            chunk = needed_ids[i:i + 1000]
+            for a in self.db.query(Authority).filter(Authority.authority_id.in_(chunk)).all():
+                authorities_by_id[a.authority_id] = a
 
-        self.db.commit()
+        # ---------- Pass 3: Lücken-Updates im Speicher berechnen ----------
+        now = datetime.utcnow()
+        update_mappings: List[dict] = []
+        for idx, existing_id, name, city, row in duplicate_candidates:
+            existing = authorities_by_id.get(existing_id)
+            if existing is None:
+                details.append(ImportRowResult(idx, "ERROR", "Behörde nicht mehr gefunden"))
+                errors += 1
+                continue
+
+            filled_fields = []
+            patch = {"authority_id": existing_id}
+            for field_name in self._FILLABLE_AUTHORITY_FIELDS:
+                if getattr(existing, field_name):
+                    continue
+                new_value = row.get(mapping.get(field_name, ""), "").strip()
+                if new_value:
+                    patch[field_name] = new_value
+                    filled_fields.append(field_name)
+
+            if filled_fields:
+                patch["updated_at"] = now
+                update_mappings.append(patch)
+                details.append(ImportRowResult(idx, "UPDATED", f"Ergänzt: {', '.join(filled_fields)}"))
+                updated += 1
+            else:
+                details.append(ImportRowResult(idx, "DUPLICATE", f"'{name}' in '{city}' hatte keine Lücken zu füllen"))
+                duplicates += 1
+
+        # ---------- Pass 4: neue Behörden vorbereiten ----------
+        insert_mappings: List[dict] = []
+        for idx, name, city, row in new_rows:
+            insert_mappings.append({
+                "authority_id": str(uuid.uuid4()),
+                "authority_name": name,
+                "department_name": row.get(mapping.get("department_name", ""), "").strip() or None,
+                "street": row.get(mapping.get("street", ""), "").strip() or None,
+                "house_number": row.get(mapping.get("house_number", ""), "").strip() or None,
+                "postal_code": row.get(mapping.get("postal_code", ""), "").strip() or None,
+                "city": city,
+                "state": row.get(mapping.get("state", ""), "").strip() or None,
+                "email": row.get(mapping.get("email", ""), "").strip() or None,
+                "phone": row.get(mapping.get("phone", ""), "").strip() or None,
+                "website": row.get(mapping.get("website", ""), "").strip() or None,
+                "source": row.get(mapping.get("source", ""), "").strip() or "Import",
+                "active": True,
+                "created_at": now,
+                "updated_at": now,
+            })
+            details.append(ImportRowResult(idx, "IMPORTED", "OK"))
+            imported += 1
+
+        # ---------- Pass 5: in Batches schreiben (wenige Sammel-Anfragen statt vieler Einzelnen) ----------
+        for i in range(0, len(update_mappings), self._IMPORT_BATCH_SIZE):
+            self.db.bulk_update_mappings(Authority, update_mappings[i:i + self._IMPORT_BATCH_SIZE])
+            self.db.commit()
+
+        for i in range(0, len(insert_mappings), self._IMPORT_BATCH_SIZE):
+            self.db.bulk_insert_mappings(Authority, insert_mappings[i:i + self._IMPORT_BATCH_SIZE])
+            self.db.commit()
+
+        details.sort(key=lambda d: d.row_index)
 
         return ImportSummary(
             total_rows=len(df),
