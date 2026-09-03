@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 from app.database import init_db
 
 # API-Routen
-from app.api import buildings, authorities, request_types, matching, documents, requests_api, imports, geo, jurisdictions, auth, data_quality
+from app.api import buildings, authorities, request_types, matching, documents, requests_api, imports, geo, jurisdictions, auth, data_quality, cases, data_sources
 from app.api.auth import require_login
 
 # Logging
@@ -121,6 +121,8 @@ app.include_router(imports.router, prefix="/api", dependencies=protected)
 app.include_router(geo.router, prefix="/api", dependencies=protected)
 app.include_router(jurisdictions.router, prefix="/api", dependencies=protected)
 app.include_router(data_quality.router, prefix="/api", dependencies=protected)
+app.include_router(cases.router, prefix="/api", dependencies=protected)
+app.include_router(data_sources.router, prefix="/api", dependencies=protected)
 
 # SPA-Fallback: muss nach allen /api-Routen registriert werden, sonst würde
 # er sie abfangen. Liefert index.html für jede Route, die kein API-Aufruf ist.
