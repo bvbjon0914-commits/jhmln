@@ -13,6 +13,7 @@ from .authority_location import AuthorityLocation
 from .case import Case, CaseBuilding, CaseRequest
 from .request_item_progress import RequestItemProgress
 from .data_source import DataSource, DataSourceRouting
+from .aktenzeichen import AktenzeichenSequence, RequestSequence, RequestItemReference
 
 __all__ = [
     "Building",
@@ -31,5 +32,8 @@ __all__ = [
     "RequestItemProgress",
     "DataSource",
     "DataSourceRouting",
+    "AktenzeichenSequence",
+    "RequestSequence",
+    "RequestItemReference",
     "STANDARD_REQUEST_TYPES",
 ]

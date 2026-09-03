@@ -18,11 +18,12 @@ from sqlalchemy.orm import Session
 
 from app.config import GENERATED_DIR, TEMPLATES_DIR
 from app.database import get_db_session
+from app.models.aktenzeichen import RequestItemReference, RequestSequence
 from app.models.authority import Authority
 from app.models.building import Building
 from app.models.request import Request, RequestItem
 from app.models.request_type import RequestType
-from app.services import DocumentGenerationService, DocumentGenerationError
+from app.services import DocumentGenerationService, DocumentGenerationError, next_year_number
 
 router = APIRouter()
 
@@ -55,6 +56,26 @@ def generate_documents(payload: DocumentGenerationPayload, db: Session = Depends
 
     generator = DocumentGenerationService(templates_dir=TEMPLATES_DIR, output_dir=GENERATED_DIR)
 
+    # Aktenzeichen-Schema: die Request-Sequenznummer wurde bereits bei der
+    # Matching-Erzeugung vergeben (siehe matching.py). Für ältere Requests
+    # von vor diesem Feature wird sie hier defensiv nachträglich vergeben.
+    request_sequence = db.query(RequestSequence).filter(RequestSequence.request_id == request_record.request_id).first()
+    if request_sequence is None:
+        year = request_record.created_at.year
+        request_sequence = RequestSequence(
+            request_id=request_record.request_id,
+            sequence_number=next_year_number(db, year),
+            year=year,
+        )
+        db.add(request_sequence)
+        db.flush()
+
+    # 1-basierte Position innerhalb dieses Requests, einmal vor der Schleife
+    # berechnet und danach nur lokal hochgezählt - item.document_status wird
+    # innerhalb der Schleife selbst mutiert, ein erneutes Abfragen von
+    # request_record.items pro Iteration wäre fehleranfällig.
+    item_position = sum(1 for i in request_record.items if i.document_status == "GENERATED")
+
     generated = []
     failed = []
 
@@ -82,15 +103,23 @@ def generate_documents(payload: DocumentGenerationPayload, db: Session = Depends
             continue
 
         try:
-            doc = generator.generate_document(building, authority, request_type)
+            candidate_position = item_position + 1
+            aktenzeichen = (
+                f"VNV-{request_sequence.year}-{request_sequence.sequence_number:04d}-"
+                f"{request_type.code}-{candidate_position}"
+            )
+            doc = generator.generate_document(building, authority, request_type, aktenzeichen)
+            item_position = candidate_position
             item.document_path = doc.filepath
             item.document_status = "GENERATED"
+            db.add(RequestItemReference(request_item_id=item.request_item_id, aktenzeichen=aktenzeichen))
             generated.append({
                 "request_item_id": item.request_item_id,
                 "request_type_id": item.request_type_id,
                 "authority_id": item.authority_id,
                 "filename": doc.filename,
                 "filepath": doc.filepath,
+                "aktenzeichen": aktenzeichen,
             })
         except DocumentGenerationError as exc:
             item.document_status = "FAILED"

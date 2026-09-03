@@ -55,19 +55,26 @@ class DocumentGenerationService:
         cleaned = re.sub(r"_+", "_", cleaned).strip("_")
         return cleaned or "unbekannt"
 
-    def build_filename(self, building: Building, request_type: RequestType) -> str:
+    def build_filename(self, building: Building, request_type: RequestType, aktenzeichen: str) -> str:
         """
         Erzeugt den Dateinamen im Format:
-        {Objekt-ID}_{Auskunft}_{Ort}_{Datum}.docx
+        {Objekt-ID}_{Auskunft}_{Ort}_{Datum}_{Aktenzeichen}.docx
+
+        Das Aktenzeichen ist je Item eindeutig und stabil - behebt nebenbei,
+        dass eine erneute Generierung am selben Tag für dasselbe Gebäude+
+        Auskunftsart bisher die vorherige Datei stillschweigend überschrieb.
         """
         object_id = self._sanitize_filename_part(building.building_id)
         request_code = self._sanitize_filename_part(request_type.code)
         city = self._sanitize_filename_part(building.city)
         today = date.today().strftime("%Y-%m-%d")
+        az = self._sanitize_filename_part(aktenzeichen)
 
-        return f"{object_id}_{request_code}_{city}_{today}.docx"
+        return f"{object_id}_{request_code}_{city}_{today}_{az}.docx"
 
-    def build_context(self, building: Building, authority: Authority, request_type: RequestType) -> dict:
+    def build_context(
+        self, building: Building, authority: Authority, request_type: RequestType, aktenzeichen: str
+    ) -> dict:
         """Stellt den Platzhalter-Kontext für die Vorlage zusammen."""
         return {
             # Behördendaten
@@ -93,6 +100,7 @@ class DocumentGenerationService:
             # Metadaten
             "current_date": date.today().strftime("%d.%m.%Y"),
             "request_type_name": request_type.name or "",
+            "aktenzeichen": aktenzeichen or "",
         }
 
     def generate_document(
@@ -100,6 +108,7 @@ class DocumentGenerationService:
         building: Building,
         authority: Authority,
         request_type: RequestType,
+        aktenzeichen: str,
     ) -> GeneratedDocument:
         """
         Generiert ein einzelnes DOCX-Dokument.
@@ -119,12 +128,12 @@ class DocumentGenerationService:
 
         try:
             doc = DocxTemplate(str(template_path))
-            context = self.build_context(building, authority, request_type)
+            context = self.build_context(building, authority, request_type, aktenzeichen)
             doc.render(context)
         except Exception as exc:
             raise DocumentGenerationError(f"Fehler beim Rendern der Vorlage: {exc}") from exc
 
-        filename = self.build_filename(building, request_type)
+        filename = self.build_filename(building, request_type, aktenzeichen)
         output_path = self.output_dir / filename
 
         try:

@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
+from app.models.aktenzeichen import RequestItemReference
 from app.models.authority import Authority
 from app.models.building import Building
 from app.models.case import Case, CaseBuilding, CaseRequest
@@ -154,6 +155,10 @@ def get_case(case_id: str, db: Session = Depends(get_db_session)):
         p.request_item_id: p
         for p in db.query(RequestItemProgress).filter(RequestItemProgress.request_item_id.in_(item_ids)).all()
     } if item_ids else {}
+    aktenzeichen_by_item_id = {
+        r.request_item_id: r.aktenzeichen
+        for r in db.query(RequestItemReference).filter(RequestItemReference.request_item_id.in_(item_ids)).all()
+    } if item_ids else {}
 
     items = []
     for item, building_id in rows:
@@ -172,6 +177,7 @@ def get_case(case_id: str, db: Session = Depends(get_db_session)):
             "matching_status": item.matching_status,
             "document_status": item.document_status,
             "status": _derive_item_status(item, progress),
+            "aktenzeichen": aktenzeichen_by_item_id.get(item.request_item_id),
             **(progress.to_dict() if progress else {
                 "sent_at": None,
                 "response_received_at": None,

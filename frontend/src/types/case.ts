@@ -35,6 +35,7 @@ export interface CaseRequestItem {
   matching_status: string;
   document_status: string;
   status: CaseItemStatus;
+  aktenzeichen: string | null;
   sent_at: string | null;
   response_received_at: string | null;
   response_document_filename: string | null;
