@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import List, Optional
 
 import pandas as pd
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.authority import Authority
@@ -305,7 +306,7 @@ class ImportService:
 
     # Felder, die bei fill_gaps=True auf bestehenden Behörden nachgetragen werden dürfen.
     _FILLABLE_AUTHORITY_FIELDS = (
-        "department_name", "street", "house_number", "postal_code", "state",
+        "department_name", "street", "house_number", "postal_code", "city", "state",
         "email", "phone", "website",
     )
 
@@ -340,6 +341,26 @@ class ImportService:
             ).all()
         }
 
+        # Unlokalisierte Bestandsbehörden (weder Straße noch Ort hinterlegt)
+        # zusätzlich nur über den Namen auffindbar machen: sonst würde ein
+        # fill_gaps-Import, der für so eine Behörde erstmals eine Adresse
+        # mitbringt, die bestehende Zeile über den Name+Ort-Schlüssel nicht
+        # finden (Ort war ja bisher leer) und fälschlich eine zweite,
+        # doppelte Behörde anlegen. Nur eindeutige Fälle (genau eine
+        # unlokalisierte Behörde mit diesem Namen) werden so verknüpft.
+        unlocated_ids_by_name: dict = {}
+        _ambiguous_names: set = set()
+        for authority_id, name in self.db.query(Authority.authority_id, Authority.authority_name).filter(
+            or_(Authority.city.is_(None), Authority.city == ""),
+            or_(Authority.street.is_(None), Authority.street == ""),
+        ).all():
+            if name in unlocated_ids_by_name:
+                _ambiguous_names.add(name)
+            else:
+                unlocated_ids_by_name[name] = authority_id
+        for name in _ambiguous_names:
+            unlocated_ids_by_name.pop(name, None)
+
         # ---------- Pass 1: Zeilen klassifizieren, ohne DB-Zugriffe ----------
         new_rows: List[tuple] = []  # (idx, name, city, row)
         duplicate_candidates: List[tuple] = []  # (idx, existing_id, name, city, row)
@@ -355,6 +376,8 @@ class ImportService:
                     continue
 
                 existing_id = existing_ids_by_key.get((name, city))
+                if existing_id is None and city and fill_gaps:
+                    existing_id = unlocated_ids_by_name.get(name)
                 if existing_id is not None:
                     if not fill_gaps:
                         details.append(ImportRowResult(idx, "DUPLICATE", f"'{name}' in '{city}' existiert bereits"))

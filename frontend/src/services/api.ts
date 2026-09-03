@@ -318,6 +318,13 @@ export const api = {
     return data;
   },
 
+  async mergeDuplicateAuthorities(): Promise<{ merged_groups: number; removed: number; needs_review: number }> {
+    const { data } = await client.post<{ merged_groups: number; removed: number; needs_review: number }>(
+      "/data-quality/merge-duplicate-authorities"
+    );
+    return data;
+  },
+
   // ========== Aufträge (Cases) ==========
 
   async listCasesPaged(params: {

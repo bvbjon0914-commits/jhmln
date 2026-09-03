@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, MailWarning, Link2Off, MapPinOff, FileSpreadsheet, Eraser } from "lucide-react";
+import { Loader2, MailWarning, Link2Off, MapPinOff, FileSpreadsheet, Eraser, Copy } from "lucide-react";
 import { api } from "../../services/api";
 import { Button } from "../common/Button";
 import { useAuth } from "../auth/AuthContext";
@@ -75,6 +75,7 @@ export function DataQualityAdmin() {
   const [summary, setSummary] = useState<DataQualitySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
+  const [merging, setMerging] = useState(false);
 
   const load = () => {
     api
@@ -110,6 +111,31 @@ export function DataQualityAdmin() {
       showToast("error", errorMessage(error, "Bereinigung fehlgeschlagen."));
     } finally {
       setClearing(false);
+    }
+  };
+
+  const handleMergeDuplicates = async () => {
+    if (
+      !window.confirm(
+        "Erkannte Behörden-Duplikate zusammenführen? Die jeweils vollständigere Zeile wird gelöscht, nachdem ihre Daten in die verbleibende Behörde übernommen wurden."
+      )
+    ) {
+      return;
+    }
+    setMerging(true);
+    try {
+      const result = await api.mergeDuplicateAuthorities();
+      showToast(
+        "success",
+        result.removed > 0
+          ? `${result.removed} Duplikate in ${result.merged_groups} Behörden zusammengeführt.`
+          : "Keine automatisch auflösbaren Duplikate gefunden."
+      );
+      load();
+    } catch (error) {
+      showToast("error", errorMessage(error, "Zusammenführen fehlgeschlagen."));
+    } finally {
+      setMerging(false);
     }
   };
 
@@ -164,7 +190,34 @@ export function DataQualityAdmin() {
           description="Ohne Straße und Ort kann kein korrekter Kartenpin ermittelt werden."
           group={summary.authorities_without_address}
         />
+        <GroupCard
+          icon={<Copy size={16} />}
+          title="Behörden-Duplikate"
+          description="Entstehen z.B., wenn ein Import eine bisher adresslose Behörde nicht wiedererkennt und sie doppelt anlegt."
+          group={summary.duplicate_authorities}
+        />
       </div>
+
+      {isMain && summary.duplicate_authorities.count > 0 && (
+        <div className="rounded-lg border border-line bg-surface p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="font-display text-sm font-semibold text-ink">Duplikate zusammenführen</h3>
+              <p className="mt-0.5 text-xs text-ink-faint">
+                {summary.duplicate_authorities.count} Behörden werden als Duplikat einer bestehenden
+                Behörde erkannt und können automatisch zusammengeführt werden (Adressdaten werden
+                übernommen, die Duplikat-Zeile gelöscht).
+                {summary.duplicate_authorities.needs_review_count > 0 &&
+                  ` ${summary.duplicate_authorities.needs_review_count} weitere Fälle sind nicht eindeutig und bleiben zur manuellen Prüfung stehen.`}
+              </p>
+            </div>
+            <Button variant="secondary" onClick={handleMergeDuplicates} disabled={merging}>
+              {merging ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />}
+              Zusammenführen
+            </Button>
+          </div>
+        </div>
+      )}
 
       {isMain && summary.authorities_without_address.count > 0 && (
         <div className="rounded-lg border border-line bg-surface p-4 shadow-sm">
