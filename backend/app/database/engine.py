@@ -34,6 +34,15 @@ else:
         echo=os.getenv("SQL_ECHO", "false").lower() == "true",
         pool_size=10,
         max_overflow=20,
+        # Neon (serverless Postgres) schließt Verbindungen serverseitig nach
+        # Inaktivität – ohne pre_ping versucht der Pool dann, eine bereits
+        # tote Verbindung wiederzuverwenden ("SSL connection has been closed
+        # unexpectedly"). pre_ping testet jede Verbindung vor Gebrauch mit
+        # einem leichten SELECT und baut sie bei Bedarf transparent neu auf.
+        # pool_recycle erneuert Verbindungen zusätzlich proaktiv, bevor Neons
+        # eigenes Idle-Timeout greifen kann.
+        pool_pre_ping=True,
+        pool_recycle=280,
     )
 
 # SessionLocal für Dependency Injection

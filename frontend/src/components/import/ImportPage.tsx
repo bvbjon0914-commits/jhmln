@@ -19,10 +19,16 @@ import {
   AUTHORITY_FIELDS,
   BUILDING_FIELDS,
   JURISDICTION_FIELDS,
+  autoMapColumns,
+  type FieldSpec,
   type ImportKind,
   type ImportPreview,
   type ImportSummary,
 } from "../../types/import";
+
+function fieldsForKind(kind: ImportKind): FieldSpec[] {
+  return kind === "authorities" ? AUTHORITY_FIELDS : kind === "buildings" ? BUILDING_FIELDS : JURISDICTION_FIELDS;
+}
 
 type Step = "upload" | "configure" | "result";
 
@@ -58,8 +64,7 @@ export function ImportPage() {
     api.listRequestTypes().then(setRequestTypes).catch(() => undefined);
   }, []);
 
-  const fields =
-    kind === "authorities" ? AUTHORITY_FIELDS : kind === "buildings" ? BUILDING_FIELDS : JURISDICTION_FIELDS;
+  const fields = fieldsForKind(kind);
 
   const loadFile = async (f: File) => {
     setFile(f);
@@ -67,7 +72,7 @@ export function ImportPage() {
     try {
       const p = await api.previewImport(f);
       setPreview(p);
-      setMapping({});
+      setMapping(autoMapColumns(fields, p.columns));
       setStep("configure");
     } catch (error) {
       showToast("error", errorMessage(error, "Datei konnte nicht gelesen werden."));
@@ -206,7 +211,7 @@ export function ImportPage() {
                   key={opt.value}
                   onClick={() => {
                     setKind(opt.value);
-                    setMapping({});
+                    setMapping(autoMapColumns(fieldsForKind(opt.value), preview.columns));
                   }}
                   className={`rounded-lg border px-3.5 py-3 text-left text-sm transition-all duration-150 ${
                     kind === opt.value
