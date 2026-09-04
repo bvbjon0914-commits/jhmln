@@ -2,6 +2,7 @@
 API Routes: Authorities
 """
 
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -84,6 +85,22 @@ def update_authority(authority_id: str, payload: AuthorityUpdate, db: Session = 
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(authority, field, value)
 
+    db.commit()
+    db.refresh(authority)
+    return authority
+
+
+@router.put("/authorities/{authority_id}/verify", response_model=AuthorityResponse, tags=["Authorities"])
+def verify_authority(authority_id: str, db: Session = Depends(get_db_session)):
+    """
+    Markiert eine Behörde als (heute) verifiziert - setzt last_verified_at,
+    damit sie aus der Datenqualität-Kategorie "nicht verifiziert" verschwindet.
+    """
+    authority = db.query(Authority).filter(Authority.authority_id == authority_id).first()
+    if not authority:
+        raise HTTPException(status_code=404, detail=f"Behörde {authority_id} nicht gefunden")
+
+    authority.last_verified_at = datetime.utcnow()
     db.commit()
     db.refresh(authority)
     return authority

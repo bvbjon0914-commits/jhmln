@@ -26,6 +26,7 @@ from app.models.case import CaseBuilding, CaseRequest
 from app.models.jurisdiction import Jurisdiction
 from app.models.request import Request, RequestItem
 from app.models.request_item_progress import RequestItemProgress
+from app.models.request_type import RequestType
 
 router = APIRouter()
 
@@ -37,6 +38,17 @@ _MERGE_FIELDS = (
     "department_name", "street", "house_number", "postal_code", "city",
     "state", "email", "phone", "website", "source",
 )
+
+_BUILDING_MERGE_FIELDS = ("property_name", "district", "state", "ags", "notes", "internal_reference")
+
+# Geografische Felder, die den fachlichen Geltungsbereich einer Zuständig-
+# keitsregel ausmachen. Zwei Regeln mit identischem authority_id+request_
+# type_id UND identischem Geltungsbereich sind derselbe fachliche Fall.
+_JURISDICTION_GEO_FIELDS = ("ags", "municipality", "district", "postal_code", "street", "house_number", "state")
+# Innerhalb einer solchen Gruppe: nur wenn auch diese Felder identisch sind,
+# ist es ein echtes Duplikat (z.B. versehentlich zweimal importiert) - weichen
+# sie ab, ist unklar welche Zeile korrekt ist (nie raten).
+_JURISDICTION_COMPARE_FIELDS = ("priority", "matching_level", "valid_from", "valid_to")
 
 
 def _serialize(a: Authority) -> dict:
@@ -55,6 +67,33 @@ def _serialize_building(b: Building) -> dict:
         "postal_code": b.postal_code,
         "city": b.city,
     }
+
+
+def _serialize_jurisdictions(
+    jurisdictions: List[Jurisdiction], db: Session, limit: int
+) -> List[dict]:
+    """Reichert eine (schon auf `limit` gekürzte) Liste um Anzeige-Kontext an."""
+    subset = jurisdictions[:limit]
+    authority_ids = {j.authority_id for j in subset}
+    request_type_ids = {j.request_type_id for j in subset}
+    authorities_by_id = {
+        a.authority_id: a.authority_name
+        for a in db.query(Authority).filter(Authority.authority_id.in_(authority_ids)).all()
+    } if authority_ids else {}
+    request_types_by_id = {
+        rt.request_type_id: rt.name
+        for rt in db.query(RequestType).filter(RequestType.request_type_id.in_(request_type_ids)).all()
+    } if request_type_ids else {}
+    return [
+        {
+            "jurisdiction_id": j.jurisdiction_id,
+            "authority_name": authorities_by_id.get(j.authority_id, j.authority_id),
+            "request_type_name": request_types_by_id.get(j.request_type_id, j.request_type_id),
+            "ags": j.ags,
+            "municipality": j.municipality,
+        }
+        for j in subset
+    ]
 
 
 def _authorities_without_email(db: Session) -> List[Authority]:
@@ -215,6 +254,136 @@ def _building_has_real_progress(db: Session, building_id: str) -> bool:
     )
 
 
+def _authorities_unverified(db: Session) -> List[Authority]:
+    """Aktive Behörden, die noch nie verifiziert wurden (last_verified_at leer)."""
+    return (
+        db.query(Authority)
+        .filter(Authority.active.is_(True))
+        .filter(Authority.last_verified_at.is_(None))
+        .order_by(Authority.authority_name)
+        .all()
+    )
+
+
+def _jurisdictions_orphaned(db: Session) -> List[Jurisdiction]:
+    """
+    Aktive Zuständigkeitsregeln, deren Behörde inzwischen deaktiviert wurde.
+    Rein informativ (keine Auto-Aktion): unklar, ob die Regel deaktiviert
+    oder die Behörde reaktiviert werden sollte - das muss ein Mensch
+    entscheiden.
+    """
+    inactive_ids = {row[0] for row in db.query(Authority.authority_id).filter(Authority.active.is_(False)).all()}
+    if not inactive_ids:
+        return []
+    return (
+        db.query(Jurisdiction)
+        .filter(Jurisdiction.active.is_(True))
+        .filter(Jurisdiction.authority_id.in_(inactive_ids))
+        .order_by(Jurisdiction.jurisdiction_id)
+        .all()
+    )
+
+
+def _find_duplicate_jurisdiction_groups(db: Session):
+    """
+    Findet Gruppen aktiver Zuständigkeitsregeln mit identischem authority_id
+    + request_type_id + identischem Geltungsbereich (_JURISDICTION_GEO_FIELDS).
+    Weder Datenbank noch Import verhindern das aktuell strukturell - es gibt
+    keine Unique-Constraint auf diese Kombination.
+
+    Nur wenn zusätzlich _JURISDICTION_COMPARE_FIELDS (priority, matching_level,
+    Gültigkeitszeitraum) ebenfalls übereinstimmen, ist es ein echtes Duplikat
+    (z.B. versehentlich zweimal importiert) -> resolvable, älteste Zeile
+    bleibt erhalten. Weichen diese Felder voneinander ab, ist unklar, welche
+    Zeile korrekt ist -> needs_review, nie raten.
+    """
+    active = db.query(Jurisdiction).filter(Jurisdiction.active.is_(True)).all()
+
+    def _norm(value):
+        return value.strip() if isinstance(value, str) else value
+
+    groups: dict = {}
+    for j in active:
+        key = (j.authority_id, j.request_type_id) + tuple(_norm(getattr(j, f)) for f in _JURISDICTION_GEO_FIELDS)
+        groups.setdefault(key, []).append(j)
+
+    resolvable = []
+    needs_review = []
+
+    for rows in groups.values():
+        if len(rows) < 2:
+            continue
+        rows_sorted = sorted(rows, key=lambda j: j.created_at or datetime.min)
+        keep = rows_sorted[0]
+        remove = rows_sorted[1:]
+
+        identical = all(
+            all(getattr(dup, f) == getattr(keep, f) for f in _JURISDICTION_COMPARE_FIELDS) for dup in remove
+        )
+        if identical:
+            resolvable.append({"keep": keep, "remove": remove})
+        else:
+            needs_review.append(keep)
+
+    return resolvable, needs_review
+
+
+def _find_duplicate_building_groups(db: Session):
+    """
+    Findet Gebäude mit identischer normalisierter Adresse (Straße, Haus-
+    nummer, PLZ, Ort) unter verschiedenen building_ids. Weder Datenbank noch
+    Import verhindern das aktuell strukturell - nur internal_reference ist
+    eindeutig, und das ist nullable.
+
+    Nur auflösbar, wenn GENAU EIN Gebäude der Gruppe bereits referenziert ist
+    (Request oder Auftrag) - dieses bleibt erhalten, die referenzlosen werden
+    gelöscht (fehlende Felder vorher übernommen, siehe _BUILDING_MERGE_FIELDS).
+    Sind mehrere Gebäude der Gruppe JEWEILS referenziert, würde ein Automerge
+    zwei unabhängige Anfrage-Historien stillschweigend zusammenwerfen - das
+    landet in needs_review statt geraten zu werden. Bewusst konservativ bei
+    postal_code: unterschiedliche (nicht nur fehlende) PLZ gruppieren nicht
+    zusammen, auch wenn Straße/Hausnummer/Ort übereinstimmen.
+    """
+    buildings = db.query(Building).all()
+
+    groups: dict = {}
+    for b in buildings:
+        key = (
+            (b.street or "").strip().lower(),
+            (b.house_number or "").strip().lower(),
+            (b.postal_code or "").strip(),
+            (b.city or "").strip().lower(),
+        )
+        groups.setdefault(key, []).append(b)
+
+    referenced_ids = {row[0] for row in db.query(Request.building_id).distinct().all()}
+    referenced_ids |= {row[0] for row in db.query(CaseBuilding.building_id).distinct().all()}
+
+    resolvable = []
+    needs_review = []
+
+    for rows in groups.values():
+        if len(rows) < 2:
+            continue
+        referenced = [b for b in rows if b.building_id in referenced_ids]
+
+        if len(referenced) >= 2:
+            needs_review.append(rows[0])
+            continue
+
+        if len(referenced) == 1:
+            keep = referenced[0]
+            remove = [b for b in rows if b.building_id != keep.building_id]
+        else:
+            rows_sorted = sorted(rows, key=lambda b: b.created_at or datetime.min)
+            keep = rows_sorted[0]
+            remove = rows_sorted[1:]
+
+        resolvable.append({"keep": keep, "remove": remove})
+
+    return resolvable, needs_review
+
+
 @router.get("/data-quality/summary", tags=["DataQuality"])
 def data_quality_summary(db: Session = Depends(get_db_session)):
     total_authorities = db.query(Authority).filter(Authority.active.is_(True)).count()
@@ -225,6 +394,13 @@ def data_quality_summary(db: Session = Depends(get_db_session)):
     duplicate_items = [dup for g in duplicate_groups for dup in g["remove"]]
     review_buildings = _buildings_with_review_required(db)
     review_buildings_skipped = sum(1 for b in review_buildings if _building_has_real_progress(db, b.building_id))
+
+    unverified = _authorities_unverified(db)
+    orphaned_jurisdictions = _jurisdictions_orphaned(db)
+    dup_jurisdiction_groups, dup_jurisdiction_needs_review = _find_duplicate_jurisdiction_groups(db)
+    dup_jurisdiction_items = [dup for g in dup_jurisdiction_groups for dup in g["remove"]]
+    dup_building_groups, dup_building_needs_review = _find_duplicate_building_groups(db)
+    dup_building_items = [dup for g in dup_building_groups for dup in g["remove"]]
 
     return {
         "total_authorities": total_authorities,
@@ -250,6 +426,24 @@ def data_quality_summary(db: Session = Depends(get_db_session)):
             "items": [_serialize_building(b) for b in review_buildings[:MAX_ITEMS]],
             "needs_review_count": review_buildings_skipped,
         },
+        "authorities_unverified": {
+            "count": len(unverified),
+            "items": [_serialize(a) for a in unverified[:MAX_ITEMS]],
+        },
+        "jurisdictions_orphaned": {
+            "count": len(orphaned_jurisdictions),
+            "items": _serialize_jurisdictions(orphaned_jurisdictions, db, MAX_ITEMS),
+        },
+        "duplicate_jurisdictions": {
+            "count": len(dup_jurisdiction_items),
+            "items": _serialize_jurisdictions(dup_jurisdiction_items, db, MAX_ITEMS),
+            "needs_review_count": len(dup_jurisdiction_needs_review),
+        },
+        "duplicate_buildings": {
+            "count": len(dup_building_items),
+            "items": [_serialize_building(b) for b in dup_building_items[:MAX_ITEMS]],
+            "needs_review_count": len(dup_building_needs_review),
+        },
     }
 
 
@@ -270,6 +464,55 @@ def merge_duplicate_authorities(db: Session = Depends(get_db_session), _: None =
         keep = group["keep"]
         for dup in group["remove"]:
             for field_name in _MERGE_FIELDS:
+                if not getattr(keep, field_name) and getattr(dup, field_name):
+                    setattr(keep, field_name, getattr(dup, field_name))
+            db.delete(dup)
+            removed += 1
+        keep.updated_at = now
+
+    db.commit()
+    return {"merged_groups": len(resolvable), "removed": removed, "needs_review": len(needs_review)}
+
+
+@router.post("/data-quality/merge-duplicate-jurisdictions", tags=["DataQuality"])
+def merge_duplicate_jurisdictions(db: Session = Depends(get_db_session), _: None = Depends(require_main)):
+    """
+    Nur Haupt-Account: löst automatisch erkennbare Zuständigkeits-Duplikate
+    auf (siehe _find_duplicate_jurisdiction_groups). Die älteste Zeile pro
+    Gruppe bleibt erhalten, die restlichen (nachweislich identischen)
+    Duplikate werden gelöscht.
+    """
+    resolvable, needs_review = _find_duplicate_jurisdiction_groups(db)
+
+    now = datetime.utcnow()
+    removed = 0
+    for group in resolvable:
+        for dup in group["remove"]:
+            db.delete(dup)
+            removed += 1
+        group["keep"].updated_at = now
+
+    db.commit()
+    return {"merged_groups": len(resolvable), "removed": removed, "needs_review": len(needs_review)}
+
+
+@router.post("/data-quality/merge-duplicate-buildings", tags=["DataQuality"])
+def merge_duplicate_buildings(db: Session = Depends(get_db_session), _: None = Depends(require_main)):
+    """
+    Nur Haupt-Account: löst automatisch erkennbare Gebäude-Duplikate auf
+    (siehe _find_duplicate_building_groups). Das referenzierte (oder bei
+    keiner Referenz: älteste) Gebäude bleibt erhalten und wird um fehlende
+    Felder aus den Duplikaten ergänzt; die referenzlosen Duplikate werden
+    gelöscht.
+    """
+    resolvable, needs_review = _find_duplicate_building_groups(db)
+
+    now = datetime.utcnow()
+    removed = 0
+    for group in resolvable:
+        keep = group["keep"]
+        for dup in group["remove"]:
+            for field_name in _BUILDING_MERGE_FIELDS:
                 if not getattr(keep, field_name) and getattr(dup, field_name):
                     setattr(keep, field_name, getattr(dup, field_name))
             db.delete(dup)
@@ -353,17 +596,17 @@ def clear_bad_geocoding(db: Session = Depends(get_db_session), _: None = Depends
 @router.get("/data-quality/export-xlsx", tags=["DataQuality"])
 def export_data_quality_xlsx(db: Session = Depends(get_db_session)):
     """
-    Exportiert alle Behörden mit unvollständigen Daten (ohne E-Mail bzw.
-    ohne hinterlegte Zuständigkeit) als Excel-Datei mit zwei Arbeitsblättern
-    – zur Weitergabe an Kolleg:innen, die die Lücken pflegen sollen.
+    Exportiert alle Datenqualität-Kategorien als Excel-Datei mit einem
+    Arbeitsblatt pro Kategorie – zur Weitergabe an Kolleg:innen, die die
+    Lücken pflegen sollen.
     """
 
-    columns = [
+    authority_columns = [
         "Behörde", "Abteilung", "Straße", "Hausnummer", "PLZ", "Ort",
         "Bundesland", "E-Mail", "Telefon", "Website",
     ]
 
-    def to_rows(authorities: List[Authority]) -> List[dict]:
+    def authority_rows(authorities: List[Authority]) -> List[dict]:
         return [
             {
                 "Behörde": a.authority_name,
@@ -380,15 +623,77 @@ def export_data_quality_xlsx(db: Session = Depends(get_db_session)):
             for a in authorities
         ]
 
-    without_email_df = pd.DataFrame(to_rows(_authorities_without_email(db)), columns=columns)
-    without_jurisdiction_df = pd.DataFrame(to_rows(_authorities_without_jurisdiction(db)), columns=columns)
-    without_address_df = pd.DataFrame(to_rows(_authorities_without_address(db)), columns=columns)
+    building_columns = ["Straße", "Hausnummer", "PLZ", "Ort"]
+
+    def building_rows(buildings: List[Building]) -> List[dict]:
+        return [
+            {
+                "Straße": b.street,
+                "Hausnummer": b.house_number,
+                "PLZ": b.postal_code,
+                "Ort": b.city,
+            }
+            for b in buildings
+        ]
+
+    jurisdiction_columns = ["Behörde", "Auskunftsart", "AGS", "Gemeinde"]
+
+    def jurisdiction_rows(jurisdictions: List[Jurisdiction]) -> List[dict]:
+        serialized = _serialize_jurisdictions(jurisdictions, db, len(jurisdictions))
+        return [
+            {
+                "Behörde": j["authority_name"],
+                "Auskunftsart": j["request_type_name"],
+                "AGS": j["ags"],
+                "Gemeinde": j["municipality"],
+            }
+            for j in serialized
+        ]
+
+    duplicate_authority_groups, _ = _find_duplicate_authority_groups(db)
+    duplicate_authority_items = [dup for g in duplicate_authority_groups for dup in g["remove"]]
+    duplicate_jurisdiction_groups, _ = _find_duplicate_jurisdiction_groups(db)
+    duplicate_jurisdiction_items = [dup for g in duplicate_jurisdiction_groups for dup in g["remove"]]
+    duplicate_building_groups, _ = _find_duplicate_building_groups(db)
+    duplicate_building_items = [dup for g in duplicate_building_groups for dup in g["remove"]]
+
+    sheets: List[tuple] = [
+        ("Ohne E-Mail", pd.DataFrame(authority_rows(_authorities_without_email(db)), columns=authority_columns)),
+        (
+            "Ohne Zuständigkeit",
+            pd.DataFrame(authority_rows(_authorities_without_jurisdiction(db)), columns=authority_columns),
+        ),
+        ("Ohne Adresse", pd.DataFrame(authority_rows(_authorities_without_address(db)), columns=authority_columns)),
+        (
+            "Nicht verifiziert",
+            pd.DataFrame(authority_rows(_authorities_unverified(db)), columns=authority_columns),
+        ),
+        (
+            "Behörden-Duplikate",
+            pd.DataFrame(authority_rows(duplicate_authority_items), columns=authority_columns),
+        ),
+        (
+            "Zuständigkeits-Duplikate",
+            pd.DataFrame(jurisdiction_rows(duplicate_jurisdiction_items), columns=jurisdiction_columns),
+        ),
+        (
+            "Verwaiste Zuständigkeiten",
+            pd.DataFrame(jurisdiction_rows(_jurisdictions_orphaned(db)), columns=jurisdiction_columns),
+        ),
+        (
+            "Gebäude-Duplikate",
+            pd.DataFrame(building_rows(duplicate_building_items), columns=building_columns),
+        ),
+        (
+            "Gebäude Prüfung nötig",
+            pd.DataFrame(building_rows(_buildings_with_review_required(db)), columns=building_columns),
+        ),
+    ]
 
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        without_email_df.to_excel(writer, sheet_name="Ohne E-Mail", index=False)
-        without_jurisdiction_df.to_excel(writer, sheet_name="Ohne Zuständigkeit", index=False)
-        without_address_df.to_excel(writer, sheet_name="Ohne Adresse", index=False)
+        for sheet_name, df in sheets:
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
     buffer.seek(0)
 
     return StreamingResponse(

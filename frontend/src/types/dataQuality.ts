@@ -12,6 +12,14 @@ export interface BuildingRef {
   city: string | null;
 }
 
+export interface JurisdictionRef {
+  jurisdiction_id: string;
+  authority_name: string;
+  request_type_name: string;
+  ags: string | null;
+  municipality: string | null;
+}
+
 export interface DataQualityGroup {
   count: number;
   items: AuthorityRef[];
@@ -27,6 +35,21 @@ export interface BuildingsReviewRequiredGroup {
   needs_review_count: number;
 }
 
+export interface DuplicateBuildingsGroup {
+  count: number;
+  items: BuildingRef[];
+  needs_review_count: number;
+}
+
+export interface JurisdictionGroup {
+  count: number;
+  items: JurisdictionRef[];
+}
+
+export interface DuplicateJurisdictionsGroup extends JurisdictionGroup {
+  needs_review_count: number;
+}
+
 export interface DataQualitySummary {
   total_authorities: number;
   authorities_without_email: DataQualityGroup;
@@ -34,4 +57,8 @@ export interface DataQualitySummary {
   authorities_without_address: DataQualityGroup;
   duplicate_authorities: DuplicateAuthorityGroup;
   buildings_review_required: BuildingsReviewRequiredGroup;
+  authorities_unverified: DataQualityGroup;
+  jurisdictions_orphaned: JurisdictionGroup;
+  duplicate_jurisdictions: DuplicateJurisdictionsGroup;
+  duplicate_buildings: DuplicateBuildingsGroup;
 }
