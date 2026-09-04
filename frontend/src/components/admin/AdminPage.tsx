@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BuildingsAdmin } from "./BuildingsAdmin";
 import { AuthoritiesAdmin } from "./AuthoritiesAdmin";
 import { JurisdictionsAdmin } from "./JurisdictionsAdmin";
@@ -6,8 +6,9 @@ import { RequestsAdmin } from "./RequestsAdmin";
 import { DataQualityAdmin } from "./DataQualityAdmin";
 import { MailboxAdmin } from "./MailboxAdmin";
 import { SettingsAdmin } from "./SettingsAdmin";
+import type { AdminFilterRequest } from "../../types/adminFilter";
 
-type Tab =
+export type Tab =
   | "buildings"
   | "authorities"
   | "jurisdictions"
@@ -18,6 +19,22 @@ type Tab =
 
 export function AdminPage({ isMain }: { isMain: boolean }) {
   const [tab, setTab] = useState<Tab>("buildings");
+  const [pendingFilter, setPendingFilter] = useState<AdminFilterRequest | null>(null);
+
+  const navigateWithFilter = (target: Tab, key: string, value?: string) => {
+    setTab(target);
+    setPendingFilter({ key, value });
+  };
+
+  useEffect(() => {
+    // Wird von der Ziel-Komponente in ihrem Mount-Effect gelesen (feuert vor
+    // diesem Effect); danach zurücksetzen, damit ein späteres manuelles
+    // Zurückwechseln auf denselben Tab den Filter nicht erneut erzwingt.
+    if (pendingFilter !== null) {
+      setPendingFilter(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   const tabs: { value: Tab; label: string }[] = [
     { value: "buildings", label: "Gebäude" },
@@ -55,11 +72,21 @@ export function AdminPage({ isMain }: { isMain: boolean }) {
         ))}
       </div>
 
-      {tab === "buildings" && <BuildingsAdmin />}
-      {tab === "authorities" && <AuthoritiesAdmin />}
-      {tab === "jurisdictions" && <JurisdictionsAdmin />}
-      {tab === "requests" && <RequestsAdmin />}
-      {tab === "data-quality" && <DataQualityAdmin />}
+      {tab === "buildings" && (
+        <BuildingsAdmin
+          initialFilter={pendingFilter}
+          onShowRequests={(buildingId) => navigateWithFilter("requests", "building_id", buildingId)}
+        />
+      )}
+      {tab === "authorities" && (
+        <AuthoritiesAdmin
+          initialFilter={pendingFilter}
+          onShowJurisdictions={(authorityId) => navigateWithFilter("jurisdictions", "authority_id", authorityId)}
+        />
+      )}
+      {tab === "jurisdictions" && <JurisdictionsAdmin initialFilter={pendingFilter} />}
+      {tab === "requests" && <RequestsAdmin initialFilter={pendingFilter} />}
+      {tab === "data-quality" && <DataQualityAdmin onNavigate={navigateWithFilter} />}
       {tab === "mailbox" && isMain && <MailboxAdmin />}
       {tab === "settings" && isMain && <SettingsAdmin />}
     </div>

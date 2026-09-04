@@ -225,6 +225,11 @@ export const api = {
 
   async listBuildingsPaged(params: {
     search?: string;
+    state?: string;
+    ags?: string;
+    missing_ags?: boolean;
+    duplicate_only?: boolean;
+    review_required_only?: boolean;
     limit: number;
     offset: number;
   }): Promise<Paged<Building>> {
@@ -246,6 +251,12 @@ export const api = {
   async listAuthoritiesPaged(params: {
     search?: string;
     active_only: boolean;
+    state?: string;
+    has_email?: boolean;
+    duplicate_only?: boolean;
+    unverified_only?: boolean;
+    without_jurisdiction_only?: boolean;
+    without_address_only?: boolean;
     limit: number;
     offset: number;
   }): Promise<Paged<Authority>> {
@@ -268,6 +279,11 @@ export const api = {
     request_type_id?: string;
     authority_id?: string;
     ags?: string;
+    state?: string;
+    municipality?: string;
+    district?: string;
+    duplicate_only?: boolean;
+    orphaned_only?: boolean;
     active_only: boolean;
     limit: number;
     offset: number;
@@ -292,6 +308,9 @@ export const api = {
 
   async listRequestsPaged(params: {
     building_id?: string;
+    status?: string;
+    date_from?: string;
+    date_to?: string;
     orphaned_only?: boolean;
     limit: number;
     offset: number;

@@ -1,15 +1,28 @@
 import { useEffect, useRef, useState } from "react";
-import { Search, Pencil, Trash2, Check, X, Loader2 } from "lucide-react";
+import { Search, Pencil, Trash2, Check, X, Loader2, ListTree } from "lucide-react";
 import { api } from "../../services/api";
 import { useToast, errorMessage } from "../common/Toast";
 import { Pagination } from "../common/Pagination";
+import { FilterChip } from "../common/FilterChip";
+import { GERMAN_STATES } from "../../types/germanStates";
 import type { Building, BuildingUpdateInput } from "../../types/building";
+import type { AdminFilterRequest } from "../../types/adminFilter";
 
 const LIMIT = 25;
 
-export function BuildingsAdmin() {
+export function BuildingsAdmin({
+  initialFilter,
+  onShowRequests,
+}: {
+  initialFilter?: AdminFilterRequest | null;
+  onShowRequests?: (buildingId: string) => void;
+} = {}) {
   const { showToast } = useToast();
   const [search, setSearch] = useState("");
+  const [stateFilter, setStateFilter] = useState("");
+  const [missingAgsOnly, setMissingAgsOnly] = useState(false);
+  const [duplicateOnly, setDuplicateOnly] = useState(false);
+  const [reviewRequiredOnly, setReviewRequiredOnly] = useState(false);
   const [offset, setOffset] = useState(0);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [total, setTotal] = useState(0);
@@ -19,10 +32,25 @@ export function BuildingsAdmin() {
   const [saving, setSaving] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => {
+    if (initialFilter?.key === "missing_ags") setMissingAgsOnly(true);
+    else if (initialFilter?.key === "duplicate") setDuplicateOnly(true);
+    else if (initialFilter?.key === "review_required") setReviewRequiredOnly(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const load = () => {
     setLoading(true);
     api
-      .listBuildingsPaged({ search: search || undefined, limit: LIMIT, offset })
+      .listBuildingsPaged({
+        search: search || undefined,
+        state: stateFilter || undefined,
+        missing_ags: missingAgsOnly || undefined,
+        duplicate_only: duplicateOnly || undefined,
+        review_required_only: reviewRequiredOnly || undefined,
+        limit: LIMIT,
+        offset,
+      })
       .then((res) => {
         setBuildings(res.items);
         setTotal(res.total);
@@ -38,7 +66,7 @@ export function BuildingsAdmin() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, offset]);
+  }, [search, stateFilter, missingAgsOnly, duplicateOnly, reviewRequiredOnly, offset]);
 
   const startEdit = (b: Building) => {
     setEditingId(b.building_id);
@@ -83,17 +111,64 @@ export function BuildingsAdmin() {
 
   return (
     <div className="space-y-4">
-      <div className="relative">
-        <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" />
-        <input
-          value={search}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" />
+          <input
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setOffset(0);
+            }}
+            placeholder="Straße, Ort, PLZ, Referenz suchen…"
+            className="w-full rounded-lg border border-line bg-surface py-2.5 pl-9 pr-4 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+          />
+        </div>
+        <select
+          value={stateFilter}
           onChange={(e) => {
-            setSearch(e.target.value);
+            setStateFilter(e.target.value);
             setOffset(0);
           }}
-          placeholder="Straße, Ort, PLZ, Referenz suchen…"
-          className="w-full rounded-lg border border-line bg-surface py-2.5 pl-9 pr-4 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
-        />
+          className="rounded-lg border border-line bg-surface px-3 py-2.5 text-sm focus:border-brand focus:outline-none"
+        >
+          <option value="">Alle Bundesländer</option>
+          {GERMAN_STATES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        <FilterChip
+          active={missingAgsOnly}
+          onClick={() => {
+            setMissingAgsOnly((v) => !v);
+            setOffset(0);
+          }}
+        >
+          Ohne AGS
+        </FilterChip>
+        <FilterChip
+          active={duplicateOnly}
+          onClick={() => {
+            setDuplicateOnly((v) => !v);
+            setOffset(0);
+          }}
+        >
+          Duplikate
+        </FilterChip>
+        <FilterChip
+          active={reviewRequiredOnly}
+          onClick={() => {
+            setReviewRequiredOnly((v) => !v);
+            setOffset(0);
+          }}
+        >
+          Prüfung nötig
+        </FilterChip>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-line bg-surface shadow-sm">
@@ -209,6 +284,16 @@ export function BuildingsAdmin() {
                       <td className="px-4 py-2.5 text-ink-soft">{b.property_name || "—"}</td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center justify-end gap-1">
+                          {onShowRequests && (
+                            <button
+                              onClick={() => onShowRequests(b.building_id)}
+                              className="rounded p-1.5 text-ink-faint hover:bg-brand-light/50 hover:text-brand"
+                              aria-label="Anfragen anzeigen"
+                              title="Anfragen anzeigen"
+                            >
+                              <ListTree size={14} />
+                            </button>
+                          )}
                           <button
                             onClick={() => startEdit(b)}
                             className="rounded p-1.5 text-ink-faint hover:bg-brand-light/50 hover:text-brand"

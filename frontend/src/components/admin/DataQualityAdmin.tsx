@@ -22,6 +22,7 @@ import type {
   BuildingRef,
   JurisdictionRef,
 } from "../../types/dataQuality";
+import type { Tab } from "./AdminPage";
 
 function GroupCard<T extends { }>({
   icon,
@@ -30,6 +31,7 @@ function GroupCard<T extends { }>({
   group,
   itemKey,
   renderItem,
+  onNavigate,
 }: {
   icon: React.ReactNode;
   title: string;
@@ -37,6 +39,7 @@ function GroupCard<T extends { }>({
   group: { count: number; items: T[] };
   itemKey: (item: T) => string;
   renderItem: (item: T) => React.ReactNode;
+  onNavigate?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -47,15 +50,25 @@ function GroupCard<T extends { }>({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="font-display text-sm font-semibold text-ink">{title}</h3>
-            <span
-              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                group.count === 0
-                  ? "bg-status-matchedBg text-status-matched"
-                  : "bg-status-reviewBg text-status-review"
-              }`}
-            >
-              {group.count}
-            </span>
+            {group.count > 0 && onNavigate ? (
+              <button
+                onClick={onNavigate}
+                title="In der Verwaltung anzeigen"
+                className="rounded-full bg-status-reviewBg px-2 py-0.5 text-xs font-medium text-status-review hover:underline"
+              >
+                {group.count}
+              </button>
+            ) : (
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                  group.count === 0
+                    ? "bg-status-matchedBg text-status-matched"
+                    : "bg-status-reviewBg text-status-review"
+                }`}
+              >
+                {group.count}
+              </span>
+            )}
           </div>
           <p className="mt-0.5 text-xs text-ink-faint">{description}</p>
           {group.count > 0 && (
@@ -121,7 +134,11 @@ function renderJurisdictionRow(j: JurisdictionRef) {
   );
 }
 
-export function DataQualityAdmin() {
+export function DataQualityAdmin({
+  onNavigate,
+}: {
+  onNavigate?: (tab: Tab, filterKey: string, value?: string) => void;
+} = {}) {
   const { showToast } = useToast();
   const { isMain } = useAuth();
   const [summary, setSummary] = useState<DataQualitySummary | null>(null);
@@ -309,6 +326,7 @@ export function DataQualityAdmin() {
           group={summary.authorities_without_email}
           itemKey={(a) => a.authority_id}
           renderItem={renderAuthorityRow}
+          onNavigate={onNavigate ? () => onNavigate("authorities", "without_email") : undefined}
         />
         <GroupCard
           icon={<Link2Off size={16} />}
@@ -317,6 +335,7 @@ export function DataQualityAdmin() {
           group={summary.authorities_without_jurisdiction}
           itemKey={(a) => a.authority_id}
           renderItem={renderAuthorityRow}
+          onNavigate={onNavigate ? () => onNavigate("authorities", "without_jurisdiction") : undefined}
         />
         <GroupCard
           icon={<MapPinOff size={16} />}
@@ -325,6 +344,7 @@ export function DataQualityAdmin() {
           group={summary.authorities_without_address}
           itemKey={(a) => a.authority_id}
           renderItem={renderAuthorityRow}
+          onNavigate={onNavigate ? () => onNavigate("authorities", "without_address") : undefined}
         />
         <GroupCard
           icon={<Copy size={16} />}
@@ -333,6 +353,7 @@ export function DataQualityAdmin() {
           group={summary.duplicate_authorities}
           itemKey={(a) => a.authority_id}
           renderItem={renderAuthorityRow}
+          onNavigate={onNavigate ? () => onNavigate("authorities", "duplicate") : undefined}
         />
         <GroupCard
           icon={<AlertTriangle size={16} />}
@@ -341,6 +362,7 @@ export function DataQualityAdmin() {
           group={summary.buildings_review_required}
           itemKey={(b) => b.building_id}
           renderItem={renderBuildingRow}
+          onNavigate={onNavigate ? () => onNavigate("buildings", "review_required") : undefined}
         />
         <GroupCard
           icon={<ShieldQuestion size={16} />}
@@ -349,6 +371,7 @@ export function DataQualityAdmin() {
           group={summary.authorities_unverified}
           itemKey={(a) => a.authority_id}
           renderItem={renderAuthorityRow}
+          onNavigate={onNavigate ? () => onNavigate("authorities", "unverified") : undefined}
         />
         <GroupCard
           icon={<Unlink size={16} />}
@@ -357,6 +380,7 @@ export function DataQualityAdmin() {
           group={summary.jurisdictions_orphaned}
           itemKey={(j) => j.jurisdiction_id}
           renderItem={renderJurisdictionRow}
+          onNavigate={onNavigate ? () => onNavigate("jurisdictions", "orphaned") : undefined}
         />
         <GroupCard
           icon={<Copy size={16} />}
@@ -365,6 +389,7 @@ export function DataQualityAdmin() {
           group={summary.duplicate_jurisdictions}
           itemKey={(j) => j.jurisdiction_id}
           renderItem={renderJurisdictionRow}
+          onNavigate={onNavigate ? () => onNavigate("jurisdictions", "duplicate") : undefined}
         />
         <GroupCard
           icon={<Copy size={16} />}
@@ -373,6 +398,7 @@ export function DataQualityAdmin() {
           group={summary.duplicate_buildings}
           itemKey={(b) => b.building_id}
           renderItem={renderBuildingRow}
+          onNavigate={onNavigate ? () => onNavigate("buildings", "duplicate") : undefined}
         />
       </div>
 

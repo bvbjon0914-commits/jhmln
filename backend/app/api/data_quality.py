@@ -185,6 +185,17 @@ def _find_duplicate_authority_groups(db: Session):
     return resolvable, needs_review
 
 
+def _duplicate_authority_ids(db: Session) -> set:
+    """authority_id aller Behörden, die in einer erkannten Duplikat-Gruppe stecken (auflösbar oder nicht)."""
+    resolvable, needs_review = _find_duplicate_authority_groups(db)
+    ids = set()
+    for group in resolvable:
+        ids.add(group["keep"].authority_id)
+        ids.update(a.authority_id for a in group["remove"])
+    ids.update(a.authority_id for a in needs_review)
+    return ids
+
+
 def _buildings_with_review_required(db: Session) -> List[Building]:
     """
     Gebäude, deren zuletzt durchgeführtes Matching (neuester Request) für
@@ -328,6 +339,17 @@ def _find_duplicate_jurisdiction_groups(db: Session):
     return resolvable, needs_review
 
 
+def _duplicate_jurisdiction_ids(db: Session) -> set:
+    """jurisdiction_id aller Regeln, die in einer erkannten Duplikat-Gruppe stecken (auflösbar oder nicht)."""
+    resolvable, needs_review = _find_duplicate_jurisdiction_groups(db)
+    ids = set()
+    for group in resolvable:
+        ids.add(group["keep"].jurisdiction_id)
+        ids.update(j.jurisdiction_id for j in group["remove"])
+    ids.update(j.jurisdiction_id for j in needs_review)
+    return ids
+
+
 def _find_duplicate_building_groups(db: Session):
     """
     Findet Gebäude mit identischer normalisierter Adresse (Straße, Haus-
@@ -382,6 +404,17 @@ def _find_duplicate_building_groups(db: Session):
         resolvable.append({"keep": keep, "remove": remove})
 
     return resolvable, needs_review
+
+
+def _duplicate_building_ids(db: Session) -> set:
+    """building_id aller Gebäude, die in einer erkannten Duplikat-Gruppe stecken (auflösbar oder nicht)."""
+    resolvable, needs_review = _find_duplicate_building_groups(db)
+    ids = set()
+    for group in resolvable:
+        ids.add(group["keep"].building_id)
+        ids.update(b.building_id for b in group["remove"])
+    ids.update(b.building_id for b in needs_review)
+    return ids
 
 
 @router.get("/data-quality/summary", tags=["DataQuality"])

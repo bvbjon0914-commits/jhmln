@@ -3,17 +3,26 @@ import { Search, Pencil, Trash2, Check, X, Loader2 } from "lucide-react";
 import { api } from "../../services/api";
 import { useToast, errorMessage } from "../common/Toast";
 import { Pagination } from "../common/Pagination";
+import { FilterChip } from "../common/FilterChip";
+import { GERMAN_STATES } from "../../types/germanStates";
 import type { Jurisdiction, JurisdictionUpdateInput } from "../../types/jurisdiction";
 import type { Authority } from "../../types/authority";
 import type { RequestType } from "../../types/matching";
+import type { AdminFilterRequest } from "../../types/adminFilter";
 
 const LIMIT = 25;
 
-export function JurisdictionsAdmin() {
+export function JurisdictionsAdmin({ initialFilter }: { initialFilter?: AdminFilterRequest | null } = {}) {
   const { showToast } = useToast();
   const [requestTypes, setRequestTypes] = useState<RequestType[]>([]);
   const [requestTypeId, setRequestTypeId] = useState("");
   const [agsFilter, setAgsFilter] = useState("");
+  const [stateFilter, setStateFilter] = useState("");
+  const [municipalityFilter, setMunicipalityFilter] = useState("");
+  const [districtFilter, setDistrictFilter] = useState("");
+  const [duplicateOnly, setDuplicateOnly] = useState(false);
+  const [orphanedOnly, setOrphanedOnly] = useState(false);
+  const [authorityIdFilter, setAuthorityIdFilter] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [offset, setOffset] = useState(0);
   const [jurisdictions, setJurisdictions] = useState<Jurisdiction[]>([]);
@@ -29,12 +38,27 @@ export function JurisdictionsAdmin() {
     api.listRequestTypes().then(setRequestTypes).catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    if (initialFilter?.key === "duplicate") setDuplicateOnly(true);
+    else if (initialFilter?.key === "orphaned") setOrphanedOnly(true);
+    else if (initialFilter?.key === "authority_id" && initialFilter.value) {
+      setAuthorityIdFilter(initialFilter.value);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const load = () => {
     setLoading(true);
     api
       .listJurisdictionsPaged({
         request_type_id: requestTypeId || undefined,
+        authority_id: authorityIdFilter || undefined,
         ags: agsFilter || undefined,
+        state: stateFilter || undefined,
+        municipality: municipalityFilter || undefined,
+        district: districtFilter || undefined,
+        duplicate_only: duplicateOnly || undefined,
+        orphaned_only: orphanedOnly || undefined,
         active_only: !showInactive,
         limit: LIMIT,
         offset,
@@ -65,7 +89,18 @@ export function JurisdictionsAdmin() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestTypeId, agsFilter, showInactive, offset]);
+  }, [
+    requestTypeId,
+    authorityIdFilter,
+    agsFilter,
+    stateFilter,
+    municipalityFilter,
+    districtFilter,
+    duplicateOnly,
+    orphanedOnly,
+    showInactive,
+    offset,
+  ]);
 
   const startEdit = (j: Jurisdiction) => {
     setEditingId(j.jurisdiction_id);
@@ -99,6 +134,25 @@ export function JurisdictionsAdmin() {
 
   return (
     <div className="space-y-4">
+      {authorityIdFilter && (
+        <div className="flex items-center gap-2 rounded-lg border border-brand/30 bg-brand-light/40 px-3 py-2 text-xs text-ink-soft">
+          Gefiltert nach Behörde:{" "}
+          <span className="font-medium text-ink">
+            {authorities[authorityIdFilter]?.authority_name || authorityIdFilter}
+          </span>
+          <button
+            onClick={() => {
+              setAuthorityIdFilter("");
+              setOffset(0);
+            }}
+            className="ml-auto rounded p-0.5 text-ink-faint hover:text-ink"
+            aria-label="Behörden-Filter entfernen"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <select
           value={requestTypeId}
@@ -112,6 +166,21 @@ export function JurisdictionsAdmin() {
           {requestTypes.map((t) => (
             <option key={t.request_type_id} value={t.request_type_id}>
               {t.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={stateFilter}
+          onChange={(e) => {
+            setStateFilter(e.target.value);
+            setOffset(0);
+          }}
+          className="rounded-lg border border-line bg-surface px-3 py-2.5 text-sm focus:border-brand focus:outline-none"
+        >
+          <option value="">Alle Bundesländer</option>
+          {GERMAN_STATES.map((s) => (
+            <option key={s} value={s}>
+              {s}
             </option>
           ))}
         </select>
@@ -138,6 +207,47 @@ export function JurisdictionsAdmin() {
           />
           auch inaktive anzeigen
         </label>
+      </div>
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <input
+          value={municipalityFilter}
+          onChange={(e) => {
+            setMunicipalityFilter(e.target.value);
+            setOffset(0);
+          }}
+          placeholder="Gemeinde (Präfix)…"
+          className="rounded-lg border border-line bg-surface px-3 py-2.5 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+        />
+        <input
+          value={districtFilter}
+          onChange={(e) => {
+            setDistrictFilter(e.target.value);
+            setOffset(0);
+          }}
+          placeholder="Stadtteil (Präfix)…"
+          className="rounded-lg border border-line bg-surface px-3 py-2.5 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+        />
+        <div className="flex flex-wrap gap-1.5">
+          <FilterChip
+            active={duplicateOnly}
+            onClick={() => {
+              setDuplicateOnly((v) => !v);
+              setOffset(0);
+            }}
+          >
+            Duplikate
+          </FilterChip>
+          <FilterChip
+            active={orphanedOnly}
+            onClick={() => {
+              setOrphanedOnly((v) => !v);
+              setOffset(0);
+            }}
+          >
+            Verwaist
+          </FilterChip>
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-line bg-surface shadow-sm">
