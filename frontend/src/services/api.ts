@@ -339,6 +339,20 @@ export const api = {
     return data;
   },
 
+  async mergeDuplicateJurisdictions(): Promise<{ merged_groups: number; removed: number; needs_review: number }> {
+    const { data } = await client.post<{ merged_groups: number; removed: number; needs_review: number }>(
+      "/data-quality/merge-duplicate-jurisdictions"
+    );
+    return data;
+  },
+
+  async mergeDuplicateBuildings(): Promise<{ merged_groups: number; removed: number; needs_review: number }> {
+    const { data } = await client.post<{ merged_groups: number; removed: number; needs_review: number }>(
+      "/data-quality/merge-duplicate-buildings"
+    );
+    return data;
+  },
+
   // ========== Aufträge (Cases) ==========
 
   async listCasesPaged(params: {

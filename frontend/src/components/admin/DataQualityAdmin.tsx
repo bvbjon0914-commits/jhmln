@@ -1,10 +1,27 @@
 import { useEffect, useState } from "react";
-import { Loader2, MailWarning, Link2Off, MapPinOff, FileSpreadsheet, Eraser, Copy, AlertTriangle } from "lucide-react";
+import {
+  Loader2,
+  MailWarning,
+  Link2Off,
+  MapPinOff,
+  FileSpreadsheet,
+  Eraser,
+  Copy,
+  AlertTriangle,
+  ShieldQuestion,
+  Unlink,
+} from "lucide-react";
 import { api } from "../../services/api";
 import { Button } from "../common/Button";
 import { useAuth } from "../auth/AuthContext";
 import { useToast, errorMessage } from "../common/Toast";
-import type { DataQualitySummary, DataQualityGroup, AuthorityRef, BuildingRef } from "../../types/dataQuality";
+import type {
+  DataQualitySummary,
+  DataQualityGroup,
+  AuthorityRef,
+  BuildingRef,
+  JurisdictionRef,
+} from "../../types/dataQuality";
 
 function GroupCard<T extends { }>({
   icon,
@@ -93,6 +110,17 @@ function renderBuildingRow(b: BuildingRef) {
   );
 }
 
+function renderJurisdictionRow(j: JurisdictionRef) {
+  return (
+    <>
+      <span className="text-ink">
+        {j.authority_name} · {j.request_type_name}
+      </span>
+      <span className="shrink-0 text-xs text-ink-faint">{j.ags || j.municipality || "—"}</span>
+    </>
+  );
+}
+
 export function DataQualityAdmin() {
   const { showToast } = useToast();
   const { isMain } = useAuth();
@@ -101,6 +129,8 @@ export function DataQualityAdmin() {
   const [clearing, setClearing] = useState(false);
   const [merging, setMerging] = useState(false);
   const [deletingBuildings, setDeletingBuildings] = useState(false);
+  const [mergingJurisdictions, setMergingJurisdictions] = useState(false);
+  const [mergingBuildings, setMergingBuildings] = useState(false);
 
   const load = () => {
     api
@@ -189,6 +219,56 @@ export function DataQualityAdmin() {
     }
   };
 
+  const handleMergeDuplicateJurisdictions = async () => {
+    if (
+      !window.confirm(
+        "Erkannte Zuständigkeits-Duplikate zusammenführen? Die jeweils neuere, nachweislich identische Regel wird gelöscht."
+      )
+    ) {
+      return;
+    }
+    setMergingJurisdictions(true);
+    try {
+      const result = await api.mergeDuplicateJurisdictions();
+      showToast(
+        "success",
+        result.removed > 0
+          ? `${result.removed} Duplikate in ${result.merged_groups} Regeln zusammengeführt.`
+          : "Keine automatisch auflösbaren Duplikate gefunden."
+      );
+      load();
+    } catch (error) {
+      showToast("error", errorMessage(error, "Zusammenführen fehlgeschlagen."));
+    } finally {
+      setMergingJurisdictions(false);
+    }
+  };
+
+  const handleMergeDuplicateBuildings = async () => {
+    if (
+      !window.confirm(
+        "Erkannte Gebäude-Duplikate zusammenführen? Das referenzierte (bzw. älteste) Gebäude bleibt erhalten, referenzlose Duplikate werden gelöscht."
+      )
+    ) {
+      return;
+    }
+    setMergingBuildings(true);
+    try {
+      const result = await api.mergeDuplicateBuildings();
+      showToast(
+        "success",
+        result.removed > 0
+          ? `${result.removed} Duplikate in ${result.merged_groups} Gebäuden zusammengeführt.`
+          : "Keine automatisch auflösbaren Duplikate gefunden."
+      );
+      load();
+    } catch (error) {
+      showToast("error", errorMessage(error, "Zusammenführen fehlgeschlagen."));
+    } finally {
+      setMergingBuildings(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-10 text-sm text-ink-faint">
@@ -262,6 +342,38 @@ export function DataQualityAdmin() {
           itemKey={(b) => b.building_id}
           renderItem={renderBuildingRow}
         />
+        <GroupCard
+          icon={<ShieldQuestion size={16} />}
+          title="Nicht verifizierte Behörden"
+          description="Diese Behörden wurden noch nie als aktuell/korrekt bestätigt."
+          group={summary.authorities_unverified}
+          itemKey={(a) => a.authority_id}
+          renderItem={renderAuthorityRow}
+        />
+        <GroupCard
+          icon={<Unlink size={16} />}
+          title="Verwaiste Zuständigkeiten"
+          description="Diese Zuständigkeitsregeln verweisen auf eine inzwischen deaktivierte Behörde."
+          group={summary.jurisdictions_orphaned}
+          itemKey={(j) => j.jurisdiction_id}
+          renderItem={renderJurisdictionRow}
+        />
+        <GroupCard
+          icon={<Copy size={16} />}
+          title="Zuständigkeits-Duplikate"
+          description="Mehrere, inhaltlich identische Regeln für dieselbe Behörde und dasselbe Gebiet."
+          group={summary.duplicate_jurisdictions}
+          itemKey={(j) => j.jurisdiction_id}
+          renderItem={renderJurisdictionRow}
+        />
+        <GroupCard
+          icon={<Copy size={16} />}
+          title="Gebäude-Duplikate"
+          description="Mehrere Gebäude-Einträge mit derselben Adresse."
+          group={summary.duplicate_buildings}
+          itemKey={(b) => b.building_id}
+          renderItem={renderBuildingRow}
+        />
       </div>
 
       {isMain && summary.duplicate_authorities.count > 0 && (
@@ -279,6 +391,49 @@ export function DataQualityAdmin() {
             </div>
             <Button variant="secondary" onClick={handleMergeDuplicates} disabled={merging}>
               {merging ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />}
+              Zusammenführen
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isMain && summary.duplicate_jurisdictions.count > 0 && (
+        <div className="rounded-lg border border-line bg-surface p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="font-display text-sm font-semibold text-ink">
+                Zuständigkeits-Duplikate zusammenführen
+              </h3>
+              <p className="mt-0.5 text-xs text-ink-faint">
+                {summary.duplicate_jurisdictions.count} Zuständigkeitsregeln sind inhaltlich identisch zu
+                einer bereits vorhandenen Regel und können automatisch entfernt werden.
+                {summary.duplicate_jurisdictions.needs_review_count > 0 &&
+                  ` ${summary.duplicate_jurisdictions.needs_review_count} weitere Fälle weichen in einzelnen Feldern ab und bleiben zur manuellen Prüfung stehen.`}
+              </p>
+            </div>
+            <Button variant="secondary" onClick={handleMergeDuplicateJurisdictions} disabled={mergingJurisdictions}>
+              {mergingJurisdictions ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />}
+              Zusammenführen
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isMain && summary.duplicate_buildings.count > 0 && (
+        <div className="rounded-lg border border-line bg-surface p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="font-display text-sm font-semibold text-ink">Gebäude-Duplikate zusammenführen</h3>
+              <p className="mt-0.5 text-xs text-ink-faint">
+                {summary.duplicate_buildings.count} Gebäude haben dieselbe Adresse wie ein anderes Gebäude
+                und können automatisch zusammengeführt werden (fehlende Angaben werden übernommen, das
+                referenzlose Duplikat gelöscht).
+                {summary.duplicate_buildings.needs_review_count > 0 &&
+                  ` ${summary.duplicate_buildings.needs_review_count} weitere Fälle haben auf beiden Seiten eigene Anfrage-Historien und bleiben zur manuellen Prüfung stehen.`}
+              </p>
+            </div>
+            <Button variant="secondary" onClick={handleMergeDuplicateBuildings} disabled={mergingBuildings}>
+              {mergingBuildings ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />}
               Zusammenführen
             </Button>
           </div>
