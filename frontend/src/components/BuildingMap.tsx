@@ -85,8 +85,8 @@ export function BuildingMap({ building, authorityRefs = [] }: Props) {
             if (!cancelled && areaInfo.approx_radius_meters) {
               L.circle([lat, lng], {
                 radius: areaInfo.approx_radius_meters,
-                color: "#00697F",
-                fillColor: "#00697F",
+                color: "#005C83",
+                fillColor: "#005C83",
                 fillOpacity: 0.08,
                 weight: 1.5,
                 dashArray: "4 4",
