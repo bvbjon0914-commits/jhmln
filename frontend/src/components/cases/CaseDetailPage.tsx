@@ -18,6 +18,7 @@ import { useToast, errorMessage } from "../common/Toast";
 import { ProgressBadge } from "./ProgressBadge";
 import type { CaseDetail, CaseRequestItem } from "../../types/case";
 import type { RequestType } from "../../types/matching";
+import { computeSequencingHints } from "../../types/sequencing";
 import type { Building } from "../../types/building";
 
 interface Props {
@@ -266,6 +267,7 @@ function CaseBuildingSection({
               types={availableTypes}
               selected={selectedTypeIds}
               onChange={setSelectedTypeIds}
+              hints={computeSequencingHints(selectedTypeIds, Array.from(alreadyRequestedTypeIds))}
             />
             <div className="mt-3">
               <Button onClick={handleRunMatching} disabled={selectedTypeIds.length === 0 || matching}>

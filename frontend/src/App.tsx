@@ -18,6 +18,7 @@ import { useAuth } from "./components/auth/AuthContext";
 import { api } from "./services/api";
 import type { Building } from "./types/building";
 import type { MatchingResult, GeneratedDocumentInfo, RequestType } from "./types/matching";
+import { computeSequencingHints } from "./types/sequencing";
 
 interface FailedDoc {
   request_item_id: string;
@@ -419,6 +420,7 @@ function App() {
                 types={requestTypes}
                 selected={requestTypeIds}
                 onChange={setRequestTypeIds}
+                hints={computeSequencingHints(requestTypeIds)}
               />
               <div className="mt-4">
                 <Button
