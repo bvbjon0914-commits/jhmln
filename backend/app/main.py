@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 from app.database import init_db
 
 # API-Routen
-from app.api import buildings, authorities, request_types, matching, documents, requests_api, imports, geo, jurisdictions, auth, data_quality, cases, data_sources
+from app.api import buildings, authorities, request_types, matching, documents, requests_api, imports, geo, jurisdictions, auth, data_quality, cases, data_sources, mailbox_inbound
 from app.api.auth import require_login
 
 # Logging
@@ -123,6 +123,11 @@ app.include_router(jurisdictions.router, prefix="/api", dependencies=protected)
 app.include_router(data_quality.router, prefix="/api", dependencies=protected)
 app.include_router(cases.router, prefix="/api", dependencies=protected)
 app.include_router(data_sources.router, prefix="/api", dependencies=protected)
+# Nicht über dependencies=protected: der Inbound-Webhook kann sich nicht per
+# Cookie-Session authentisieren (Mailgun ruft ihn direkt auf) und ist
+# stattdessen per HMAC-Signatur gesichert; die übrigen Routen darin sind
+# einzeln mit require_main abgesichert (deckt "eingeloggt" implizit mit ab).
+app.include_router(mailbox_inbound.router, prefix="/api")
 
 # SPA-Fallback: muss nach allen /api-Routen registriert werden, sonst würde
 # er sie abfangen. Liefert index.html für jede Route, die kein API-Aufruf ist.
