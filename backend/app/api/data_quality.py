@@ -8,7 +8,7 @@ Matching als NO_MATCH/"keine E-Mail" aufzufallen.
 """
 
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List
 
 import pandas as pd
@@ -31,6 +31,11 @@ from app.models.request_type import RequestType
 router = APIRouter()
 
 MAX_ITEMS = 200
+
+# Ab diesem Alter gilt eine Verifizierung als abgelaufen und die Behörde
+# taucht wieder unter "nicht verifiziert" auf - last_verified_at soll ein
+# Datenstand bestätigen, keine einmalige Momentaufnahme für immer sein.
+_VERIFICATION_STALE_DAYS = 365
 
 # Felder, die beim Zusammenführen von Duplikaten von der zu löschenden
 # Zeile auf die verbleibende übertragen werden, sofern dort noch leer.
@@ -266,11 +271,15 @@ def _building_has_real_progress(db: Session, building_id: str) -> bool:
 
 
 def _authorities_unverified(db: Session) -> List[Authority]:
-    """Aktive Behörden, die noch nie verifiziert wurden (last_verified_at leer)."""
+    """
+    Aktive Behörden, die noch nie oder vor mehr als _VERIFICATION_STALE_DAYS
+    Tagen zuletzt als aktuell/korrekt bestätigt wurden.
+    """
+    cutoff = datetime.utcnow() - timedelta(days=_VERIFICATION_STALE_DAYS)
     return (
         db.query(Authority)
         .filter(Authority.active.is_(True))
-        .filter(Authority.last_verified_at.is_(None))
+        .filter(or_(Authority.last_verified_at.is_(None), Authority.last_verified_at < cutoff))
         .order_by(Authority.authority_name)
         .all()
     )

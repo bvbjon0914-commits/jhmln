@@ -2,14 +2,14 @@
 API Routes: Authorities
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
-from app.api.data_quality import _duplicate_authority_ids
+from app.api.data_quality import _duplicate_authority_ids, _VERIFICATION_STALE_DAYS
 from app.database import get_db_session
 from app.models.authority import Authority
 from app.models.jurisdiction import Jurisdiction
@@ -27,7 +27,7 @@ def list_authorities(
     state: Optional[str] = Query(None, description="Exakter Bundesland-Filter"),
     has_email: Optional[bool] = Query(None, description="True: nur mit E-Mail, False: nur ohne E-Mail"),
     duplicate_only: bool = Query(False, description="Nur als Duplikat erkannte Behörden"),
-    unverified_only: bool = Query(False, description="Nur nie verifizierte Behörden"),
+    unverified_only: bool = Query(False, description="Nur nie oder vor >12 Monaten verifizierte Behörden"),
     without_jurisdiction_only: bool = Query(False, description="Nur Behörden ohne Zuständigkeitsregel"),
     without_address_only: bool = Query(False, description="Nur Behörden ohne Straße und Ort"),
     limit: int = Query(100, le=500),
@@ -64,7 +64,8 @@ def list_authorities(
     elif has_email is False:
         query = query.filter(or_(Authority.email.is_(None), Authority.email == ""))
     if unverified_only:
-        query = query.filter(Authority.last_verified_at.is_(None))
+        cutoff = datetime.utcnow() - timedelta(days=_VERIFICATION_STALE_DAYS)
+        query = query.filter(or_(Authority.last_verified_at.is_(None), Authority.last_verified_at < cutoff))
     if without_jurisdiction_only:
         referenced_ids = db.query(Jurisdiction.authority_id).distinct()
         query = query.filter(Authority.authority_id.notin_(referenced_ids))

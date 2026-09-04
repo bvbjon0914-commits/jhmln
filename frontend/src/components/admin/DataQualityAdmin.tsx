@@ -367,7 +367,7 @@ export function DataQualityAdmin({
         <GroupCard
           icon={<ShieldQuestion size={16} />}
           title="Nicht verifizierte Behörden"
-          description="Diese Behörden wurden noch nie als aktuell/korrekt bestätigt."
+          description="Diese Behörden wurden noch nie oder vor mehr als 12 Monaten als aktuell/korrekt bestätigt."
           group={summary.authorities_unverified}
           itemKey={(a) => a.authority_id}
           renderItem={renderAuthorityRow}
