@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
+from app.api.data_quality import _duplicate_authority_ids
 from app.database import get_db_session
 from app.models.authority import Authority
 from app.models.jurisdiction import Jurisdiction
@@ -23,6 +24,12 @@ def list_authorities(
     search: Optional[str] = Query(None),
     ids: Optional[str] = Query(None, description="Kommagetrennte Liste von authority_id für Batch-Lookup"),
     active_only: bool = True,
+    state: Optional[str] = Query(None, description="Exakter Bundesland-Filter"),
+    has_email: Optional[bool] = Query(None, description="True: nur mit E-Mail, False: nur ohne E-Mail"),
+    duplicate_only: bool = Query(False, description="Nur als Duplikat erkannte Behörden"),
+    unverified_only: bool = Query(False, description="Nur nie verifizierte Behörden"),
+    without_jurisdiction_only: bool = Query(False, description="Nur Behörden ohne Zuständigkeitsregel"),
+    without_address_only: bool = Query(False, description="Nur Behörden ohne Straße und Ort"),
     limit: int = Query(100, le=500),
     offset: int = 0,
     db: Session = Depends(get_db_session),
@@ -45,8 +52,28 @@ def list_authorities(
                 Authority.authority_name.ilike(like_term),
                 Authority.city.ilike(like_term),
                 Authority.department_name.ilike(like_term),
+                Authority.street.ilike(like_term),
+                Authority.postal_code.ilike(like_term),
+                Authority.email.ilike(like_term),
             )
         )
+    if state:
+        query = query.filter(Authority.state == state)
+    if has_email is True:
+        query = query.filter(Authority.email.isnot(None), Authority.email != "")
+    elif has_email is False:
+        query = query.filter(or_(Authority.email.is_(None), Authority.email == ""))
+    if unverified_only:
+        query = query.filter(Authority.last_verified_at.is_(None))
+    if without_jurisdiction_only:
+        referenced_ids = db.query(Jurisdiction.authority_id).distinct()
+        query = query.filter(Authority.authority_id.notin_(referenced_ids))
+    if without_address_only:
+        query = query.filter(or_(Authority.street.is_(None), Authority.street == ""))
+        query = query.filter(or_(Authority.city.is_(None), Authority.city == ""))
+    if duplicate_only:
+        dup_ids = _duplicate_authority_ids(db)
+        query = query.filter(Authority.authority_id.in_(dup_ids)) if dup_ids else query.filter(False)
 
     response.headers["X-Total-Count"] = str(query.order_by(None).count())
     return query.order_by(Authority.authority_name).offset(offset).limit(limit).all()

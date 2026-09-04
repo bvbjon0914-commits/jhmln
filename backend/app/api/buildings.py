@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
+from app.api.data_quality import _buildings_with_review_required, _duplicate_building_ids
 from app.database import get_db_session
 from app.models.building import Building
 from app.models.request import Request
@@ -21,6 +22,11 @@ router = APIRouter()
 def list_buildings(
     response: Response,
     search: Optional[str] = Query(None, description="Suche über Straße, Ort, PLZ, interne Referenz"),
+    state: Optional[str] = Query(None, description="Exakter Bundesland-Filter"),
+    ags: Optional[str] = Query(None, description="Exakter AGS-Filter (getrennt vom Freitext-Suchfeld)"),
+    missing_ags: bool = Query(False, description="Nur Gebäude ohne AGS"),
+    duplicate_only: bool = Query(False, description="Nur als Duplikat erkannte Gebäude"),
+    review_required_only: bool = Query(False, description="Nur Gebäude mit zuletzt uneindeutiger Zuständigkeit"),
     limit: int = Query(50, le=200),
     offset: int = 0,
     db: Session = Depends(get_db_session),
@@ -40,6 +46,18 @@ def list_buildings(
                 Building.building_id.ilike(like_term),
             )
         )
+    if state:
+        query = query.filter(Building.state == state)
+    if ags:
+        query = query.filter(Building.ags == ags)
+    if missing_ags:
+        query = query.filter(or_(Building.ags.is_(None), Building.ags == ""))
+    if duplicate_only:
+        dup_ids = _duplicate_building_ids(db)
+        query = query.filter(Building.building_id.in_(dup_ids)) if dup_ids else query.filter(False)
+    if review_required_only:
+        review_ids = {b.building_id for b in _buildings_with_review_required(db)}
+        query = query.filter(Building.building_id.in_(review_ids)) if review_ids else query.filter(False)
 
     response.headers["X-Total-Count"] = str(query.order_by(None).count())
     return query.order_by(Building.city, Building.street).offset(offset).limit(limit).all()

@@ -1,26 +1,48 @@
 import { useEffect, useState } from "react";
-import { Trash2, Loader2, Sparkles } from "lucide-react";
+import { Trash2, Loader2, Sparkles, X } from "lucide-react";
 import { api } from "../../services/api";
 import { useToast, errorMessage } from "../common/Toast";
 import { Pagination } from "../common/Pagination";
 import { Button } from "../common/Button";
 import type { RequestRecord } from "../../types/request";
+import type { AdminFilterRequest } from "../../types/adminFilter";
 
 const LIMIT = 25;
 
-export function RequestsAdmin() {
+const STATUS_OPTIONS = ["PENDING", "COMPLETED", "PARTIALLY_COMPLETED", "FAILED"];
+
+export function RequestsAdmin({ initialFilter }: { initialFilter?: AdminFilterRequest | null } = {}) {
   const { showToast } = useToast();
   const [orphanedOnly, setOrphanedOnly] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [buildingIdFilter, setBuildingIdFilter] = useState("");
   const [offset, setOffset] = useState(0);
   const [requests, setRequests] = useState<RequestRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [purging, setPurging] = useState(false);
 
+  useEffect(() => {
+    if (initialFilter?.key === "building_id" && initialFilter.value) {
+      setBuildingIdFilter(initialFilter.value);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const load = () => {
     setLoading(true);
     api
-      .listRequestsPaged({ orphaned_only: orphanedOnly || undefined, limit: LIMIT, offset })
+      .listRequestsPaged({
+        building_id: buildingIdFilter || undefined,
+        status: statusFilter || undefined,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+        orphaned_only: orphanedOnly || undefined,
+        limit: LIMIT,
+        offset,
+      })
       .then((res) => {
         setRequests(res.items);
         setTotal(res.total);
@@ -32,7 +54,7 @@ export function RequestsAdmin() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orphanedOnly, offset]);
+  }, [orphanedOnly, statusFilter, dateFrom, dateTo, buildingIdFilter, offset]);
 
   const handleDelete = async (r: RequestRecord) => {
     if (!window.confirm("Diese Anfrage wirklich löschen?")) return;
@@ -60,9 +82,66 @@ export function RequestsAdmin() {
     }
   };
 
+  const filteredBuilding = requests.find((r) => r.building_id === buildingIdFilter)?.building;
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      {buildingIdFilter && (
+        <div className="flex items-center gap-2 rounded-lg border border-brand/30 bg-brand-light/40 px-3 py-2 text-xs text-ink-soft">
+          Gefiltert nach Gebäude:{" "}
+          <span className="font-medium text-ink">
+            {filteredBuilding
+              ? `${filteredBuilding.street} ${filteredBuilding.house_number}, ${filteredBuilding.city}`
+              : buildingIdFilter}
+          </span>
+          <button
+            onClick={() => {
+              setBuildingIdFilter("");
+              setOffset(0);
+            }}
+            className="ml-auto rounded p-0.5 text-ink-faint hover:text-ink"
+            aria-label="Gebäude-Filter entfernen"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <select
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setOffset(0);
+          }}
+          className="rounded-lg border border-line bg-surface px-3 py-2.5 text-sm focus:border-brand focus:outline-none"
+        >
+          <option value="">Alle Status</option>
+          {STATUS_OPTIONS.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={(e) => {
+            setDateFrom(e.target.value);
+            setOffset(0);
+          }}
+          className="rounded-lg border border-line bg-surface px-3 py-2.5 text-sm focus:border-brand focus:outline-none"
+        />
+        <span className="text-xs text-ink-faint">bis</span>
+        <input
+          type="date"
+          value={dateTo}
+          onChange={(e) => {
+            setDateTo(e.target.value);
+            setOffset(0);
+          }}
+          className="rounded-lg border border-line bg-surface px-3 py-2.5 text-sm focus:border-brand focus:outline-none"
+        />
         <label className="flex items-center gap-1.5 text-xs text-ink-soft">
           <input
             type="checkbox"
@@ -74,7 +153,7 @@ export function RequestsAdmin() {
           />
           nur verwaiste (Gebäude gelöscht)
         </label>
-        <Button variant="secondary" onClick={handlePurge} disabled={purging} className="text-xs">
+        <Button variant="secondary" onClick={handlePurge} disabled={purging} className="ml-auto text-xs">
           {purging ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
           Alle verwaisten bereinigen
         </Button>

@@ -2,6 +2,7 @@
 API Routes: Requests (Historie)
 """
 
+from datetime import date, datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -18,6 +19,9 @@ router = APIRouter()
 def list_requests(
     response: Response,
     building_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None, description="Exakter Status-Filter (PENDING, COMPLETED, ...)"),
+    date_from: Optional[date] = Query(None, description="Nur Anfragen ab diesem Datum (inklusive)"),
+    date_to: Optional[date] = Query(None, description="Nur Anfragen bis zu diesem Datum (inklusive)"),
     orphaned_only: bool = Query(False, description="Nur Anfragen zu nicht mehr existierenden Gebäuden"),
     limit: int = Query(50, le=200),
     offset: int = 0,
@@ -27,6 +31,12 @@ def list_requests(
     query = db.query(Request)
     if building_id:
         query = query.filter(Request.building_id == building_id)
+    if status:
+        query = query.filter(Request.status == status)
+    if date_from:
+        query = query.filter(Request.created_at >= datetime.combine(date_from, datetime.min.time()))
+    if date_to:
+        query = query.filter(Request.created_at < datetime.combine(date_to + timedelta(days=1), datetime.min.time()))
 
     if orphaned_only:
         existing_building_ids = db.query(Building.building_id)
