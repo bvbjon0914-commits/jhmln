@@ -37,8 +37,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   if (status === null) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-paper">
-        <Loader2 size={24} className="animate-spin text-brand" />
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-paper">
+        <img src="/brand/mark.png" alt="Civeloq" className="h-12 w-12" />
+        <Loader2 size={20} className="animate-spin text-brand" />
       </div>
     );
   }

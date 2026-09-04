@@ -7,16 +7,16 @@ export default {
         paper: "#F4F6F7",
         surface: "#FFFFFF",
         ink: {
-          DEFAULT: "#1A2226",
-          soft: "#525F68",
-          faint: "#8B979E",
+          DEFAULT: "#0C1D2E",
+          soft: "#4E5F70",
+          faint: "#8B96A3",
         },
         line: "#DCE3E6",
         brand: {
-          DEFAULT: "#00697F",
-          dark: "#004A5C",
-          light: "#DCEEF1",
-          accent: "#00A0B0",
+          DEFAULT: "#005C83",
+          dark: "#00435F",
+          light: "#E3EEF4",
+          accent: "#005C83",
         },
         status: {
           matched: "#1E7A5F",
