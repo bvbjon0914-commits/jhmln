@@ -14,6 +14,7 @@ from .case import Case, CaseBuilding, CaseRequest
 from .request_item_progress import RequestItemProgress
 from .data_source import DataSource, DataSourceRouting
 from .aktenzeichen import AktenzeichenSequence, RequestSequence, RequestItemReference
+from .inbound_email import InboundEmail, InboundEmailAttachment
 
 __all__ = [
     "Building",
@@ -35,5 +36,7 @@ __all__ = [
     "AktenzeichenSequence",
     "RequestSequence",
     "RequestItemReference",
+    "InboundEmail",
+    "InboundEmailAttachment",
     "STANDARD_REQUEST_TYPES",
 ]

@@ -43,3 +43,9 @@ AUTH_SECRET_KEY = os.environ["AUTH_SECRET_KEY"]
 # Sicherstellen, dass die Ordner existieren
 Path(TEMPLATES_DIR).mkdir(parents=True, exist_ok=True)
 Path(GENERATED_DIR).mkdir(parents=True, exist_ok=True)
+
+# ========== Mailgun (Postfach-Empfang) ==========
+# Kein Default: solange der Signing-Key fehlt, lehnt der Inbound-Webhook
+# jeden Aufruf ab (siehe mailbox_inbound.py) statt unsignierte Anfragen
+# stillschweigend zu akzeptieren.
+MAILGUN_WEBHOOK_SIGNING_KEY = os.getenv("MAILGUN_WEBHOOK_SIGNING_KEY", "")

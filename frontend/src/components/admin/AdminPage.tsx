@@ -4,9 +4,17 @@ import { AuthoritiesAdmin } from "./AuthoritiesAdmin";
 import { JurisdictionsAdmin } from "./JurisdictionsAdmin";
 import { RequestsAdmin } from "./RequestsAdmin";
 import { DataQualityAdmin } from "./DataQualityAdmin";
+import { MailboxAdmin } from "./MailboxAdmin";
 import { SettingsAdmin } from "./SettingsAdmin";
 
-type Tab = "buildings" | "authorities" | "jurisdictions" | "requests" | "data-quality" | "settings";
+type Tab =
+  | "buildings"
+  | "authorities"
+  | "jurisdictions"
+  | "requests"
+  | "data-quality"
+  | "mailbox"
+  | "settings";
 
 export function AdminPage({ isMain }: { isMain: boolean }) {
   const [tab, setTab] = useState<Tab>("buildings");
@@ -17,6 +25,7 @@ export function AdminPage({ isMain }: { isMain: boolean }) {
     { value: "jurisdictions", label: "Zuständigkeiten" },
     { value: "requests", label: "Anfragen" },
     { value: "data-quality", label: "Datenqualität" },
+    ...(isMain ? [{ value: "mailbox" as Tab, label: "Postfach" }] : []),
     ...(isMain ? [{ value: "settings" as Tab, label: "Einstellungen" }] : []),
   ];
 
@@ -51,6 +60,7 @@ export function AdminPage({ isMain }: { isMain: boolean }) {
       {tab === "jurisdictions" && <JurisdictionsAdmin />}
       {tab === "requests" && <RequestsAdmin />}
       {tab === "data-quality" && <DataQualityAdmin />}
+      {tab === "mailbox" && isMain && <MailboxAdmin />}
       {tab === "settings" && isMain && <SettingsAdmin />}
     </div>
   );

@@ -17,6 +17,7 @@ import type { ImportPreview, ImportSummary } from "../types/import";
 import type { AuthStatus } from "../types/auth";
 import type { DataQualitySummary } from "../types/dataQuality";
 import type { Case, CaseListItem, CaseDetail } from "../types/case";
+import type { InboundEmailEntry, AktenzeichenLookupResult } from "../types/mailbox";
 
 const client = axios.create({
   baseURL: "/api",
@@ -423,5 +424,34 @@ export const api = {
       { enabled }
     );
     return data;
+  },
+
+  // ========== Postfach (Phase 6: eingehende Antworten) ==========
+
+  async listPendingInboundEmails(): Promise<InboundEmailEntry[]> {
+    const { data } = await client.get<InboundEmailEntry[]>("/mailbox/inbound/pending");
+    return data;
+  },
+
+  inboundAttachmentDownloadUrl(attachmentId: number): string {
+    return `/api/mailbox/inbound/attachments/${attachmentId}/download`;
+  },
+
+  async lookupAktenzeichen(query: string): Promise<AktenzeichenLookupResult[]> {
+    const { data } = await client.get<AktenzeichenLookupResult[]>("/mailbox/lookup-aktenzeichen", {
+      params: { q: query },
+    });
+    return data;
+  },
+
+  async assignInboundEmail(
+    inboundId: number,
+    requestItemId: string,
+    attachmentId?: number
+  ): Promise<void> {
+    await client.post(`/mailbox/inbound/${inboundId}/assign`, {
+      request_item_id: requestItemId,
+      attachment_id: attachmentId,
+    });
   },
 };

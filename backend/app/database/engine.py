@@ -76,6 +76,7 @@ def init_db():
         Case, CaseBuilding, CaseRequest, RequestItemProgress,
         DataSource, DataSourceRouting,
         AktenzeichenSequence, RequestSequence, RequestItemReference,
+        InboundEmail, InboundEmailAttachment,
     )
 
     # Metadaten aller Models
@@ -97,6 +98,8 @@ def init_db():
     AktenzeichenSequence.metadata.create_all(bind=engine)
     RequestSequence.metadata.create_all(bind=engine)
     RequestItemReference.metadata.create_all(bind=engine)
+    InboundEmail.metadata.create_all(bind=engine)
+    InboundEmailAttachment.metadata.create_all(bind=engine)
 
     print("✓ Datenbank initialisiert")
 
@@ -111,8 +114,11 @@ def drop_all_tables():
         Case, CaseBuilding, CaseRequest, RequestItemProgress,
         DataSource, DataSourceRouting,
         AktenzeichenSequence, RequestSequence, RequestItemReference,
+        InboundEmail, InboundEmailAttachment,
     )
 
+    InboundEmailAttachment.metadata.drop_all(bind=engine)
+    InboundEmail.metadata.drop_all(bind=engine)
     DataSourceRouting.metadata.drop_all(bind=engine)
     DataSource.metadata.drop_all(bind=engine)
     CaseRequest.metadata.drop_all(bind=engine)
