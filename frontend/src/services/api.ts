@@ -384,6 +384,16 @@ export const api = {
     await client.post(`/cases/${caseId}/link-request`, { request_id: requestId });
   },
 
+  async sendBundle(
+    caseId: string,
+    requestItemIds: string[]
+  ): Promise<{ sent: number; dry_run: boolean; mailgun_message_id: string | null }> {
+    const { data } = await client.post(`/cases/${caseId}/send-bundle`, {
+      request_item_ids: requestItemIds,
+    });
+    return data;
+  },
+
   async markItemSent(requestItemId: string): Promise<void> {
     await client.put(`/matching/items/${requestItemId}/mark-sent`);
   },

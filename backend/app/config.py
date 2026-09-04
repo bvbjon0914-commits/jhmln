@@ -44,8 +44,21 @@ AUTH_SECRET_KEY = os.environ["AUTH_SECRET_KEY"]
 Path(TEMPLATES_DIR).mkdir(parents=True, exist_ok=True)
 Path(GENERATED_DIR).mkdir(parents=True, exist_ok=True)
 
-# ========== Mailgun (Postfach-Empfang) ==========
-# Kein Default: solange der Signing-Key fehlt, lehnt der Inbound-Webhook
-# jeden Aufruf ab (siehe mailbox_inbound.py) statt unsignierte Anfragen
-# stillschweigend zu akzeptieren.
+# ========== Mailgun (Postfach: Versand + Empfang) ==========
+# Kein Default für API-Key/Domain/Signing-Key: solange sie fehlen, meldet
+# der mailgun_service beim Versand klar "nicht konfiguriert" statt mit einer
+# verwirrenden Exception abzustürzen, und der Inbound-Webhook lehnt jeden
+# Aufruf ohne gültige Signatur ab (siehe mailbox_inbound.py) statt
+# unsignierte Anfragen stillschweigend zu akzeptieren - das Konto/die
+# Domain existieren zum Zeitpunkt dieser Änderung noch nicht, die App muss
+# trotzdem lauffähig bleiben.
+MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY", "")
+MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN", "")
+MAILGUN_FROM_ADDRESS = os.getenv(
+    "MAILGUN_FROM_ADDRESS",
+    f"Vonovia SE Zuständigkeitsfinder <anfragen@{MAILGUN_DOMAIN}>" if MAILGUN_DOMAIN else "",
+)
+# Bei true wird der Versand nur geloggt statt die echte Mailgun-API
+# aufzurufen - ermöglicht sicheres lokales Testen ohne laufendes Konto.
+MAILGUN_DRY_RUN = os.getenv("MAILGUN_DRY_RUN", "false").lower() == "true"
 MAILGUN_WEBHOOK_SIGNING_KEY = os.getenv("MAILGUN_WEBHOOK_SIGNING_KEY", "")

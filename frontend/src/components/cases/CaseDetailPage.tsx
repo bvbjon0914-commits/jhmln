@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   X,
   FileSearch2,
+  Mail,
 } from "lucide-react";
 import { api } from "../../services/api";
 import { Button } from "../common/Button";
@@ -15,6 +16,7 @@ import { CollapsibleSection } from "../common/CollapsibleSection";
 import { BuildingSearch } from "../BuildingSearch";
 import { RequestTypeSelector } from "../RequestTypeSelector";
 import { useToast, errorMessage } from "../common/Toast";
+import { useAuth } from "../auth/AuthContext";
 import { ProgressBadge } from "./ProgressBadge";
 import type { CaseDetail, CaseRequestItem } from "../../types/case";
 import type { RequestType } from "../../types/matching";
@@ -32,6 +34,7 @@ function buildingLabel(b: Building): string {
 
 export function CaseDetailPage({ caseId, onBack }: Props) {
   const { showToast } = useToast();
+  const { isMain } = useAuth();
   const [detail, setDetail] = useState<CaseDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [requestTypes, setRequestTypes] = useState<RequestType[]>([]);
@@ -151,6 +154,8 @@ export function CaseDetailPage({ caseId, onBack }: Props) {
         />
       </div>
 
+      {isMain && <AuthorityBundlesSection caseId={caseId} items={detail.items} onChanged={load} />}
+
       <section>
         <h3 className="mb-2 font-display text-sm font-semibold text-ink">Gebäude</h3>
         <BuildingSearch
@@ -177,6 +182,145 @@ export function CaseDetailPage({ caseId, onBack }: Props) {
           )}
         </div>
       </section>
+    </div>
+  );
+}
+
+function AuthorityBundlesSection({
+  caseId,
+  items,
+  onChanged,
+}: {
+  caseId: string;
+  items: CaseRequestItem[];
+  onChanged: () => void;
+}) {
+  const { showToast } = useToast();
+  const [busyAuthorityId, setBusyAuthorityId] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<"generate" | "send" | null>(null);
+
+  const matched = items.filter((i) => i.matching_status === "MATCHED" && i.authority_id);
+  const groups = new Map<string, CaseRequestItem[]>();
+  for (const item of matched) {
+    const list = groups.get(item.authority_id!) ?? [];
+    list.push(item);
+    groups.set(item.authority_id!, list);
+  }
+
+  // Nur zeigen, wenn es entweder eine echte Bündelungs-Situation ist (2+
+  // Anfragen an dieselbe Behörde über das ganze Auftrag hinweg) oder ein
+  // Einzel-Item bereits versandbereit ist (bestehendes Phase-5-Verhalten,
+  // keine Regression) - eine einzelne, noch nicht generierte Anfrage bringt
+  // hier keinen Mehrwert und würde nur Rauschen erzeugen (Generierung läuft
+  // für diesen Fall weiterhin über den Einzel-Button in CaseItemRow).
+  const visibleGroups = Array.from(groups.entries()).filter(
+    ([, group]) => group.length >= 2 || group.some((i) => i.status === "BEREIT_ZUM_SENDEN")
+  );
+
+  if (visibleGroups.length === 0) return null;
+
+  const handleGenerate = async (authorityId: string, group: CaseRequestItem[]) => {
+    const requestIds = [
+      ...new Set(group.filter((i) => i.document_status !== "GENERATED").map((i) => i.request_id)),
+    ];
+    setBusyAuthorityId(authorityId);
+    setBusyAction("generate");
+    try {
+      for (const requestId of requestIds) {
+        await api.generateDocuments(requestId);
+      }
+      onChanged();
+    } catch (error) {
+      showToast("error", errorMessage(error, "Dokumente konnten nicht generiert werden."));
+    } finally {
+      setBusyAuthorityId(null);
+      setBusyAction(null);
+    }
+  };
+
+  const handleSend = async (authorityId: string, group: CaseRequestItem[]) => {
+    const ready = group.filter((i) => i.status === "BEREIT_ZUM_SENDEN");
+    const names = ready.map((i) => i.request_type_name).join(", ");
+    if (
+      !window.confirm(
+        `E-Mail mit ${ready.length} Schreiben (${names}) jetzt an ${group[0].authority_name} senden? Dies versendet eine echte E-Mail.`
+      )
+    ) {
+      return;
+    }
+    setBusyAuthorityId(authorityId);
+    setBusyAction("send");
+    try {
+      const result = await api.sendBundle(
+        caseId,
+        ready.map((i) => i.request_item_id)
+      );
+      showToast(
+        "success",
+        result.dry_run
+          ? `Dry-Run: ${result.sent} Schreiben wären versendet worden (Mailgun nicht konfiguriert/live).`
+          : `${result.sent} Schreiben an ${group[0].authority_name} versendet.`
+      );
+      onChanged();
+    } catch (error) {
+      showToast("error", errorMessage(error, "Versand fehlgeschlagen."));
+    } finally {
+      setBusyAuthorityId(null);
+      setBusyAction(null);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <h3 className="font-display text-sm font-semibold text-ink">Anfragen nach Behörde</h3>
+      {visibleGroups.map(([authorityId, group]) => {
+        const needsGeneration = group.some((i) => i.document_status !== "GENERATED");
+        const readyToSend = group.filter((i) => i.status === "BEREIT_ZUM_SENDEN");
+        const busy = busyAuthorityId === authorityId;
+        return (
+          <div
+            key={authorityId}
+            className="flex items-center justify-between gap-4 rounded-lg border border-line bg-surface p-4 shadow-sm"
+          >
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-ink">{group[0].authority_name}</div>
+              <div className="mt-0.5 text-xs text-ink-faint">
+                {group.length} Anfrage{group.length === 1 ? "" : "n"} ·{" "}
+                {group.map((i) => i.aktenzeichen || i.request_type_name).join(", ")}
+              </div>
+              {!group[0].authority_email && (
+                <div className="mt-1 text-xs text-status-conflict">Keine E-Mail-Adresse hinterlegt</div>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {needsGeneration && (
+                <Button variant="secondary" onClick={() => handleGenerate(authorityId, group)} disabled={busy}>
+                  {busy && busyAction === "generate" ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <FileSearch2 size={14} />
+                  )}
+                  Dokumente generieren
+                </Button>
+              )}
+              {readyToSend.length > 0 && (
+                <Button
+                  variant="secondary"
+                  onClick={() => handleSend(authorityId, group)}
+                  disabled={!group[0].authority_email || busy}
+                >
+                  {busy && busyAction === "send" ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Mail size={14} />
+                  )}
+                  Jetzt per E-Mail senden
+                </Button>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

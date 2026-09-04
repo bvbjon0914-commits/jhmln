@@ -18,3 +18,9 @@ services:
         generateValue: true
       - key: AUTH_SECRET_KEY
         generateValue: true
+      - key: MAILGUN_API_KEY
+        sync: false # in Render-Dashboard eintragen, sobald das Mailgun-Konto existiert
+      - key: MAILGUN_DOMAIN
+        sync: false # z.B. eine Subdomain von vonovia.de, DNS muss auf Mailgun zeigen
+      - key: MAILGUN_FROM_ADDRESS
+        sync: false # optional, Default wird aus MAILGUN_DOMAIN abgeleitet
