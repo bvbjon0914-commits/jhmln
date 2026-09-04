@@ -32,6 +32,7 @@ export interface CaseRequestItem {
   request_type_name: string;
   authority_id: string | null;
   authority_name: string | null;
+  authority_email: string | null;
   matching_status: string;
   document_status: string;
   status: CaseItemStatus;

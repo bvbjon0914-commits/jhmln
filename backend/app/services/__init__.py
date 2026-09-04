@@ -7,6 +7,7 @@ from .jurisdiction_matcher import JurisdictionMatchingService, MatchingResult, M
 from .document_generator import DocumentGenerationService, DocumentGenerationError, GeneratedDocument
 from .import_service import ImportService, ImportSummary
 from .aktenzeichen_service import next_year_number
+from .mailgun_service import send_email, MailgunError, SendResult
 
 __all__ = [
     "AddressNormalizer",
@@ -21,4 +22,7 @@ __all__ = [
     "ImportService",
     "ImportSummary",
     "next_year_number",
+    "send_email",
+    "MailgunError",
+    "SendResult",
 ]
