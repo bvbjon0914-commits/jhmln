@@ -23,6 +23,7 @@ export function BuildingsAdmin({
   const [missingAgsOnly, setMissingAgsOnly] = useState(false);
   const [duplicateOnly, setDuplicateOnly] = useState(false);
   const [reviewRequiredOnly, setReviewRequiredOnly] = useState(false);
+  const [missingCoordinatesOnly, setMissingCoordinatesOnly] = useState(false);
   const [offset, setOffset] = useState(0);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [total, setTotal] = useState(0);
@@ -36,6 +37,7 @@ export function BuildingsAdmin({
     if (initialFilter?.key === "missing_ags") setMissingAgsOnly(true);
     else if (initialFilter?.key === "duplicate") setDuplicateOnly(true);
     else if (initialFilter?.key === "review_required") setReviewRequiredOnly(true);
+    else if (initialFilter?.key === "missing_coordinates") setMissingCoordinatesOnly(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -48,6 +50,7 @@ export function BuildingsAdmin({
         missing_ags: missingAgsOnly || undefined,
         duplicate_only: duplicateOnly || undefined,
         review_required_only: reviewRequiredOnly || undefined,
+        missing_coordinates: missingCoordinatesOnly || undefined,
         limit: LIMIT,
         offset,
       })
@@ -66,7 +69,7 @@ export function BuildingsAdmin({
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, stateFilter, missingAgsOnly, duplicateOnly, reviewRequiredOnly, offset]);
+  }, [search, stateFilter, missingAgsOnly, duplicateOnly, reviewRequiredOnly, missingCoordinatesOnly, offset]);
 
   const startEdit = (b: Building) => {
     setEditingId(b.building_id);
@@ -168,6 +171,15 @@ export function BuildingsAdmin({
           }}
         >
           Prüfung nötig
+        </FilterChip>
+        <FilterChip
+          active={missingCoordinatesOnly}
+          onClick={() => {
+            setMissingCoordinatesOnly((v) => !v);
+            setOffset(0);
+          }}
+        >
+          Ohne Koordinaten
         </FilterChip>
       </div>
 

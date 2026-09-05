@@ -230,6 +230,7 @@ export const api = {
     missing_ags?: boolean;
     duplicate_only?: boolean;
     review_required_only?: boolean;
+    missing_coordinates?: boolean;
     limit: number;
     offset: number;
   }): Promise<Paged<Building>> {
@@ -368,6 +369,13 @@ export const api = {
   async mergeDuplicateBuildings(): Promise<{ merged_groups: number; removed: number; needs_review: number }> {
     const { data } = await client.post<{ merged_groups: number; removed: number; needs_review: number }>(
       "/data-quality/merge-duplicate-buildings"
+    );
+    return data;
+  },
+
+  async geocodeMissingBuildings(): Promise<{ geocoded: number; failed: number; remaining: number }> {
+    const { data } = await client.post<{ geocoded: number; failed: number; remaining: number }>(
+      "/data-quality/geocode-missing-buildings"
     );
     return data;
   },
