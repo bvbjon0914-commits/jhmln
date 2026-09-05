@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   ShieldQuestion,
   Unlink,
+  LocateOff,
 } from "lucide-react";
 import { api } from "../../services/api";
 import { Button } from "../common/Button";
@@ -148,6 +149,7 @@ export function DataQualityAdmin({
   const [deletingBuildings, setDeletingBuildings] = useState(false);
   const [mergingJurisdictions, setMergingJurisdictions] = useState(false);
   const [mergingBuildings, setMergingBuildings] = useState(false);
+  const [geocodingBuildings, setGeocodingBuildings] = useState(false);
 
   const load = () => {
     api
@@ -286,6 +288,24 @@ export function DataQualityAdmin({
     }
   };
 
+  const handleGeocodeMissingBuildings = async () => {
+    setGeocodingBuildings(true);
+    try {
+      const result = await api.geocodeMissingBuildings();
+      showToast(
+        "success",
+        `${result.geocoded} Gebäude erfolgreich geocodiert.${
+          result.failed > 0 ? ` ${result.failed} Adresse(n) blieben ohne Treffer.` : ""
+        }${result.remaining > 0 ? ` ${result.remaining} insgesamt noch offen (erneut ausführen).` : ""}`
+      );
+      load();
+    } catch (error) {
+      showToast("error", errorMessage(error, "Geokodierung fehlgeschlagen."));
+    } finally {
+      setGeocodingBuildings(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-10 text-sm text-ink-faint">
@@ -400,6 +420,15 @@ export function DataQualityAdmin({
           renderItem={renderBuildingRow}
           onNavigate={onNavigate ? () => onNavigate("buildings", "duplicate") : undefined}
         />
+        <GroupCard
+          icon={<LocateOff size={16} />}
+          title="Gebäude ohne Kartenkoordinaten"
+          description="Diese Gebäude konnten noch nicht oder nicht erfolgreich geocodiert werden."
+          group={summary.buildings_without_coordinates}
+          itemKey={(b) => b.building_id}
+          renderItem={renderBuildingRow}
+          onNavigate={onNavigate ? () => onNavigate("buildings", "missing_coordinates") : undefined}
+        />
       </div>
 
       {isMain && summary.duplicate_authorities.count > 0 && (
@@ -461,6 +490,25 @@ export function DataQualityAdmin({
             <Button variant="secondary" onClick={handleMergeDuplicateBuildings} disabled={mergingBuildings}>
               {mergingBuildings ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />}
               Zusammenführen
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isMain && summary.buildings_without_coordinates.count > 0 && (
+        <div className="rounded-lg border border-line bg-surface p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="font-display text-sm font-semibold text-ink">Fehlende Kartenkoordinaten nachholen</h3>
+              <p className="mt-0.5 text-xs text-ink-faint">
+                {summary.buildings_without_coordinates.count} Gebäude haben noch keine Kartenkoordinaten. Ein
+                Durchlauf versucht bis zu 20 davon erneut zu geocodieren (Nominatim-Limit) – bei mehr offenen
+                Fällen einfach erneut ausführen.
+              </p>
+            </div>
+            <Button variant="secondary" onClick={handleGeocodeMissingBuildings} disabled={geocodingBuildings}>
+              {geocodingBuildings ? <Loader2 size={14} className="animate-spin" /> : <LocateOff size={14} />}
+              Geokodieren
             </Button>
           </div>
         </div>

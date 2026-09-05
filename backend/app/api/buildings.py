@@ -27,6 +27,7 @@ def list_buildings(
     missing_ags: bool = Query(False, description="Nur Gebäude ohne AGS"),
     duplicate_only: bool = Query(False, description="Nur als Duplikat erkannte Gebäude"),
     review_required_only: bool = Query(False, description="Nur Gebäude mit zuletzt uneindeutiger Zuständigkeit"),
+    missing_coordinates: bool = Query(False, description="Nur Gebäude ohne Kartenkoordinaten"),
     limit: int = Query(50, le=200),
     offset: int = 0,
     db: Session = Depends(get_db_session),
@@ -58,6 +59,8 @@ def list_buildings(
     if review_required_only:
         review_ids = {b.building_id for b in _buildings_with_review_required(db)}
         query = query.filter(Building.building_id.in_(review_ids)) if review_ids else query.filter(False)
+    if missing_coordinates:
+        query = query.filter(or_(Building.latitude.is_(None), Building.longitude.is_(None)))
 
     response.headers["X-Total-Count"] = str(query.order_by(None).count())
     return query.order_by(Building.city, Building.street).offset(offset).limit(limit).all()

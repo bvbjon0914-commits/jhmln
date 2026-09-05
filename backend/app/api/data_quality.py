@@ -18,6 +18,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.api.auth import require_main
+from app.api.geo import _geocode_and_cache_building
 from app.database import get_db_session
 from app.models.authority import Authority
 from app.models.authority_location import AuthorityLocation
@@ -245,6 +246,21 @@ def _buildings_with_review_required(db: Session) -> List[Building]:
     )
 
 
+def _buildings_without_coordinates(db: Session) -> List[Building]:
+    """
+    Gebäude ohne gecachte Kartenkoordinaten - entweder nie geocodiert
+    (z.B. noch nie im Wizard/der Kartenansicht geöffnet) oder die
+    Geokodierung ist fehlgeschlagen (siehe geocode_address: es wird nicht
+    geraten, ein Fehlschlag bleibt dauerhaft NULL statt eines Platzhalters).
+    """
+    return (
+        db.query(Building)
+        .filter(or_(Building.latitude.is_(None), Building.longitude.is_(None)))
+        .order_by(Building.city, Building.street)
+        .all()
+    )
+
+
 def _building_has_real_progress(db: Session, building_id: str) -> bool:
     """
     True, wenn für dieses Gebäude schon einmal ein Schreiben tatsächlich als
@@ -443,6 +459,7 @@ def data_quality_summary(db: Session = Depends(get_db_session)):
     dup_jurisdiction_items = [dup for g in dup_jurisdiction_groups for dup in g["remove"]]
     dup_building_groups, dup_building_needs_review = _find_duplicate_building_groups(db)
     dup_building_items = [dup for g in dup_building_groups for dup in g["remove"]]
+    without_coordinates = _buildings_without_coordinates(db)
 
     return {
         "total_authorities": total_authorities,
@@ -485,6 +502,10 @@ def data_quality_summary(db: Session = Depends(get_db_session)):
             "count": len(dup_building_items),
             "items": [_serialize_building(b) for b in dup_building_items[:MAX_ITEMS]],
             "needs_review_count": len(dup_building_needs_review),
+        },
+        "buildings_without_coordinates": {
+            "count": len(without_coordinates),
+            "items": [_serialize_building(b) for b in without_coordinates[:MAX_ITEMS]],
         },
     }
 
@@ -635,6 +656,30 @@ def clear_bad_geocoding(db: Session = Depends(get_db_session), _: None = Depends
     return {"deleted": deleted}
 
 
+# Nominatim erlaubt max. 1 Anfrage/Sekunde (siehe geocoding.py) - ein
+# größerer Batch würde den synchronen Request zu lange blocken/timeouten.
+# Bei mehr offenen Gebäuden als das Limit einfach erneut aufrufen.
+_GEOCODE_BATCH_LIMIT = 20
+
+
+@router.post("/data-quality/geocode-missing-buildings", tags=["DataQuality"])
+def geocode_missing_buildings(db: Session = Depends(get_db_session), _: None = Depends(require_main)):
+    """
+    Nur Haupt-Account: versucht für bis zu _GEOCODE_BATCH_LIMIT Gebäude ohne
+    Kartenkoordinaten erneut eine Geokodierung über Nominatim. Es wird
+    nirgends geraten - schlägt eine Adresse fehl, bleibt sie ohne Koordinaten
+    und taucht beim nächsten Aufruf wieder auf.
+    """
+    missing = _buildings_without_coordinates(db)[:_GEOCODE_BATCH_LIMIT]
+    geocoded = 0
+    for building in missing:
+        if _geocode_and_cache_building(building):
+            geocoded += 1
+    db.commit()
+    remaining = len(_buildings_without_coordinates(db))
+    return {"geocoded": geocoded, "failed": len(missing) - geocoded, "remaining": remaining}
+
+
 @router.get("/data-quality/export-xlsx", tags=["DataQuality"])
 def export_data_quality_xlsx(db: Session = Depends(get_db_session)):
     """
@@ -729,6 +774,10 @@ def export_data_quality_xlsx(db: Session = Depends(get_db_session)):
         (
             "Gebäude Prüfung nötig",
             pd.DataFrame(building_rows(_buildings_with_review_required(db)), columns=building_columns),
+        ),
+        (
+            "Ohne Kartenkoordinaten",
+            pd.DataFrame(building_rows(_buildings_without_coordinates(db)), columns=building_columns),
         ),
     ]
 
