@@ -30,6 +30,18 @@ export interface BuildingGroup {
   items: BuildingRef[];
 }
 
+export interface CoverageGapRef {
+  ags: string | null;
+  municipality: string | null;
+  request_type_name: string;
+  building_count: number;
+}
+
+export interface CoverageGapGroup {
+  count: number;
+  items: CoverageGapRef[];
+}
+
 export interface DuplicateAuthorityGroup extends DataQualityGroup {
   needs_review_count: number;
 }
@@ -67,4 +79,5 @@ export interface DataQualitySummary {
   duplicate_jurisdictions: DuplicateJurisdictionsGroup;
   duplicate_buildings: DuplicateBuildingsGroup;
   buildings_without_coordinates: BuildingGroup;
+  coverage_gaps: CoverageGapGroup;
 }
