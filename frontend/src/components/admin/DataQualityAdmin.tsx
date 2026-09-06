@@ -12,6 +12,7 @@ import {
   Unlink,
   LocateOff,
   AlertOctagon,
+  Scan,
 } from "lucide-react";
 import { api } from "../../services/api";
 import { Button } from "../common/Button";
@@ -24,6 +25,7 @@ import type {
   BuildingRef,
   JurisdictionRef,
   CoverageGapRef,
+  FuzzyDuplicatePairRef,
 } from "../../types/dataQuality";
 import type { Tab } from "./AdminPage";
 
@@ -145,6 +147,19 @@ function renderCoverageGapRow(g: CoverageGapRef) {
       </span>
       <span className="shrink-0 text-xs text-ink-faint">
         {g.building_count} Gebäude betroffen
+      </span>
+    </>
+  );
+}
+
+function renderFuzzyDuplicateRow(p: FuzzyDuplicatePairRef) {
+  return (
+    <>
+      <span className="text-ink">
+        {p.authority_name_a} <span className="text-ink-faint">↔</span> {p.authority_name_b}
+      </span>
+      <span className="shrink-0 text-xs text-ink-faint">
+        {Math.round(p.similarity * 100)} % ähnlich{p.city ? ` · ${p.city}` : ""}
       </span>
     </>
   );
@@ -452,6 +467,15 @@ export function DataQualityAdmin({
           itemKey={(g) => `${g.ags}-${g.request_type_name}`}
           renderItem={renderCoverageGapRow}
           onNavigate={onNavigate ? () => onNavigate("jurisdictions", "coverage_gap") : undefined}
+        />
+        <GroupCard
+          icon={<Scan size={16} />}
+          title="Mögliche Duplikate (ähnlich)"
+          description="Namenspaare mit sehr ähnlicher Schreibweise (Tippfehler, Umlaut-Varianten) in derselben Stadt - von der exakten Duplikat-Erkennung nicht erfasst."
+          group={summary.fuzzy_duplicate_authorities}
+          itemKey={(p) => `${p.authority_id_a}-${p.authority_id_b}`}
+          renderItem={renderFuzzyDuplicateRow}
+          onNavigate={onNavigate ? () => onNavigate("authorities", "fuzzy_duplicate") : undefined}
         />
       </div>
 
