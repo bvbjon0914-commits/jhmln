@@ -9,7 +9,7 @@ Matching als NO_MATCH/"keine E-Mail" aufzufallen.
 
 import io
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional
 
 import pandas as pd
 from fastapi import APIRouter, Depends
@@ -47,6 +47,60 @@ _MERGE_FIELDS = (
 )
 
 _BUILDING_MERGE_FIELDS = ("property_name", "district", "state", "ags", "notes", "internal_reference")
+
+# Maximale absolute Levenshtein-Distanz, ab der ein Behörden-Namenspaar als
+# möglicher Tippfehler-Duplikat gilt. Bewusst ein ABSOLUTER Wert statt eines
+# Ähnlichkeits-Prozentsatzes: ein echter Tippfehler ist immer eine kleine
+# feste Anzahl Zeichenänderungen (typischerweise 1-2), unabhängig davon, wie
+# lang der Name ist. Ein Ähnlichkeits-Prozentsatz würde dagegen bei langen
+# Namen, die sich nur in einem ganzen Wort unterscheiden (z.B.
+# "Kreisverwaltung X" vs. "Stadtverwaltung X" - zwei tatsächlich
+# UNTERSCHIEDLICHE, real existierende Behörden, keine Duplikate), fälschlich
+# einen hohen Wert ergeben, weil das eine abweichende Wort nur einen kleinen
+# Anteil der Gesamtlänge ausmacht. Nur ein Hinweis, nie automatisch
+# zusammengeführt - siehe _fuzzy_duplicate_authority_pairs.
+_FUZZY_MAX_EDIT_DISTANCE = 2
+# Kürzere normalisierte Namen als das werden ausgeklammert, damit kurze,
+# generische Namensfragmente nicht zufällig als "ähnlich" durchrutschen.
+_FUZZY_MIN_NAME_LENGTH = 8
+
+_UMLAUT_FOLD = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
+
+
+def _normalize_for_similarity(value: Optional[str]) -> str:
+    """Falzt Umlaute/ß aus und vereinheitlicht Whitespace, damit reine
+    Schreibvarianten (z.B. 'Köln' vs 'Koeln', doppelte Leerzeichen) nicht
+    schon als Tippfehler gewertet werden."""
+    if not value:
+        return ""
+    return " ".join(value.strip().lower().translate(_UMLAUT_FOLD).split())
+
+
+def _levenshtein(a: str, b: str) -> int:
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    previous_row = list(range(len(b) + 1))
+    for i, char_a in enumerate(a, start=1):
+        current_row = [i] + [0] * len(b)
+        for j, char_b in enumerate(b, start=1):
+            current_row[j] = min(
+                current_row[j - 1] + 1,  # Einfügen
+                previous_row[j] + 1,  # Löschen
+                previous_row[j - 1] + (0 if char_a == char_b else 1),  # Ersetzen
+            )
+        previous_row = current_row
+    return previous_row[-1]
+
+
+def _name_similarity(a: str, b: str) -> float:
+    """1.0 = identisch, 0.0 = maximal unterschiedlich (normierte Levenshtein-Distanz)."""
+    if not a and not b:
+        return 1.0
+    return 1 - _levenshtein(a, b) / max(len(a), len(b))
 
 # Geografische Felder, die den fachlichen Geltungsbereich einer Zuständig-
 # keitsregel ausmachen. Zwei Regeln mit identischem authority_id+request_
@@ -201,6 +255,67 @@ def _duplicate_authority_ids(db: Session) -> set:
         ids.update(a.authority_id for a in group["remove"])
     ids.update(a.authority_id for a in needs_review)
     return ids
+
+
+def _fuzzy_duplicate_authority_pairs(db: Session) -> List[dict]:
+    """
+    Findet Behörden-Paare mit sehr ähnlichem Namen (Tippfehler, abweichende
+    Umlaut-Schreibweise, doppelte Leerzeichen) innerhalb derselben Stadt, die
+    von der exakten Duplikat-Erkennung (_find_duplicate_authority_groups -
+    erkennt nur identische normalisierte Namen) übersehen werden.
+
+    Um die Anzahl der Vergleiche gering zu halten, wird nur innerhalb
+    derselben Stadt verglichen (Duplikate teilen sich fast immer den Ort;
+    das reduziert eine sonst quadratische Prüfung über alle ~4700 aktiven
+    Behörden auf kleine Gruppen pro Stadt).
+
+    Rein informativ, NIE automatisch zusammengeführt: anders als bei exakt
+    identischen Namen ist bei bloßer Ähnlichkeit nicht sicher, ob es
+    tatsächlich dieselbe Behörde ist oder zwei unterschiedliche mit
+    ähnlichem Namen (z.B. verschiedene Fachbereiche) - das muss ein Mensch
+    entscheiden.
+    """
+    active = db.query(Authority).filter(Authority.active.is_(True)).all()
+    already_flagged = _duplicate_authority_ids(db)
+
+    by_city: dict = {}
+    for a in active:
+        normalized = _normalize_for_similarity(a.authority_name)
+        if len(normalized) < _FUZZY_MIN_NAME_LENGTH:
+            continue
+        by_city.setdefault((a.city or "").strip().lower(), []).append((a, normalized))
+
+    pairs = []
+    for group in by_city.values():
+        if len(group) < 2:
+            continue
+        for i in range(len(group)):
+            a, name_a = group[i]
+            for j in range(i + 1, len(group)):
+                b, name_b = group[j]
+                if a.authority_id in already_flagged and b.authority_id in already_flagged:
+                    continue
+                if name_a == name_b:
+                    continue  # bereits über die exakte Erkennung abgedeckt
+                # Günstiger Vorabtest: die Levenshtein-Distanz kann nie kleiner
+                # sein als der Längenunterschied - ist der allein schon zu groß,
+                # lohnt sich die teure Berechnung nicht.
+                if abs(len(name_a) - len(name_b)) > _FUZZY_MAX_EDIT_DISTANCE:
+                    continue
+                distance = _levenshtein(name_a, name_b)
+                if distance <= _FUZZY_MAX_EDIT_DISTANCE:
+                    pairs.append(
+                        {
+                            "authority_id_a": a.authority_id,
+                            "authority_name_a": a.authority_name,
+                            "authority_id_b": b.authority_id,
+                            "authority_name_b": b.authority_name,
+                            "city": a.city,
+                            "similarity": round(_name_similarity(name_a, name_b), 2),
+                        }
+                    )
+
+    return sorted(pairs, key=lambda p: -p["similarity"])
 
 
 def _buildings_with_review_required(db: Session) -> List[Building]:
@@ -520,6 +635,7 @@ def data_quality_summary(db: Session = Depends(get_db_session)):
     dup_building_items = [dup for g in dup_building_groups for dup in g["remove"]]
     without_coordinates = _buildings_without_coordinates(db)
     coverage_gaps = _coverage_gaps(db)
+    fuzzy_duplicate_authorities = _fuzzy_duplicate_authority_pairs(db)
 
     return {
         "total_authorities": total_authorities,
@@ -570,6 +686,10 @@ def data_quality_summary(db: Session = Depends(get_db_session)):
         "coverage_gaps": {
             "count": len(coverage_gaps),
             "items": coverage_gaps[:MAX_ITEMS],
+        },
+        "fuzzy_duplicate_authorities": {
+            "count": len(fuzzy_duplicate_authorities),
+            "items": fuzzy_duplicate_authorities[:MAX_ITEMS],
         },
     }
 
@@ -856,6 +976,21 @@ def export_data_quality_xlsx(db: Session = Depends(get_db_session)):
                     for g in _coverage_gaps(db)
                 ],
                 columns=["AGS", "Gemeinde", "Auskunftsart", "Betroffene Gebäude"],
+            ),
+        ),
+        (
+            "Mögliche Duplikate (ähnlich)",
+            pd.DataFrame(
+                [
+                    {
+                        "Behörde A": p["authority_name_a"],
+                        "Behörde B": p["authority_name_b"],
+                        "Ort": p["city"],
+                        "Ähnlichkeit": p["similarity"],
+                    }
+                    for p in _fuzzy_duplicate_authority_pairs(db)
+                ],
+                columns=["Behörde A", "Behörde B", "Ort", "Ähnlichkeit"],
             ),
         ),
     ]
