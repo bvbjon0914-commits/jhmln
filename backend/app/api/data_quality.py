@@ -28,6 +28,7 @@ from app.models.jurisdiction import Jurisdiction
 from app.models.request import Request, RequestItem
 from app.models.request_item_progress import RequestItemProgress
 from app.models.request_type import RequestType
+from app.services import JurisdictionMatchingService, MatchingStatus
 
 router = APIRouter()
 
@@ -261,6 +262,64 @@ def _buildings_without_coordinates(db: Session) -> List[Building]:
     )
 
 
+def _coverage_gaps(db: Session) -> List[dict]:
+    """
+    Prüft für jedes aktive Gebäude mit AGS und jede aktive Auskunftsart über
+    die echte Matching-Engine (JurisdictionMatchingService - dieselbe Logik
+    wie beim tatsächlichen Matching, kein eigenes Regelwerk), ob aktuell eine
+    Zuständigkeit gefunden würde. Ergebnis sind Lücken, die eine ECHTE
+    Anfrage heute als NO_MATCH beenden würden - bevor das jemandem im
+    laufenden Betrieb passiert.
+
+    Gebäude ohne AGS werden ausgeklammert: ihr Fehlschlag läge an fehlenden
+    Gebäudedaten, nicht an einer fehlenden Zuständigkeitsregel - das ist ein
+    eigenes, bereits vorhandenes Datenproblem ("Ohne AGS"-Filter), keine
+    Abdeckungslücke.
+
+    Treffer werden nach (AGS, Auskunftsart) gruppiert, damit eine Lücke, die
+    mehrere Gebäude derselben Gemeinde betrifft, nicht pro Gebäude einzeln
+    auftaucht. Rein informativ - eine fehlende Regel kann nicht automatisch
+    erfunden werden, das erfordert echtes Wissen über die zuständige Behörde.
+    """
+    buildings = db.query(Building).filter(Building.ags.isnot(None), Building.ags != "").all()
+    request_types = db.query(RequestType).filter(RequestType.active.is_(True)).all()
+    if not buildings or not request_types:
+        return []
+
+    matcher = JurisdictionMatchingService(db)
+    gaps: dict = {}
+
+    for building in buildings:
+        for request_type in request_types:
+            result = matcher.match_authority(building, request_type.request_type_id)
+            if result.matching_status != MatchingStatus.NO_MATCH:
+                continue
+            key = (building.ags, request_type.request_type_id)
+            entry = gaps.setdefault(
+                key,
+                {
+                    "ags": building.ags,
+                    "municipality": building.city,
+                    "request_type_name": request_type.name,
+                    "building_ids": set(),
+                },
+            )
+            entry["building_ids"].add(building.building_id)
+
+    return sorted(
+        (
+            {
+                "ags": g["ags"],
+                "municipality": g["municipality"],
+                "request_type_name": g["request_type_name"],
+                "building_count": len(g["building_ids"]),
+            }
+            for g in gaps.values()
+        ),
+        key=lambda g: (g["municipality"] or "", g["request_type_name"]),
+    )
+
+
 def _building_has_real_progress(db: Session, building_id: str) -> bool:
     """
     True, wenn für dieses Gebäude schon einmal ein Schreiben tatsächlich als
@@ -460,6 +519,7 @@ def data_quality_summary(db: Session = Depends(get_db_session)):
     dup_building_groups, dup_building_needs_review = _find_duplicate_building_groups(db)
     dup_building_items = [dup for g in dup_building_groups for dup in g["remove"]]
     without_coordinates = _buildings_without_coordinates(db)
+    coverage_gaps = _coverage_gaps(db)
 
     return {
         "total_authorities": total_authorities,
@@ -506,6 +566,10 @@ def data_quality_summary(db: Session = Depends(get_db_session)):
         "buildings_without_coordinates": {
             "count": len(without_coordinates),
             "items": [_serialize_building(b) for b in without_coordinates[:MAX_ITEMS]],
+        },
+        "coverage_gaps": {
+            "count": len(coverage_gaps),
+            "items": coverage_gaps[:MAX_ITEMS],
         },
     }
 
@@ -778,6 +842,21 @@ def export_data_quality_xlsx(db: Session = Depends(get_db_session)):
         (
             "Ohne Kartenkoordinaten",
             pd.DataFrame(building_rows(_buildings_without_coordinates(db)), columns=building_columns),
+        ),
+        (
+            "Abdeckungslücken",
+            pd.DataFrame(
+                [
+                    {
+                        "AGS": g["ags"],
+                        "Gemeinde": g["municipality"],
+                        "Auskunftsart": g["request_type_name"],
+                        "Betroffene Gebäude": g["building_count"],
+                    }
+                    for g in _coverage_gaps(db)
+                ],
+                columns=["AGS", "Gemeinde", "Auskunftsart", "Betroffene Gebäude"],
+            ),
         ),
     ]
 

@@ -11,6 +11,7 @@ import {
   ShieldQuestion,
   Unlink,
   LocateOff,
+  AlertOctagon,
 } from "lucide-react";
 import { api } from "../../services/api";
 import { Button } from "../common/Button";
@@ -22,6 +23,7 @@ import type {
   AuthorityRef,
   BuildingRef,
   JurisdictionRef,
+  CoverageGapRef,
 } from "../../types/dataQuality";
 import type { Tab } from "./AdminPage";
 
@@ -131,6 +133,19 @@ function renderJurisdictionRow(j: JurisdictionRef) {
         {j.authority_name} · {j.request_type_name}
       </span>
       <span className="shrink-0 text-xs text-ink-faint">{j.ags || j.municipality || "—"}</span>
+    </>
+  );
+}
+
+function renderCoverageGapRow(g: CoverageGapRef) {
+  return (
+    <>
+      <span className="text-ink">
+        {g.municipality || g.ags || "—"} · {g.request_type_name}
+      </span>
+      <span className="shrink-0 text-xs text-ink-faint">
+        {g.building_count} Gebäude betroffen
+      </span>
     </>
   );
 }
@@ -428,6 +443,15 @@ export function DataQualityAdmin({
           itemKey={(b) => b.building_id}
           renderItem={renderBuildingRow}
           onNavigate={onNavigate ? () => onNavigate("buildings", "missing_coordinates") : undefined}
+        />
+        <GroupCard
+          icon={<AlertOctagon size={16} />}
+          title="Abdeckungslücken"
+          description="Gemeinde + Auskunftsart-Kombinationen ohne Zuständigkeitsregel - eine echte Anfrage würde hier heute mit „Kein Treffer“ enden."
+          group={summary.coverage_gaps}
+          itemKey={(g) => `${g.ags}-${g.request_type_name}`}
+          renderItem={renderCoverageGapRow}
+          onNavigate={onNavigate ? () => onNavigate("jurisdictions", "coverage_gap") : undefined}
         />
       </div>
 
