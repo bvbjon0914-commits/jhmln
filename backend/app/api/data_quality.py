@@ -405,10 +405,39 @@ def _coverage_gaps(db: Session) -> List[dict]:
     matcher = JurisdictionMatchingService(db)
     gaps: dict = {}
 
+    # Ergebnis-Cache je (Auskunftsart, alle für das Matching relevanten
+    # Rohfelder): zwei Gebäude mit identischen Werten in genau diesen Feldern
+    # durchlaufen zwangsläufig dieselben sieben Matching-Stufen und landen
+    # beim selben Ergebnis (JurisdictionMatchingService.match_authority ist
+    # eine reine Funktion dieser Felder plus des DB-Standes) - der zweite
+    # Aufruf braucht dann keine erneute Matching-Engine-Ausführung.
+    #
+    # Ohne diesen Cache: bis zu 2.000 Gebäude x 11 Auskunftsarten x 7 Stufen
+    # sind in einer Messung mit synthetischen Daten (siehe
+    # scripts/benchmark_matching_scale.py) ~74.700 SQL-Abfragen und rund zwei
+    # Minuten allein lokal ohne Netzwerklatenz - für eine einzelne, synchrone
+    # HTTP-Anfrage (die Datenqualitäts-Übersicht) unrealistisch, insbesondere
+    # gegen eine entfernte Datenbank (Neon) mit echter Netzwerklatenz pro
+    # Abfrage. Der Cache ersetzt keinen Bulk-Endpunkt/Hintergrundjob (siehe
+    # Auditbericht-Folgebericht), reduziert die tatsächliche Last aber genau
+    # für den in der Praxis häufigsten Fall: viele Gebäude teilen sich eine
+    # Gemeinde und damit i.d.R. auch dieselbe Zuständigkeit.
+    result_cache: dict = {}
+
     for building in buildings:
         for request_type in request_types:
-            result = matcher.match_authority(building, request_type.request_type_id)
-            if result.matching_status != MatchingStatus.NO_MATCH:
+            cache_key = (
+                request_type.request_type_id, building.ags, building.street,
+                building.house_number, building.district, building.postal_code,
+                building.state,
+            )
+            if cache_key in result_cache:
+                status = result_cache[cache_key]
+            else:
+                status = matcher.match_authority(building, request_type.request_type_id).matching_status
+                result_cache[cache_key] = status
+
+            if status != MatchingStatus.NO_MATCH:
                 continue
             key = (building.ags, request_type.request_type_id)
             entry = gaps.setdefault(
