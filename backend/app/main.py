@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
 # Datenbank
+from app.config import ALLOWED_ORIGINS
 from app.database import init_db
 
 # API-Routen
@@ -57,7 +58,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # ⚠ In Production: Spezifische Origins!
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

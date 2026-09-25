@@ -6,11 +6,22 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.config import COOKIE_SECURE, LOGIN_RATE_LIMIT_WINDOW_SECONDS
 from app.database import get_db_session
 from app.models.settings import AppSettings
+from app.services import rate_limiter
 from app.services.auth import COOKIE_NAME, check_password, create_token, verify_token
 
 router = APIRouter()
+
+
+def _client_key(request: Request) -> str:
+    """Bewusst die rohe Client-IP als Schlüssel, kein X-Forwarded-For-Parsing:
+    dieser Header ließe sich vom Anfragenden selbst gegen unbeteiligte Dritte
+    fälschen, solange kein vertrauenswürdiger, konfigurierter Reverse-Proxy
+    zwischengeschaltet ist. Damit begrenzt dies aktuell in erster Linie einen
+    einzelnen Client, nicht zuverlässig eine Quelle hinter einem Proxy."""
+    return request.client.host if request.client else "unknown"
 
 
 class LoginPayload(BaseModel):
@@ -69,12 +80,22 @@ def auth_status(request: Request, db: Session = Depends(get_db_session)):
 
 
 @router.post("/auth/login", tags=["Auth"])
-def login(payload: LoginPayload, response: Response):
+def login(payload: LoginPayload, request: Request, response: Response):
     """Öffentlich: prüft das Passwort und setzt bei Erfolg das Session-Cookie."""
+    client_key = _client_key(request)
+    if rate_limiter.is_blocked(client_key):
+        raise HTTPException(
+            status_code=429,
+            detail="Zu viele fehlgeschlagene Login-Versuche. Bitte später erneut versuchen.",
+            headers={"Retry-After": str(LOGIN_RATE_LIMIT_WINDOW_SECONDS)},
+        )
+
     kind = check_password(payload.password)
     if kind is None:
+        rate_limiter.record_failure(client_key)
         raise HTTPException(status_code=401, detail="Falsches Passwort.")
 
+    rate_limiter.record_success(client_key)
     is_main = kind == "main"
     token = create_token(is_main)
     response.set_cookie(
@@ -82,6 +103,7 @@ def login(payload: LoginPayload, response: Response):
         value=token,
         httponly=True,
         samesite="lax",
+        secure=COOKIE_SECURE,
         max_age=60 * 60 * 24 * 30,
     )
     return {"is_main": is_main}

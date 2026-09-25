@@ -40,6 +40,42 @@ SHARED_PASSWORD = os.environ["SHARED_PASSWORD"]
 MAIN_PASSWORD = os.environ["MAIN_PASSWORD"]
 AUTH_SECRET_KEY = os.environ["AUTH_SECRET_KEY"]
 
+# Das Session-Cookie soll in Produktion nur über HTTPS übertragen werden
+# (Auditbericht, Befund "Session-Sicherheit"). Default true; für lokale
+# Entwicklung ohne TLS (z.B. reines http://localhost) in .env auf false
+# setzen - sonst schickt der Browser das Cookie gar nicht erst mit.
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "true").lower() == "true"
+
+# CORS: In Produktion werden Frontend und Backend vom selben FastAPI-Prozess
+# ausgeliefert (siehe SERVE_FRONTEND in main.py) - dort ist CORS für den
+# eigentlichen Betrieb gar nicht nötig (same-origin). Ein Wildcard-Origin
+# war trotzdem gesetzt (Auditbericht, Befund "Netzwerksicherheit") und wird
+# nur für die lokale Entwicklung gebraucht, wo Vite (Frontend) und Uvicorn
+# (Backend) auf unterschiedlichen Ports laufen. ALLOWED_ORIGINS erlaubt eine
+# explizite, kommagetrennte Liste; ohne Angabe gilt ein enger Dev-Default.
+_allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "").strip()
+if _allowed_origins_env:
+    ALLOWED_ORIGINS = [o.strip() for o in _allowed_origins_env.split(",") if o.strip()]
+else:
+    ALLOWED_ORIGINS = [
+        "http://localhost:5173", "http://127.0.0.1:5173",  # Vite Dev-Server
+        "http://localhost:3000", "http://127.0.0.1:3000",
+    ]
+
+# ========== Login-Ratenbegrenzung ==========
+# Schützt /api/auth/login vor massenhaften Rateversuchen (Auditbericht,
+# Befund "Missbrauchsschutz"). Bewusst ein einfacher In-Memory-Zähler statt
+# einer externen Abhängigkeit (Redis o.ä.) - konsistent mit dem übrigen
+# Architekturstand (auch der Nominatim-Rate-Limiter in geocoding.py ist
+# prozesslokal). Das bedeutet: der Zähler wird bei einem Neustart geleert
+# und gilt nicht prozessübergreifend, falls je mit mehreren Worker-Prozessen
+# oder Instanzen betrieben wird - für den aktuellen Single-Prozess-Betrieb
+# (siehe render.yaml, kein --workers) ausreichend, aber keine verteilte
+# Lösung. Bei echtem Mehrprozess-/Mehrinstanzbetrieb müsste dies durch einen
+# gemeinsamen Speicher (z.B. die Datenbank oder Redis) ersetzt werden.
+LOGIN_RATE_LIMIT_MAX_ATTEMPTS = int(os.getenv("LOGIN_RATE_LIMIT_MAX_ATTEMPTS", "10"))
+LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", str(15 * 60)))
+
 # Sicherstellen, dass die Ordner existieren
 Path(TEMPLATES_DIR).mkdir(parents=True, exist_ok=True)
 Path(GENERATED_DIR).mkdir(parents=True, exist_ok=True)
