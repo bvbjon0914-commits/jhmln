@@ -15,7 +15,7 @@ app/services/jurisdiction_staging.py).
 """
 
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, Date, Text, ForeignKey, Index
+from sqlalchemy import Column, String, Integer, DateTime, Date, Text, ForeignKey, Index
 from app.database.base import Base
 
 
