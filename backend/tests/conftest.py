@@ -23,6 +23,7 @@ os.environ.setdefault("SHARED_PASSWORD", "test-shared-password")
 os.environ.setdefault("MAIN_PASSWORD", "test-main-password")
 os.environ.setdefault("AUTH_SECRET_KEY", "test-secret-key-not-for-production-use")
 os.environ.setdefault("MAILGUN_DRY_RUN", "true")
+os.environ.setdefault("MAILGUN_WEBHOOK_SIGNING_KEY", "test-mailgun-webhook-signing-key")
 
 import atexit  # noqa: E402
 
