@@ -3,7 +3,7 @@ Generiert die Word-Vorlagen für alle Auskunftsarten.
 
 Layout orientiert sich an den Vonovia-Referenzvorlagen
 (Serienbrief_Bauamt_Vorlage.docx / Serienbrief_Grundbuchamt_Vorlage.docx):
-Vonovia-Absenderzeile, Trennlinie, Empfängerblock, rechtsbündiges Datum,
+Absenderzeile, Trennlinie, Empfängerblock, rechtsbündiges Datum,
 fett gesetzter Betreff mit Objektadresse und interner Referenz, Fließtext
 mit auskunftsart-spezifischer Rechtsgrundlage, "Betroffenes Objekt/
 Grundstück"-Block, Absatz zum berechtigten Interesse, Checkbox-Optionen,
@@ -300,16 +300,16 @@ def build_template(code: str, texts: dict) -> str:
     section.top_margin = Cm(2)
     section.bottom_margin = Cm(2)
 
-    # --- Absenderblock (Vonovia SE) -----------------------------------
+    # --- Absenderblock (Civeloq) -----------------------------------
     p = doc.add_paragraph()
-    run = p.add_run("Vonovia SE")
+    run = p.add_run("Civeloq")
     run.bold = True
 
     p = doc.add_paragraph()
-    _gray_small(p, "Universitätsstr. 133 · 44803 Bochum · Tel. [Telefon] · [E-Mail-Adresse]")
+    _gray_small(p, "[Straße Hausnummer] · [PLZ Ort] · Tel. [Telefon] · [E-Mail-Adresse]")
 
     p = doc.add_paragraph()
-    _gray_small(p, "Vonovia SE · Universitätsstr. 133 · 44803 Bochum", size=7.5)
+    _gray_small(p, "Civeloq · [Straße Hausnummer] · [PLZ Ort]", size=7.5)
     _set_bottom_border(p)
 
     doc.add_paragraph()
@@ -431,7 +431,7 @@ def build_template(code: str, texts: dict) -> str:
     impressum_p = doc.add_paragraph()
     _set_bottom_border(impressum_p, color="CCCCCC", size=4)
     impressum_p.add_run(
-        "Vonovia SE · Sitz: [Ort] · Registergericht: [Amtsgericht] · "
+        "Civeloq · Sitz: [Ort] · Registergericht: [Amtsgericht] · "
         "Registernummer: [HRB ...] · Vorstand: [Name(n)] · USt-IdNr.: [DE ...]"
     ).font.size = Pt(8)
     hint_p = doc.add_paragraph()

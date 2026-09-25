@@ -405,7 +405,7 @@ def send_bundle(
     text = (
         "Sehr geehrte Damen und Herren,\n\n"
         f"anbei unsere Anfrage(n) betreffend {', '.join(request_type_names)}.\n\n"
-        "Mit freundlichen Grüßen\nVonovia SE"
+        "Mit freundlichen Grüßen\nCiveloq"
     )
 
     try:

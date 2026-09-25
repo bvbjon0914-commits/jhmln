@@ -13,7 +13,7 @@ from typing import Optional
 import requests
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-USER_AGENT = "Zustaendigkeitsfinder-Vonovia/1.0 (internes Tool zur Behoerdenzuordnung)"
+USER_AGENT = "Civeloq/1.0 (internes Tool zur Behoerdenzuordnung)"
 
 _lock = threading.Lock()
 _last_request_at = 0.0

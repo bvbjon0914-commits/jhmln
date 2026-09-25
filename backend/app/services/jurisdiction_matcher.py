@@ -8,12 +8,10 @@ WICHTIG: Es gibt KEINE hart codierten Zuständigkeitsregeln in diesem Modul.
 Alle Regeln kommen ausschließlich aus der `jurisdictions`-Tabelle.
 """
 
-import uuid
 from dataclasses import dataclass, field
-from datetime import date
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
-from sqlalchemy import and_, or_
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.building import Building
@@ -31,7 +29,6 @@ class MatchingStatus:
 
 
 # ========== Matching-Stufen (Hierarchie) ==========
-# Jede Stufe definiert: (Bezeichnung, Priorität, Filterfunktion)
 
 class MatchingLevel:
     STREET_NUMBER = "STREET_NUMBER"
@@ -83,10 +80,49 @@ class JurisdictionMatchingService:
         5. COUNTY         (Landkreis, über AGS-Präfix)
         6. STATE          (Bundesland)
         7. POSTAL_CODE    (PLZ, NUR Fallback)
+
+    Innerhalb derselben Matching-Stufe gilt zusätzlich:
+        - kleinere `priority` gewinnt,
+        - bei gleicher Priority gewinnt die höhere Spezifität,
+        - mehrere Regeln zur selben Behörde gelten nicht als Konflikt.
     """
 
     def __init__(self, db: Session):
         self.db = db
+
+    @staticmethod
+    def _select_best_candidate(
+        candidates: List[Jurisdiction],
+    ) -> Tuple[Optional[Jurisdiction], List[Jurisdiction]]:
+        """
+        Löst mehrere Treffer innerhalb derselben Matching-Stufe deterministisch auf.
+
+        Das Jurisdiction-Modell definiert kleinere `priority`-Werte als vorrangig.
+        Erst wenn auch nach Priority, Spezifität und Deduplizierung nach authority_id
+        mehrere verschiedene Behörden übrig bleiben, ist eine manuelle Auswahl nötig.
+        """
+        if not candidates:
+            return None, []
+
+        min_priority = min(j.priority for j in candidates)
+        priority_candidates = [j for j in candidates if j.priority == min_priority]
+
+        max_specificity = max(j.get_specificity_score() for j in priority_candidates)
+        specific_candidates = [
+            j for j in priority_candidates
+            if j.get_specificity_score() == max_specificity
+        ]
+
+        # Doppelte Regeln zur gleichen Behörde sind kein fachlicher Konflikt.
+        unique_by_authority = {}
+        for jurisdiction in specific_candidates:
+            unique_by_authority.setdefault(jurisdiction.authority_id, jurisdiction)
+
+        unique_candidates = list(unique_by_authority.values())
+        if len(unique_candidates) == 1:
+            return unique_candidates[0], unique_candidates
+
+        return None, unique_candidates
 
     # ---------------------------------------------------------------
     # Öffentliche API
@@ -103,13 +139,9 @@ class JurisdictionMatchingService:
             district=building.district,
         )
 
-        ags = building.ags  # Für's MVP: AGS muss im Gebäudedatensatz vorhanden sein.
+        ags = building.ags
         ags_kreis = ags[:5] if ags and len(ags) >= 5 else None
-        ags_land = ags[:2] if ags and len(ags) >= 2 else None
 
-        # Die Stufen werden in Reihenfolge abgefragt. Sobald eine Stufe
-        # einen oder mehrere Treffer liefert, wird dort abgebrochen -
-        # spezifischere Stufen haben immer Vorrang vor allgemeineren.
         stages = [
             (
                 MatchingLevel.STREET_NUMBER,
@@ -146,12 +178,12 @@ class JurisdictionMatchingService:
                 continue
 
             candidates = [j for j in query.all() if j.is_valid_today()]
-
-            if len(candidates) == 0:
+            if not candidates:
                 continue
 
-            if len(candidates) == 1:
-                jurisdiction = candidates[0]
+            jurisdiction, remaining_candidates = self._select_best_candidate(candidates)
+
+            if jurisdiction is not None:
                 return MatchingResult(
                     building_id=building.building_id,
                     request_type_id=request_type_id,
@@ -163,7 +195,8 @@ class JurisdictionMatchingService:
                     jurisdiction_id=jurisdiction.jurisdiction_id,
                 )
 
-            # Mehrere Kandidaten auf derselben Stufe -> nicht raten
+            # Erst wenn Priority + Spezifität keine eindeutige Behörde ergeben,
+            # wird ein echter fachlicher Konflikt gemeldet.
             return MatchingResult(
                 building_id=building.building_id,
                 request_type_id=request_type_id,
@@ -172,13 +205,15 @@ class JurisdictionMatchingService:
                 matching_status=MatchingStatus.MULTIPLE_MATCHES,
                 matching_confidence=0.5,
                 reason=(
-                    f"{len(candidates)} gleichrangige Zuständigkeiten auf Ebene "
-                    f"{level} gefunden - manuelle Auswahl erforderlich."
+                    f"{len(remaining_candidates)} gleichrangige Zuständigkeiten auf Ebene "
+                    f"{level} nach Priority-/Spezifitätsprüfung gefunden - "
+                    "manuelle Auswahl erforderlich."
                 ),
-                alternative_authorities=[j.authority_id for j in candidates],
+                alternative_authorities=[
+                    j.authority_id for j in remaining_candidates
+                ],
             )
 
-        # Keine Stufe hat einen Treffer geliefert
         return MatchingResult(
             building_id=building.building_id,
             request_type_id=request_type_id,
@@ -242,8 +277,6 @@ class JurisdictionMatchingService:
     def _query_county(self, request_type_id: str, ags_kreis: Optional[str]):
         if not ags_kreis:
             return None
-        # Landkreis-Regeln werden über ein eigenes Feld (ags mit 5 Stellen
-        # statt 8) abgebildet, um sie klar von Gemeinde-Regeln zu trennen.
         return self._base_query(request_type_id).filter(
             Jurisdiction.ags == ags_kreis,
         )
@@ -266,7 +299,7 @@ class JurisdictionMatchingService:
         )
 
     # ---------------------------------------------------------------
-    # Erklärungstexte (Nachvollziehbarkeit ist Pflicht, kein Extra)
+    # Erklärungstexte
     # ---------------------------------------------------------------
 
     @staticmethod

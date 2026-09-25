@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Landmark, FileSearch2, Upload, Settings, LogOut, DownloadCloud, FileSpreadsheet, RotateCcw, FolderKanban } from "lucide-react";
+import { FileSearch2, Upload, Settings, LogOut, DownloadCloud, FileSpreadsheet, RotateCcw, FolderKanban } from "lucide-react";
 import { Stepper } from "./components/Stepper";
 import { BuildingSearch } from "./components/BuildingSearch";
 import { BuildingDetails } from "./components/BuildingDetails";
@@ -271,23 +271,14 @@ function App() {
 
   return (
     <div className="min-h-screen">
-      <header className="relative border-b border-line bg-surface shadow-sm">
-        <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-brand via-brand-accent to-brand" />
+      <header className="border-b border-line bg-surface shadow-sm">
         <div className="mx-auto flex max-w-4xl items-center gap-3 px-6 py-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-gradient-to-br from-brand to-brand-dark text-white shadow-sm">
-            <Landmark size={18} />
-          </div>
+          <img src="/brand/mark.png" alt="Civeloq" className="h-9 w-9" />
           <div>
-            <div className="flex items-baseline gap-2">
-              <span className="font-display text-[13px] font-bold uppercase tracking-wide text-brand">
-                Vonovia
-              </span>
-              <span className="h-3 w-px bg-line" />
-              <h1 className="font-display text-[15px] font-semibold leading-none text-ink">
-                Zuständigkeitsfinder
-              </h1>
-            </div>
-            <p className="mt-0.5 text-xs text-ink-faint">
+            <h1 className="font-display text-[15px] font-semibold leading-none text-ink">
+              Civeloq
+            </h1>
+            <p className="mt-1 text-xs text-ink-faint">
               Behördenzuordnung & Anschreiben-Generierung
             </p>
           </div>

@@ -1,0 +1,13 @@
+{
+  "name": "Civeloq",
+  "short_name": "Civeloq",
+  "description": "Civeloq – Find. Connect. Automate.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F4F6F7",
+  "theme_color": "#0C1D2E",
+  "icons": [
+    { "src": "/brand/mark-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/brand/mark-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

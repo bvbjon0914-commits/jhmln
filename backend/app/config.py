@@ -56,7 +56,7 @@ MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY", "")
 MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN", "")
 MAILGUN_FROM_ADDRESS = os.getenv(
     "MAILGUN_FROM_ADDRESS",
-    f"Vonovia SE Zuständigkeitsfinder <anfragen@{MAILGUN_DOMAIN}>" if MAILGUN_DOMAIN else "",
+    f"Civeloq <anfragen@{MAILGUN_DOMAIN}>" if MAILGUN_DOMAIN else "",
 )
 # Bei true wird der Versand nur geloggt statt die echte Mailgun-API
 # aufzurufen - ermöglicht sicheres lokales Testen ohne laufendes Konto.

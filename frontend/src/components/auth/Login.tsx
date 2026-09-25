@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Landmark, Loader2, Lock } from "lucide-react";
+import { Loader2, Lock } from "lucide-react";
 import { api } from "../../services/api";
 import { errorMessage } from "../common/Toast";
 
@@ -29,12 +29,9 @@ export function Login({ onSuccess }: { onSuccess: () => void }) {
         onSubmit={handleSubmit}
         className="w-full max-w-sm rounded-lg border border-line bg-surface p-6 shadow-sm"
       >
-        <div className="mb-5 flex flex-col items-center text-center">
-          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-md bg-gradient-to-br from-brand to-brand-dark text-white shadow-sm">
-            <Landmark size={20} />
-          </div>
-          <h1 className="font-display text-base font-semibold text-ink">Zuständigkeitsfinder</h1>
-          <p className="mt-1 text-xs text-ink-faint">Bitte anmelden, um fortzufahren.</p>
+        <div className="mb-6 flex flex-col items-center text-center">
+          <img src="/brand/logo-full.png" alt="Civeloq" className="h-24 w-auto" />
+          <p className="mt-3 text-xs text-ink-faint">Bitte anmelden, um fortzufahren.</p>
         </div>
 
         <label className="mb-1.5 block text-xs font-medium text-ink-soft">Passwort</label>

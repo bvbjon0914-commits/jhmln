@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
 # ========== FastAPI App Initialisierung ==========
 
 app = FastAPI(
-    title="Authority Matching System",
+    title="Civeloq API",
     description="Automatische Ermittlung zuständiger Behörden für Gebäudeadressen",
     version="1.0.0",
     lifespan=lifespan,
