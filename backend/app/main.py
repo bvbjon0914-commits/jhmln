@@ -6,11 +6,12 @@ und generiert Anschreiben als Word-Dokumente.
 """
 
 import logging
+import uuid
 from pathlib import Path
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
@@ -65,20 +66,97 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Total-Count"],
+    expose_headers=["X-Total-Count", "X-Request-Id"],
 )
+
+# ========== Request-ID + Fehlerbehandlung ==========
+# Priorität 2 des Auditberichts, Befund "Fehlerbehandlung": es gab keinen
+# globalen Exception-Handler; eine unbehandelte Exception ergab Starlettes
+# generische, nicht diagnostizierbare Default-Antwort. Jede Anfrage bekommt
+# jetzt eine Request-ID (Antwort-Header UND Log-Zeile), über die eine
+# Fehlermeldung im Support-Fall mit der passenden Server-Log-Zeile
+# zusammengeführt werden kann, ohne dass die Log-Zeile selbst sensible
+# Nutzdaten (Anfrage-Body, Cookies, Auth-Header) enthalten muss.
+#
+# WICHTIG für Abwärtskompatibilität: das Frontend liest bei Fehlern gezielt
+# `response.data.detail` (siehe frontend/src/components/common/Toast.tsx).
+# Beide Handler unten liefern deshalb weiterhin genau dieses Feld mit
+# demselben Inhalt wie zuvor - "request_id" wird nur ERGÄNZT, nichts
+# Bestehendes wird umbenannt oder entfernt.
+
+
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    request_id = str(uuid.uuid4())
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-Id"] = request_id
+    return response
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    request_id = getattr(request.state, "request_id", None)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail, "request_id": request_id},
+        headers=exc.headers,
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    request_id = getattr(request.state, "request_id", None)
+    # Vollständiger Traceback landet im Server-Log (zur Diagnose), aber NICHT
+    # in der Antwort an den Client - eine interne Exception-Message kann
+    # unbeabsichtigt interne Pfade, Query-Fragmente oder Bibliotheksdetails
+    # enthalten. Anfrage-Body/Header werden hier bewusst NICHT mitgeloggt.
+    logger.exception(
+        "Unbehandelte Exception bei %s %s (request_id=%s)",
+        request.method, request.url.path, request_id,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Ein unerwarteter Fehler ist aufgetreten. Bitte später erneut versuchen.",
+            "request_id": request_id,
+        },
+    )
+
 
 # ========== Health Check ==========
 
 
 @app.get("/health", tags=["System"])
 async def health_check():
-    """Health Check Endpoint"""
-    return {
-        "status": "ok",
-        "service": "Authority Matching System",
-        "version": "1.0.0",
-    }
+    """
+    Health-Check-Endpoint für die Plattform (Render: healthCheckPath).
+
+    Prüft zusätzlich die Datenbankverbindung mit einem leichten SELECT 1
+    (Auditbericht, Befund "Betriebsüberwachung": der Check meldete bisher
+    unabhängig vom DB-Zustand immer "ok", sodass eine nicht erreichbare
+    Datenbank von der Plattform nicht erkannt worden wäre).
+    """
+    from sqlalchemy import text
+    from app.database.engine import engine
+
+    db_ok = True
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception:
+        db_ok = False
+        logger.exception("Health-Check: Datenbankverbindung fehlgeschlagen")
+
+    return JSONResponse(
+        status_code=200 if db_ok else 503,
+        content={
+            "status": "ok" if db_ok else "degraded",
+            "service": "Authority Matching System",
+            "version": "1.0.0",
+            "database": "ok" if db_ok else "unreachable",
+        },
+    )
 
 
 # ========== Frontend (Production Build) ==========
