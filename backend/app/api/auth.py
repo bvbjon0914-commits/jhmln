@@ -10,7 +10,9 @@ from app.config import COOKIE_SECURE, LOGIN_RATE_LIMIT_WINDOW_SECONDS
 from app.database import get_db_session
 from app.models.settings import AppSettings
 from app.services import rate_limiter
-from app.services.auth import COOKIE_NAME, check_password, create_token, verify_token
+from app.services.auth import COOKIE_NAME, check_api_key, check_password, create_token, verify_token
+
+API_KEY_HEADER = "X-API-Key"
 
 router = APIRouter()
 
@@ -40,7 +42,20 @@ def _current_session(request: Request) -> dict | None:
 
 
 def require_login(request: Request, db: Session = Depends(get_db_session)) -> None:
-    """FastAPI-Dependency: sperrt eine Route, außer login_required ist deaktiviert."""
+    """
+    FastAPI-Dependency: sperrt eine Route, außer login_required ist deaktiviert.
+
+    Akzeptiert ZUSÄTZLICH zum Cookie-Login einen X-API-Key-Header (siehe
+    check_api_key) - getrennter Zugang für Systemintegrationen statt eines
+    geteilten Menschen-Passworts (Auditbericht-Folgebericht, Priorität 3,
+    Befund "M2M-Zugriff"). Ein gültiger API-Key gilt unabhängig vom
+    login_required-Schalter, der nur die Browser-Login-Pflicht für Menschen
+    steuert - ein System, das einen Schlüssel besitzt, soll nicht davon
+    abhängen, ob gerade jemand den UI-Login ein-/ausgeschaltet hat.
+    """
+    if check_api_key(request.headers.get(API_KEY_HEADER, "")):
+        return
+
     settings = AppSettings.get_or_create(db)
     if not settings.login_required:
         return

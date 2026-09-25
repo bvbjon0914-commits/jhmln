@@ -13,7 +13,7 @@ import hmac
 import json
 import time
 
-from app.config import AUTH_SECRET_KEY, MAIN_PASSWORD, SHARED_PASSWORD
+from app.config import API_KEYS, AUTH_SECRET_KEY, MAIN_PASSWORD, SHARED_PASSWORD
 
 COOKIE_NAME = "auth_token"
 TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24 * 30  # 30 Tage
@@ -58,3 +58,17 @@ def check_password(password: str) -> str | None:
     if hmac.compare_digest(password, SHARED_PASSWORD):
         return "shared"
     return None
+
+
+def check_api_key(key: str) -> bool:
+    """
+    Separater Zugang für Systemintegrationen (X-API-Key-Header) statt des
+    Cookie-Logins für Menschen. Zeitkonstanter Vergleich gegen JEDEN
+    konfigurierten Schlüssel (nicht nur den ersten Treffer abbrechen wäre
+    zwar unnötig, aber compare_digest je Kandidat bleibt trotzdem
+    zeitkonstant pro Vergleich) - bei leerer API_KEYS-Konfiguration immer
+    False, das Feature ist dann vollständig inaktiv.
+    """
+    if not key:
+        return False
+    return any(hmac.compare_digest(key, candidate) for candidate in API_KEYS)

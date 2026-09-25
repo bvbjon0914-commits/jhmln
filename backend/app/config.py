@@ -76,6 +76,19 @@ else:
 LOGIN_RATE_LIMIT_MAX_ATTEMPTS = int(os.getenv("LOGIN_RATE_LIMIT_MAX_ATTEMPTS", "10"))
 LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", str(15 * 60)))
 
+# ========== API-Schlüssel für Systemintegrationen ==========
+# Grundlage für Priorität 3 (Integrationsvorbereitung, siehe Auditbericht-
+# Folgebericht, Befund "M2M-Zugriff"): bisher gab es keinen eigenständigen
+# Zugang für automatisierte Systeme (Nightly-Sync-Job, künftige ERP-
+# Anbindung o.ä.) - nur dasselbe geteilte Login-Passwort wie für Menschen im
+# Browser. Kommagetrennte Liste statischer Schlüssel, bewusst analog zum
+# bestehenden SHARED_PASSWORD/MAIN_PASSWORD-Muster (kein neues Konzept, keine
+# neue Abhängigkeit) statt eines vollständigen OAuth2-/Client-Credentials-
+# Systems - das bleibt eine spätere, größere Ausbaustufe. Leer per Default:
+# das Feature ist inaktiv, bis mindestens ein Schlüssel konfiguriert wird.
+_api_keys_env = os.getenv("API_KEYS", "").strip()
+API_KEYS = {k.strip() for k in _api_keys_env.split(",") if k.strip()}
+
 # Sicherstellen, dass die Ordner existieren
 Path(TEMPLATES_DIR).mkdir(parents=True, exist_ok=True)
 Path(GENERATED_DIR).mkdir(parents=True, exist_ok=True)
