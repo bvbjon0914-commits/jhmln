@@ -114,6 +114,7 @@ def init_db():
         DataSource, DataSourceRouting,
         AktenzeichenSequence, RequestSequence, RequestItemReference,
         InboundEmail, InboundEmailAttachment,
+        AuthorityContactChannel, JurisdictionStagingEntry,
     )
 
     # Metadaten aller Models
@@ -137,6 +138,8 @@ def init_db():
     RequestItemReference.metadata.create_all(bind=engine)
     InboundEmail.metadata.create_all(bind=engine)
     InboundEmailAttachment.metadata.create_all(bind=engine)
+    AuthorityContactChannel.metadata.create_all(bind=engine)
+    JurisdictionStagingEntry.metadata.create_all(bind=engine)
 
     print("✓ Datenbank initialisiert")
 
@@ -152,8 +155,11 @@ def drop_all_tables():
         DataSource, DataSourceRouting,
         AktenzeichenSequence, RequestSequence, RequestItemReference,
         InboundEmail, InboundEmailAttachment,
+        AuthorityContactChannel, JurisdictionStagingEntry,
     )
 
+    JurisdictionStagingEntry.metadata.drop_all(bind=engine)
+    AuthorityContactChannel.metadata.drop_all(bind=engine)
     InboundEmailAttachment.metadata.drop_all(bind=engine)
     InboundEmail.metadata.drop_all(bind=engine)
     DataSourceRouting.metadata.drop_all(bind=engine)
