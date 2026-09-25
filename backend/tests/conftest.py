@@ -46,6 +46,7 @@ from app.models.building import Building  # noqa: E402
 from app.models.authority import Authority  # noqa: E402
 from app.models.jurisdiction import Jurisdiction  # noqa: E402
 from app.models.request_type import RequestType, STANDARD_REQUEST_TYPES  # noqa: E402
+from app.models.administrative_unit import AdministrativeUnit  # noqa: E402
 
 
 @pytest.fixture()
@@ -148,6 +149,27 @@ def make_building(db, street="Musterstraße", house_number="12",
     db.add(b)
     db.commit()
     return b
+
+
+def make_administrative_unit(db, ags="05911000", state_name="Nordrhein-Westfalen",
+                              county_name="Bochum, Stadt", municipality_name="Bochum",
+                              postal_code=None, **kwargs):
+    parts = AdministrativeUnit.parse_ags(ags)
+    unit = AdministrativeUnit(
+        ags=ags,
+        ags_land=parts["ags_land"],
+        ags_regierungsbezirk=parts["ags_regierungsbezirk"],
+        ags_kreis=parts["ags_kreis"],
+        ags_gemeinde=parts["ags_gemeinde"],
+        state_name=state_name,
+        county_name=county_name,
+        municipality_name=municipality_name,
+        postal_code=postal_code,
+        **kwargs,
+    )
+    db.add(unit)
+    db.commit()
+    return unit
 
 
 def days_ago(n):

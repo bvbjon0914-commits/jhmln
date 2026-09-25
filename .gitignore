@@ -55,6 +55,7 @@ authority_matching.db
 
 # Generated Files
 backend/generated/
+backend/coverage_reports/
 *.docx
 *.pdf
 *.zip
