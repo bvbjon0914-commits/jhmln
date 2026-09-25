@@ -81,13 +81,31 @@ def init_db():
     WICHTIG - einmaliger manueller Schritt vor Produktivnutzung von Alembic:
     Die produktive Datenbank wurde bisher ausschließlich über dieses
     create_all() verwaltet und hat deshalb noch KEINE alembic_version-Tabelle.
-    Bevor `alembic upgrade head` dort ausgeführt werden darf, muss sie einmal
-    per `alembic stamp head` auf den Baseline-Stand "gehoben" werden (siehe
-    tests/test_migrations.py::TestExistingDatabaseAdoption für das getestete
-    Verfahren an einer Kopie) - sonst versucht die Baseline-Migration, bereits
-    vorhandene Tabellen erneut anzulegen, und schlägt fehl. Dieser Schritt
-    erfordert Zugriff auf die Neon-Produktivdatenbank und wurde hier bewusst
-    NICHT automatisiert oder ausgeführt.
+
+    KORREKTES Verfahren (zwei Schritte, NICHT `alembic stamp head`!):
+
+      1. `alembic stamp ab0d36228547` (exakt die Baseline-Revision, die den
+         Schemastand von create_all() zum Zeitpunkt ihrer Erstellung
+         abbildet) - markiert die DB als "hat die Baseline bereits", ohne
+         DDL auszuführen.
+      2. `alembic upgrade head` - führt jetzt ALLE seither hinzugekommenen
+         echten Migrationen (neue Spalten/Tabellen) tatsächlich als DDL aus.
+
+      `alembic stamp head` (ohne Revision, also der aktuell neueste Stand)
+      wäre hier ein Fehler: "head" bewegt sich mit jeder neuen Migration
+      weiter, während die Produktivdatenbank nur dem BASELINE-Schema
+      entspricht. Ein Stamp direkt auf head würde Alembic fälschlich
+      glauben lassen, alle seit der Baseline hinzugekommenen Spalten (z.B.
+      InboundEmail.message_id, Building.source_system) existierten bereits
+      - ihre DDL würde NIE ausgeführt, und die Anwendung schlägt beim
+      ersten Zugriff auf eine dieser tatsächlich fehlenden Spalten fehl.
+      Bei jeder neuen Migration muss Schritt 1 weiterhin exakt
+      `ab0d36228547` referenzieren, nicht "head".
+
+    Siehe tests/test_migrations.py::TestExistingDatabaseAdoption für das
+    getestete Verfahren an einer Kopie. Erfordert Zugriff auf die Neon-
+    Produktivdatenbank und wurde hier bewusst NICHT automatisiert oder
+    ausgeführt.
     """
     from app.models import (
         Building, RequestType, Authority, Jurisdiction, Request, RequestItem,
