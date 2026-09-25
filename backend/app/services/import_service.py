@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import List, Optional
 
 import pandas as pd
-from sqlalchemy import or_
+from sqlalchemy import or_, update, func, bindparam
 from sqlalchemy.orm import Session
 
 from app.models.authority import Authority
@@ -457,8 +457,14 @@ class ImportService:
                 authorities_by_id[a.authority_id] = a
 
         # ---------- Pass 3: Lücken-Updates im Speicher berechnen ----------
+        # WICHTIG: "filled_fields" hier ist nur eine Prognose für die
+        # Nutzer-Rückmeldung, basierend auf dem Pass-2-Schnappschuss. Ob ein
+        # Feld beim tatsächlichen Schreiben (Pass 5) wirklich noch leer ist,
+        # prüft die UPDATE-Anweisung selbst am aktuellen Datenbankstand -
+        # siehe Kommentar dort (Race Condition zwischen parallelem manuellem
+        # Bearbeiten und diesem Import, siehe Auditbericht).
         now = datetime.utcnow()
-        update_mappings: List[dict] = []
+        update_params: List[dict] = []
         for idx, existing_id, name, city, row in duplicate_candidates:
             existing = authorities_by_id.get(existing_id)
             if existing is None:
@@ -467,19 +473,19 @@ class ImportService:
                 continue
 
             filled_fields = []
-            patch = {"authority_id": existing_id}
+            row_values = {}
             for field_name in self._FILLABLE_AUTHORITY_FIELDS:
-                if getattr(existing, field_name):
-                    continue
-                new_value = row.get(mapping.get(field_name, ""), "").strip()
-                if new_value:
-                    patch[field_name] = new_value
+                new_value = row.get(mapping.get(field_name, ""), "").strip() or None
+                row_values[field_name] = new_value
+                if new_value and not getattr(existing, field_name):
                     filled_fields.append(field_name)
 
             if filled_fields:
-                patch["updated_at"] = now
-                update_mappings.append(patch)
-                details.append(ImportRowResult(idx, "UPDATED", f"Ergänzt: {', '.join(filled_fields)}"))
+                update_params.append({"authority_id": existing_id, **row_values})
+                details.append(ImportRowResult(
+                    idx, "UPDATED",
+                    f"Ergänzt, sofern beim Schreiben noch leer: {', '.join(filled_fields)}",
+                ))
                 updated += 1
             else:
                 details.append(ImportRowResult(idx, "DUPLICATE", f"'{name}' in '{city}' hatte keine Lücken zu füllen"))
@@ -509,9 +515,45 @@ class ImportService:
             imported += 1
 
         # ---------- Pass 5: in Batches schreiben (wenige Sammel-Anfragen statt vieler Einzelnen) ----------
-        for i in range(0, len(update_mappings), self._IMPORT_BATCH_SIZE):
-            self.db.bulk_update_mappings(Authority, update_mappings[i:i + self._IMPORT_BATCH_SIZE])
-            self.db.commit()
+        # Bewusst KEIN bulk_update_mappings für die Lücken-Updates: das würde
+        # den in Pass 3 im Speicher berechneten Wert blind schreiben, selbst
+        # wenn das Feld zwischen dem Einlesen (Pass 2) und dem tatsächlichen
+        # Schreiben (hier) durch eine parallele manuelle Bearbeitung bereits
+        # gefüllt wurde - eine reale, im Auditbericht dokumentierte Race
+        # Condition. Stattdessen prüft die UPDATE-Anweisung selbst den zum
+        # Schreibzeitpunkt AKTUELLEN Spaltenwert per COALESCE(NULLIF(...)):
+        # nur wenn die Spalte JETZT noch leer ist, wird der Importwert
+        # gesetzt; eine zwischenzeitliche, ggf. bessere manuelle Eingabe
+        # bleibt unangetastet. Alle Zeilen eines Batches teilen sich dieselbe
+        # Anweisungsform (ein "executemany"), das bleibt so schnell wie zuvor.
+        if update_params:
+            authority_table = Authority.__table__
+            set_values = {
+                field_name: func.coalesce(func.nullif(authority_table.c[field_name], ""), bindparam(field_name))
+                for field_name in self._FILLABLE_AUTHORITY_FIELDS
+            }
+            set_values["updated_at"] = now
+            # Core-Table-Update (nicht update(Authority) auf der ORM-Klasse):
+            # ein ORM-Bulk-Update mit zusätzlicher WHERE-Bedingung verlangt in
+            # SQLAlchemy 2.0 eine explizite synchronize_session-Strategie und
+            # würde versuchen, geladene ORM-Objekte im Session-Identity-Map
+            # abzugleichen - hier unnötig, da wir (wie zuvor bei
+            # bulk_update_mappings) bewusst ohne ORM-Identity-Map-Refresh
+            # schreiben.
+            stmt = (
+                update(authority_table)
+                .where(authority_table.c.authority_id == bindparam("target_id"))
+                .values(**set_values)
+            )
+
+            for i in range(0, len(update_params), self._IMPORT_BATCH_SIZE):
+                batch = update_params[i:i + self._IMPORT_BATCH_SIZE]
+                exec_params = [
+                    {**{f: p.get(f) for f in self._FILLABLE_AUTHORITY_FIELDS}, "target_id": p["authority_id"]}
+                    for p in batch
+                ]
+                self.db.execute(stmt, exec_params)
+                self.db.commit()
 
         for i in range(0, len(insert_mappings), self._IMPORT_BATCH_SIZE):
             self.db.bulk_insert_mappings(Authority, insert_mappings[i:i + self._IMPORT_BATCH_SIZE])
