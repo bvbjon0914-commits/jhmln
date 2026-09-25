@@ -69,6 +69,25 @@ def init_db():
     """
     Initialisiert die Datenbank.
     Erstellt alle Tabellen basierend auf den ORM-Modellen.
+
+    Seit Einführung von Alembic (backend/alembic/) ist dies bewusst NUR noch
+    ein Sicherheitsnetz für eine komplett leere Datenbank (z.B. beim allerersten
+    lokalen Start) - create_all() erstellt fehlende Tabellen, ändert aber NIE
+    eine bereits existierende Tabelle (keine neue Spalte, keine geänderte
+    Constraint). Echte Schemaänderungen ab jetzt IMMER über eine Alembic-
+    Migration (`alembic revision --autogenerate` + `alembic upgrade head`),
+    nie durch bloßes Ändern eines Modells.
+
+    WICHTIG - einmaliger manueller Schritt vor Produktivnutzung von Alembic:
+    Die produktive Datenbank wurde bisher ausschließlich über dieses
+    create_all() verwaltet und hat deshalb noch KEINE alembic_version-Tabelle.
+    Bevor `alembic upgrade head` dort ausgeführt werden darf, muss sie einmal
+    per `alembic stamp head` auf den Baseline-Stand "gehoben" werden (siehe
+    tests/test_migrations.py::TestExistingDatabaseAdoption für das getestete
+    Verfahren an einer Kopie) - sonst versucht die Baseline-Migration, bereits
+    vorhandene Tabellen erneut anzulegen, und schlägt fehl. Dieser Schritt
+    erfordert Zugriff auf die Neon-Produktivdatenbank und wurde hier bewusst
+    NICHT automatisiert oder ausgeführt.
     """
     from app.models import (
         Building, RequestType, Authority, Jurisdiction, Request, RequestItem,
