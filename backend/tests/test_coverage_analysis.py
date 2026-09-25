@@ -106,7 +106,7 @@ def test_existing_authority_address_alone_is_not_counted_as_proven(db_session):
     nachgewiesene Zuständigkeit." Eine Authority mit vollständiger Adresse,
     aber OHNE jurisdiction-Regel für diese Auskunftsart, muss NO_MATCH sein.
     """
-    rt = make_request_type(db_session, code="GRUNDBUCH")
+    make_request_type(db_session, code="GRUNDBUCH")
     make_administrative_unit(db_session, ags="05911000", state_name="NRW-A", municipality_name="Bochum")
     make_authority(
         db_session, name="Grundbuchamt Bochum",
@@ -121,7 +121,7 @@ def test_existing_authority_address_alone_is_not_counted_as_proven(db_session):
 def test_portfolio_building_count_uses_real_buildings_only(db_session):
     from tests.conftest import make_building
 
-    rt = make_request_type(db_session, code="GRUNDBUCH")
+    make_request_type(db_session, code="GRUNDBUCH")
     make_administrative_unit(db_session, ags="05911000", state_name="NRW-A", municipality_name="Bochum")
     make_building(db_session, ags="05911000")
     make_building(db_session, ags="05911000")
@@ -135,7 +135,7 @@ def test_portfolio_building_count_uses_real_buildings_only(db_session):
 def test_summarize_by_groups_categories_and_affected_buildings(db_session):
     from tests.conftest import make_building
 
-    rt = make_request_type(db_session, code="GRUNDBUCH")
+    make_request_type(db_session, code="GRUNDBUCH")
     make_administrative_unit(db_session, ags="09162000", state_name="BY-NOMATCH", municipality_name="Nirgendwo")
     make_building(db_session, ags="09162000")
     make_building(db_session, ags="09162000")

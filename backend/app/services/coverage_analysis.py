@@ -232,8 +232,11 @@ class CoverageAnalysisService:
             )
             group["total"] += 1
             group[entry.category] += 1
-            if entry.category in (CATEGORY_NO_MATCH, CATEGORY_CONFLICTING, CATEGORY_FALLBACK_ONLY,
-                                   CATEGORY_UNVERIFIED_OR_STALE):
+            gap_categories = (
+                CATEGORY_NO_MATCH, CATEGORY_CONFLICTING,
+                CATEGORY_FALLBACK_ONLY, CATEGORY_UNVERIFIED_OR_STALE,
+            )
+            if entry.category in gap_categories:
                 group["affected_buildings"] += entry.portfolio_building_count
         return sorted(groups.values(), key=lambda g: g["group"])
 

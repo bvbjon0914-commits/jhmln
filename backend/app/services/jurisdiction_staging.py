@@ -38,8 +38,9 @@ class JurisdictionStagingService:
     # Konflikterkennung
     # ------------------------------------------------------------------
 
-    def _find_matching_existing(self, *, request_type_id, ags, municipality, district,
-                                 postal_code, street, house_number) -> List[Jurisdiction]:
+    def _find_matching_existing(
+        self, *, request_type_id, ags, municipality, district, postal_code, street, house_number,
+    ) -> List[Jurisdiction]:
         """
         Bestehende Regeln mit demselben fachlichen Geltungsbereich (dieselben
         geografischen Schlüsselfelder wie im Matcher selbst) für dieselbe
@@ -61,8 +62,10 @@ class JurisdictionStagingService:
             .all()
         )
 
-    def _detect_conflict(self, *, request_type_id, ags, municipality, district, postal_code,
-                          street, house_number, proposed_authority_id):
+    def _detect_conflict(
+        self, *, request_type_id, ags, municipality, district, postal_code,
+        street, house_number, proposed_authority_id,
+    ):
         existing = self._find_matching_existing(
             request_type_id=request_type_id, ags=ags, municipality=municipality,
             district=district, postal_code=postal_code, street=street, house_number=house_number,

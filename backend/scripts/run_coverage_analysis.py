@@ -89,8 +89,8 @@ def main():
                 writer = csv.writer(f)
                 writer.writerow(["group", "total", "affected_buildings"] + ALL_CATEGORIES)
                 for g in grouped:
-                    writer.writerow([g["group"], g["total"], g["affected_buildings"]]
-                                     + [g[c] for c in ALL_CATEGORIES])
+                    row = [g["group"], g["total"], g["affected_buildings"]] + [g[c] for c in ALL_CATEGORIES]
+                    writer.writerow(row)
             print(f"Gruppierung nach {group_field} geschrieben: {path}")
     finally:
         db.close()
