@@ -190,27 +190,43 @@ else:
 
 
 # ========== API Routes ==========
+# Priorität 3 des Auditberichts-Folgeberichts, Befund "API-Stabilität": die
+# API war komplett unversioniert (nur /api, kein /v1). Additiv gelöst statt
+# als Breaking Change: jeder Router wird jetzt unter ZWEI Prefixen montiert -
+# /api (unverändert, das bestehende Frontend ruft weiterhin genau das auf,
+# siehe frontend/src/services/api.ts) UND /api/v1 (neu, als stabile Basis für
+# künftige Systemintegrationen gedacht, siehe API-Key-Zugang in auth.py). Ein
+# künftiger /api/v2 könnte parallel dazukommen, ohne /api/v1-Konsumenten zu
+# brechen - dafür ist die Liste hier der einzige Ort, der geändert werden muss.
 
 protected = [Depends(require_login)]
 
-app.include_router(auth.router, prefix="/api")  # öffentlich (Login selbst darf nicht gesperrt sein)
-app.include_router(buildings.router, prefix="/api", dependencies=protected)
-app.include_router(authorities.router, prefix="/api", dependencies=protected)
-app.include_router(request_types.router, prefix="/api", dependencies=protected)
-app.include_router(matching.router, prefix="/api", dependencies=protected)
-app.include_router(documents.router, prefix="/api", dependencies=protected)
-app.include_router(requests_api.router, prefix="/api", dependencies=protected)
-app.include_router(imports.router, prefix="/api", dependencies=protected)
-app.include_router(geo.router, prefix="/api", dependencies=protected)
-app.include_router(jurisdictions.router, prefix="/api", dependencies=protected)
-app.include_router(data_quality.router, prefix="/api", dependencies=protected)
-app.include_router(cases.router, prefix="/api", dependencies=protected)
-app.include_router(data_sources.router, prefix="/api", dependencies=protected)
+_versioned_routers = [
+    (auth.router, None),  # öffentlich (Login selbst darf nicht gesperrt sein)
+    (buildings.router, protected),
+    (authorities.router, protected),
+    (request_types.router, protected),
+    (matching.router, protected),
+    (documents.router, protected),
+    (requests_api.router, protected),
+    (imports.router, protected),
+    (geo.router, protected),
+    (jurisdictions.router, protected),
+    (data_quality.router, protected),
+    (cases.router, protected),
+    (data_sources.router, protected),
+]
+for router, deps in _versioned_routers:
+    kwargs = {"dependencies": deps} if deps else {}
+    app.include_router(router, prefix="/api", **kwargs)
+    app.include_router(router, prefix="/api/v1", **kwargs)
+
 # Nicht über dependencies=protected: der Inbound-Webhook kann sich nicht per
 # Cookie-Session authentisieren (Mailgun ruft ihn direkt auf) und ist
 # stattdessen per HMAC-Signatur gesichert; die übrigen Routen darin sind
 # einzeln mit require_main abgesichert (deckt "eingeloggt" implizit mit ab).
 app.include_router(mailbox_inbound.router, prefix="/api")
+app.include_router(mailbox_inbound.router, prefix="/api/v1")
 
 # SPA-Fallback: muss nach allen /api-Routen registriert werden, sonst würde
 # er sie abfangen. Liefert index.html für jede Route, die kein API-Aufruf ist.
