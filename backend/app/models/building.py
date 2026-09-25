@@ -39,6 +39,14 @@ class Building(Base):
     property_name = Column(String(255), nullable=True)  # Name des Objekts
     internal_reference = Column(String(100), unique=True, nullable=True, index=True)  # Interne Referenz
 
+    # Aus welchem externen System internal_reference stammt (z.B. "SAP",
+    # "ERP-X", "Excel-Import"). Ohne dieses Feld war nicht unterscheidbar, ob
+    # zwei unterschiedliche Systeme zufällig denselben Referenzwert vergeben
+    # (Auditbericht-Folgebericht, Priorität 3, Befund "stabile externe
+    # Referenzen") - rein informativ, erzwingt keine Eindeutigkeit über
+    # Systemgrenzen hinweg.
+    source_system = Column(String(100), nullable=True, index=True)
+
     # Audit-Felder
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -80,6 +88,7 @@ class Building(Base):
             "longitude": self.longitude,
             "property_name": self.property_name,
             "internal_reference": self.internal_reference,
+            "source_system": self.source_system,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "notes": self.notes,

@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.models.authority import Authority
 from app.models.building import Building
 from app.models.jurisdiction import Jurisdiction
+from app.services.address_normalizer import AddressNormalizer
 
 AGS_SPLIT_RE = re.compile(r"[,;/\s]+")
 
@@ -146,12 +147,43 @@ class ImportService:
                 return s["name"]
         return sheets[0]["name"]
 
-    def import_buildings(self, df: pd.DataFrame, mapping: dict) -> ImportSummary:
+    @staticmethod
+    def _address_key(street: str, house_number: str, postal_code: Optional[str], city: str) -> tuple:
+        """
+        Normalisierter Adress-Schlüssel für die Dublettenprüfung beim
+        Gebäude-Import ohne internal_reference. Nutzt dieselbe Normalisierung
+        wie die Matching-Engine (AddressNormalizer), damit z.B. "Musterstr. 12"
+        und "Musterstraße 12" als dieselbe Adresse erkannt werden statt als
+        vermeintlich unterschiedliche Gebäude.
+        """
+        normalized = AddressNormalizer.normalize(
+            street=street or "", house_number=house_number or "", city=city or "", postal_code=postal_code,
+        )
+        return (normalized.street, normalized.house_number, normalized.postal_code, normalized.city)
+
+    def import_buildings(self, df: pd.DataFrame, mapping: dict, source_system: Optional[str] = None) -> ImportSummary:
         """
         Importiert Gebäude.
 
         mapping: {"db_field": "csv_column", ...}
         Pflichtfelder: street, house_number, city (PLZ optional)
+        source_system: optionale Kennzeichnung, aus welchem externen System
+        dieser Import stammt (z.B. "SAP") - wird nur auf neu angelegten
+        Gebäuden gesetzt, siehe Building.source_system.
+
+        Dedublizierung zweistufig (Auditbericht-Folgebericht, Priorität 3,
+        Befund "wiederholbare Importe ohne Dubletten"):
+        1. internal_reference, wenn vorhanden (wie bisher) - der verlässliche
+           Schlüssel, sofern das Quellsystem einen mitliefert.
+        2. Fällt internal_reference weg (Feld fehlt in der Datei oder ist für
+           diese Zeile leer), zusätzlich die normalisierte Adresse
+           (Straße+Hausnummer+PLZ+Ort) gegen den Bestand - verhindert, dass
+           ein wiederholter Import derselben Datei ohne stabile Referenz bei
+           jedem Lauf stumpf neue Duplikate anlegt. Bewusst KEIN automatisches
+           Update der bestehenden Zeile (das wäre Raten, welche der beiden
+           Versionen aktuell ist) - die Zeile wird als DUPLICATE geführt,
+           damit ein Mensch entscheidet, genau wie bei der bestehenden
+           Duplikat-Erkennung im Datenqualitätsmodul.
         """
         required_fields = ["street", "house_number", "city"]
         details: List[ImportRowResult] = []
@@ -159,6 +191,12 @@ class ImportService:
 
         existing_refs = {
             b.internal_reference for b in self.db.query(Building.internal_reference).all() if b.internal_reference
+        }
+        existing_addresses = {
+            self._address_key(b.street, b.house_number, b.postal_code, b.city)
+            for b in self.db.query(
+                Building.street, Building.house_number, Building.postal_code, Building.city
+            ).all()
         }
 
         for idx, row in df.iterrows():
@@ -170,27 +208,43 @@ class ImportService:
                     continue
 
                 internal_reference = row.get(mapping.get("internal_reference", ""), "").strip() or None
+                street = row[mapping["street"]].strip()
+                house_number = row[mapping["house_number"]].strip()
+                postal_code = row.get(mapping.get("postal_code", ""), "").strip() or None
+                city = row[mapping["city"]].strip()
 
                 if internal_reference and internal_reference in existing_refs:
                     details.append(ImportRowResult(idx, "DUPLICATE", f"Referenz '{internal_reference}' existiert bereits"))
                     duplicates += 1
                     continue
 
+                address_key = self._address_key(street, house_number, postal_code, city)
+                if not internal_reference and address_key in existing_addresses:
+                    details.append(ImportRowResult(
+                        idx, "DUPLICATE",
+                        f"Adresse '{street} {house_number}, {postal_code or ''} {city}' existiert bereits "
+                        "(keine interne Referenz zur eindeutigen Unterscheidung angegeben)",
+                    ))
+                    duplicates += 1
+                    continue
+
                 building = Building(
                     building_id=str(uuid.uuid4()),
-                    street=row[mapping["street"]].strip(),
-                    house_number=row[mapping["house_number"]].strip(),
-                    postal_code=row.get(mapping.get("postal_code", ""), "").strip() or None,
-                    city=row[mapping["city"]].strip(),
+                    street=street,
+                    house_number=house_number,
+                    postal_code=postal_code,
+                    city=city,
                     district=row.get(mapping.get("district", ""), "").strip() or None,
                     state=row.get(mapping.get("state", ""), "").strip() or None,
                     ags=row.get(mapping.get("ags", ""), "").strip() or None,
                     property_name=row.get(mapping.get("property_name", ""), "").strip() or None,
                     internal_reference=internal_reference,
+                    source_system=source_system,
                 )
                 self.db.add(building)
                 if internal_reference:
                     existing_refs.add(internal_reference)
+                existing_addresses.add(address_key)
 
                 details.append(ImportRowResult(idx, "IMPORTED", "OK"))
                 imported += 1

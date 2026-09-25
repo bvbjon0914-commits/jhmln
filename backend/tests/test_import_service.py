@@ -14,6 +14,7 @@ import pytest
 from sqlalchemy import bindparam, func, update
 
 from app.models.authority import Authority
+from app.models.building import Building
 from app.services.import_service import ImportService
 from tests.conftest import make_authority, make_request_type
 
@@ -56,6 +57,58 @@ class TestImportBuildings:
 
         assert summary.imported == 1
         assert summary.duplicates == 1
+
+    def test_same_normalized_address_without_reference_flagged_as_duplicate(self, db_session):
+        """Wiederholbare Importe ohne Dubletten (Auditbericht-Folgebericht,
+        Priorität 3): ohne internal_reference greift ein Fallback auf die
+        normalisierte Adresse, damit ein erneuter Import derselben Datei
+        nicht bei jedem Lauf ein neues Duplikat anlegt."""
+        svc = ImportService(db_session)
+        df1 = df_from_rows([{"str": "Musterstraße", "hnr": "12", "ort": "Bochum"}])
+        mapping = {"street": "str", "house_number": "hnr", "city": "ort"}
+        svc.import_buildings(df1, mapping)
+
+        df2 = df_from_rows([{"str": "Musterstr.", "hnr": "12", "ort": "BOCHUM"}])  # dieselbe Adresse, andere Schreibweise
+        summary2 = svc.import_buildings(df2, mapping)
+
+        assert summary2.duplicates == 1
+        assert summary2.imported == 0
+        assert db_session.query(Building).count() == 1
+
+    def test_different_addresses_both_imported(self, db_session):
+        svc = ImportService(db_session)
+        mapping = {"street": "str", "house_number": "hnr", "city": "ort"}
+        svc.import_buildings(df_from_rows([{"str": "Musterstraße", "hnr": "12", "ort": "Bochum"}]), mapping)
+        summary2 = svc.import_buildings(df_from_rows([{"str": "Musterstraße", "hnr": "14", "ort": "Bochum"}]), mapping)
+
+        assert summary2.imported == 1
+        assert db_session.query(Building).count() == 2
+
+    def test_internal_reference_bypasses_address_fallback(self, db_session):
+        """Zwei Zeilen mit derselben Adresse, aber unterschiedlicher, echter
+        internal_reference sind KEIN Duplikat (z.B. zwei separate Einheiten
+        in einem Gebäude) - der Adress-Fallback greift nur, wenn KEINE
+        Referenz angegeben ist."""
+        svc = ImportService(db_session)
+        mapping = {"street": "str", "house_number": "hnr", "city": "ort", "internal_reference": "ref"}
+        svc.import_buildings(
+            df_from_rows([{"str": "Musterstraße", "hnr": "12", "ort": "Bochum", "ref": "EINHEIT-1"}]), mapping,
+        )
+        summary2 = svc.import_buildings(
+            df_from_rows([{"str": "Musterstraße", "hnr": "12", "ort": "Bochum", "ref": "EINHEIT-2"}]), mapping,
+        )
+
+        assert summary2.imported == 1
+        assert db_session.query(Building).count() == 2
+
+    def test_source_system_recorded_on_new_building(self, db_session):
+        svc = ImportService(db_session)
+        mapping = {"street": "str", "house_number": "hnr", "city": "ort"}
+        svc.import_buildings(
+            df_from_rows([{"str": "Musterstraße", "hnr": "12", "ort": "Bochum"}]), mapping, source_system="SAP",
+        )
+        building = db_session.query(Building).first()
+        assert building.source_system == "SAP"
 
     def test_duplicate_check_within_same_file_not_only_against_db(self, db_session):
         """Zwei Zeilen derselben Datei mit identischer Referenz - die zweite
