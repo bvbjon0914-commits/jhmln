@@ -3,7 +3,7 @@ API Routes: Requests (Historie)
 """
 
 from datetime import date, datetime, timedelta
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session

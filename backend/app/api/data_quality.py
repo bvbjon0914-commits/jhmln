@@ -102,6 +102,7 @@ def _name_similarity(a: str, b: str) -> float:
         return 1.0
     return 1 - _levenshtein(a, b) / max(len(a), len(b))
 
+
 # Geografische Felder, die den fachlichen Geltungsbereich einer Zuständig-
 # keitsregel ausmachen. Zwei Regeln mit identischem authority_id+request_
 # type_id UND identischem Geltungsbereich sind derselbe fachliche Fall.

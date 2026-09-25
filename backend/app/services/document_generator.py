@@ -5,7 +5,6 @@ Generiert Word-Anschreiben aus Vorlagen (docxtpl), befüllt mit
 Gebäude- und Behördendaten.
 """
 
-import os
 import re
 from dataclasses import dataclass
 from datetime import date

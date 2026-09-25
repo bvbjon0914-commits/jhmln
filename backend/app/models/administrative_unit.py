@@ -18,13 +18,13 @@ from app.database.base import Base
 class AdministrativeUnit(Base):
     """
     Referenztabelle: Offizielle Gemeinde-/Kreis-/Länderstruktur.
-    
+
     Primary Key: ags (8-stellig, eindeutig pro Gemeinde)
-    
+
     Diese Tabelle wird per Import aus dem Destatis-Gemeindeverzeichnis
     befüllt und NICHT manuell gepflegt.
     """
-    
+
     __tablename__ = "administrative_units"
 
     # Primary Key: vollständiger AGS (8-stellig)
@@ -78,10 +78,10 @@ class AdministrativeUnit(Base):
     def parse_ags(ags: str) -> dict:
         """
         Zerlegt einen 8-stelligen AGS in seine Bestandteile.
-        
+
         Beispiel: "05911000"
             -> land="05", rb="9", kreis="05911", gemeinde="000"
-        
+
         Hinweis: Nicht alle Bundesländer nutzen die RB-Stelle
         (z.B. Bayern, Baden-Württemberg schon; Nordrhein-Westfalen
         historisch auch, andere Länder haben hier "0").

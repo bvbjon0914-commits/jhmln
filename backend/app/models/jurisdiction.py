@@ -8,7 +8,7 @@ Sie verbindet Auskunftsarten mit Behörden auf Basis geografischer Kriterien.
 from datetime import datetime, date
 from enum import Enum
 from sqlalchemy import (
-    Column, String, Integer, Boolean, DateTime, Date, Text, Index, ForeignKey, Float
+    Column, String, Integer, Boolean, DateTime, Date, Text, Index, ForeignKey
 )
 from app.database.base import Base
 
@@ -31,10 +31,10 @@ class Jurisdiction(Base):
     """
     Zuständigkeitsmatrix: Verbindet Auskunftsarten mit Behörden
     über geografische Kriterien.
-    
+
     Primary Key: jurisdiction_id
     """
-    
+
     __tablename__ = "jurisdictions"
 
     # Primary Key
@@ -45,7 +45,7 @@ class Jurisdiction(Base):
     authority_id = Column(String(50), ForeignKey("authorities.authority_id"), nullable=False, index=True)
 
     # ========== Geografische Zuordnung (hierarchisch) ==========
-    
+
     # Ländercode (zur Zukunftssicherung, initial nur DE)
     country = Column(String(2), default="DE", nullable=False)
 
@@ -71,7 +71,7 @@ class Jurisdiction(Base):
     house_number = Column(String(20), nullable=True)
 
     # ========== Zeitliche Gültigkeit ==========
-    
+
     valid_from = Column(Date, nullable=True)
     valid_to = Column(Date, nullable=True)
 
@@ -123,7 +123,7 @@ class Jurisdiction(Base):
         Index('idx_jurisdiction_request_type_street', 'request_type_id', 'street', 'priority'),
         Index('idx_jurisdiction_request_type_district', 'request_type_id', 'district', 'priority'),
         Index('idx_jurisdiction_request_type_state', 'request_type_id', 'state', 'priority'),
-        
+
         # Weitere Indizes
         Index('idx_jurisdiction_active', 'active'),
         Index('idx_jurisdiction_priority', 'priority'),
@@ -141,19 +141,19 @@ class Jurisdiction(Base):
     def is_valid_today(self) -> bool:
         """Prüft, ob diese Regel heute gültig ist."""
         today = date.today()
-        
+
         if self.valid_from and today < self.valid_from:
             return False
         if self.valid_to and today > self.valid_to:
             return False
-        
+
         return self.active
 
     def get_specificity_score(self) -> int:
         """
         Gibt einen Spezifitätsscore basierend auf filling details zurück.
         Je höher, desto spezifischer die Regel.
-        
+
         Wird verwendet, um bei mehreren Matches die spezifischste zu wählen.
         """
         score = 0

@@ -12,7 +12,6 @@ Redeploy gelöscht wird – eine echte Behörden-Antwort darf dabei nicht
 verloren gehen.
 """
 
-from datetime import datetime
 from sqlalchemy import Column, String, DateTime, LargeBinary, ForeignKey
 from app.database.base import Base
 

@@ -10,10 +10,10 @@ from app.database.base import Base
 class Building(Base):
     """
     Repräsentiert ein Gebäude mit Adressdaten und Metainformationen.
-    
+
     Primary Key: building_id (interne eindeutige ID)
     """
-    
+
     __tablename__ = "buildings"
 
     # Primary Key
@@ -24,24 +24,25 @@ class Building(Base):
     house_number = Column(String(20), nullable=False)
     postal_code = Column(String(10), nullable=True, index=True)
     city = Column(String(100), nullable=False, index=True)
-    
+
     # Geografische Identifikatoren
     district = Column(String(100), nullable=True)  # Stadtteil / Bezirk
     state = Column(String(50), nullable=True)      # Bundesland
-    ags = Column(String(12), unique=False, nullable=True, index=True)  # Amtlicher Gemeindeschlüssel (mehrere Gebäude teilen sich eine Gemeinde)
-    
+    # Amtlicher Gemeindeschlüssel (mehrere Gebäude teilen sich eine Gemeinde)
+    ags = Column(String(12), unique=False, nullable=True, index=True)
+
     # Koordinaten (für zukünftige Geocoding-Integration)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
-    
+
     # Metadaten des Gebäudes
     property_name = Column(String(255), nullable=True)  # Name des Objekts
     internal_reference = Column(String(100), unique=True, nullable=True, index=True)  # Interne Referenz
-    
+
     # Audit-Felder
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    
+
     # Notizen / Zusatzinfo
     notes = Column(Text, nullable=True)
 

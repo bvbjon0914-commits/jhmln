@@ -19,7 +19,10 @@ from app.config import ALLOWED_ORIGINS
 from app.database import init_db
 
 # API-Routen
-from app.api import buildings, authorities, request_types, matching, documents, requests_api, imports, geo, jurisdictions, auth, data_quality, cases, data_sources, mailbox_inbound
+from app.api import (
+    buildings, authorities, request_types, matching, documents, requests_api,
+    imports, geo, jurisdictions, auth, data_quality, cases, data_sources, mailbox_inbound,
+)
 from app.api.auth import require_login
 
 # Logging
@@ -38,9 +41,9 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Authority Matching System...")
     init_db()
     logger.info("✓ Database initialized")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("🛑 Shutting down Authority Matching System...")
 
@@ -66,6 +69,7 @@ app.add_middleware(
 )
 
 # ========== Health Check ==========
+
 
 @app.get("/health", tags=["System"])
 async def health_check():
@@ -143,7 +147,7 @@ if SERVE_FRONTEND:
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
