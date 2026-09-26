@@ -132,6 +132,14 @@ KIRCHBERG_HUNSRUECK_AGS = [
     "07140145", "07140146", "07140151", "07140154", "07140159", "07140163", "07140164", "07140165",
 ]
 
+DAUN_AGS = [
+    "07233006", "07233008", "07233011", "07233014", "07233016", "07233017", "07233018", "07233020",
+    "07233021", "07233025", "07233027", "07233030", "07233031", "07233034", "07233039", "07233040",
+    "07233042", "07233043", "07233046", "07233049", "07233052", "07233055", "07233061", "07233062",
+    "07233063", "07233064", "07233065", "07233067", "07233068", "07233070", "07233071", "07233074",
+    "07233075", "07233077", "07233079", "07233081", "07233084", "07233501",
+]
+
 VERBANDSGEMEINDEN = {
     "Verbandsgemeindeverwaltung Bitburger Land - Abt. 4 (Bauen und Umwelt)": dict(
         street="Hubert-Prim-Straße", house_number="7", postal_code="54634", city="Bitburg",
@@ -177,6 +185,13 @@ VERBANDSGEMEINDEN = {
             "(Abteilung Bauen und Umwelt), Begriff 'Erschließung' wörtlich genannt"
         ),
         beleglage="stark", ags_liste=KIRCHBERG_HUNSRUECK_AGS,
+    ),
+    "Verbandsgemeindeverwaltung Daun - Sachgebiet 4.2 (Abgaben)": dict(
+        street="Leopoldstraße", house_number="29", postal_code="54550", city="Daun",
+        phone="06592 939-0", email="info@vgv.daun.de",
+        source_url="https://www.vgv-daun.de/buergerservice-1/abteilungen/RLP:department:267684/sachgebiet-4-2-abgaben/",
+        belegt_fuer="'Erschließungsbeitrag zahlen' explizit als Aufgabe von Sachgebiet 4.2 - Abgaben gelistet",
+        beleglage="stark", ags_liste=DAUN_AGS,
     ),
 }
 
