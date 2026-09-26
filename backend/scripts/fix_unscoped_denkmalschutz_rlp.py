@@ -10,15 +10,25 @@ diese drei Landkreise fehlgeschlagen, statt die Zeile zu überspringen oder
 einen Fehler zu melden.
 
 Betrifft (identifiziert per Handauswahl, NICHT per automatischer
-Namens-Fuzzy-Suche - bei nur drei Fällen ist die manuelle, geprüfte
+Namens-Fuzzy-Suche - bei so wenigen Fällen ist die manuelle, geprüfte
 Zuordnung sicherer als ein generisches Namens-Matching, das sich leicht
 vertun könnte):
 
   - "Kreisverwaltung Rhein-Hunsrück - Untere Denkmalschutzbehörde" -> Landkreis Rhein-Hunsrück-Kreis (07140)
   - "Kreisverwaltung Rhein-Lahn - Untere Denkmalschutzbehörde"     -> Landkreis Rhein-Lahn-Kreis (07141)
   - "Kreisverwaltung Rhein-Pfalz - Untere Denkmalschutzbehörde"    -> Rhein-Pfalz-Kreis (07338)
+  - "Stadtverwaltung Ludwigshafen - Untere Denkmalschutzbehörde"   -> Stadt Ludwigshafen am Rhein (07314,
+    kreisfreie Stadt - COUNTY-Ebene hier äquivalent zu MUNICIPALITY, da die Stadt ihr eigener Kreis ist)
 
-Bundesweit gibt es denselben Nullscope-Fehler noch 65-mal weitere Male
+Bewusst NICHT einbezogen: "Stadtverwaltung Neustadt - Untere
+Denkmalschutzbehörde" - deren bestehende Regel (ags=07138044, Kreis
+Neuwied) und Authority.city="Asbach" zeigen, dass dies tatsächlich
+"Neustadt (Wied)" ist, ein anderer Ort als das gesuchte "Neustadt an der
+Weinstraße" (kreisfreie Stadt, ags 07316000) - für Letzteres existiert
+keine erkennbare bestehende Behörde, das bleibt eine echte, ungeschlossene
+Lücke (keine Verwechslungsgefahr in Kauf genommen).
+
+Bundesweit gibt es denselben Nullscope-Fehler noch weitere Male
 (DENKMALSCHUTZ, WASSERSCHUTZ, HOCHWASSERSCHUTZ, ALTLASTEN, außerhalb RLP/SH)
 - NICHT Teil dieses Fixes, siehe docs/ABSCHLUSSBERICHT_DATENQUALITAET.md für
 den vollständigen Befund.
@@ -38,6 +48,7 @@ REVIEWER = "Claude (Recherche-Sitzung 2026-09-26, Korrektur eines Nullscope-Impo
 CASES = [
     ("78c72d08-4a17-4bd2-b685-15567fd5bf14", "07140", "Rhein-Hunsrück-Kreis", 137),
     ("d37826cb-7d99-4514-b67e-6dca4eea76d5", "07141", "Rhein-Lahn-Kreis", 137),
+    ("faab2688-225b-4969-a264-8317837ae3b4", "07314", "Ludwigshafen am Rhein", 1),
     ("416beb44-6c0c-462a-9c18-ee56ee3ae0d8", "07338", "Rhein-Pfalz-Kreis", 25),
 ]
 
