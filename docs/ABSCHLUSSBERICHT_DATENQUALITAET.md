@@ -597,42 +597,127 @@ insgesamt), die zusammen alle 2.300 RLP-Gemeinden abdecken. Jede einzelne
 braucht dieselbe Art Einzelrecherche wie beim Trier-Fall - es gibt keinen
 Landesamt-artigen Abkürzungsweg wie bei Bodendenkmalschutz/Kataster, weil
 Erschließungsbeiträge strukturell IMMER auf VG-/Gemeinde-Ebene organisiert
-sind. Von den 129 RLP-Verbandsgemeinden wurden bislang recherchiert:
+sind (rechtlich zudem nicht garantiert einheitlich: nach § 67 GemO RLP
+kann, muss aber nicht, eine Verbandsgemeinde diese Aufgabe von ihren
+Ortsgemeinden übernommen haben - deshalb bewusst KEINE pauschale
+Übertragung auf alle 129 VGs ohne Einzelbeleg). Bislang recherchiert (5 von
+129):
 
-- **Verbandsgemeinde Bitburger Land** (71 Gemeinden, größte VG in RLP,
-  liegt im NO_MATCH-stärksten Kreis Eifelkreis Bitburg-Prüm): zuständig
-  ist Abt. 4 "Bauen und Umwelt", Hubert-Prim-Straße 7, 54634 Bitburg.
-- **Verbandsgemeinde Altenkirchen-Flammersfeld** (67 Gemeinden): zuständig
-  ist Fachgebiet 3.2 "Beiträge für Verkehrsanlagen, Infrastruktur",
-  Rathausstraße 13, 57610 Altenkirchen.
-- **Verbandsgemeinde Südeifel** (65 Gemeinden) geprüft, aber
-  zurückgestellt: die amtliche Organigramm-Seite ist clientseitig
-  gerendert (JavaScript) und lieferte über WebFetch/Browser keine
-  auslesbare Abteilungsangabe - keine Vermutung als Fundstelle
-  ausgegeben.
+| Verbandsgemeinde | Gemeinden | Zuständige Stelle | Adresse | Beleglage |
+|---|---|---|---|---|
+| Bitburger Land (größte VG in RLP, Eifelkreis Bitburg-Prüm) | 71 | Abt. 4 Bauen und Umwelt | Hubert-Prim-Str. 7, 54634 Bitburg | schwächer (nur "Ausbaubeiträge" belegt) |
+| Altenkirchen-Flammersfeld | 67 | Fachgebiet 3.2 (Beiträge für Verkehrsanlagen, Infrastruktur) | Rathausstr. 13, 57610 Altenkirchen | schwächer |
+| Prüm (Eifelkreis Bitburg-Prüm) | 44 | Abt. 2.9 "Erschließungs- u. Ausbaubeiträge" | Tiergartenstr. 54, 54595 Prüm | **stark** - Begriff wörtlich genannt |
+| Arzfeld (Eifelkreis Bitburg-Prüm) | 43 | Fachbereich Bauen & Umwelt, eigene Seite "Erschließungsbeiträge" | Luxemburger Str. 6, 54687 Arzfeld | **stark** |
+| Simmern-Rheinböllen (Rhein-Hunsrück-Kreis) | 44 | Finanzen, "Erschließungsbeiträge Verkehrsanlagen" wörtlich gelistet | Brühlstr. 2, 55469 Simmern/Hunsrück | **stark** |
 
-138 neue MUNICIPALITY-Regeln, 0 Konflikte, dry-run-getestet vor Anwendung
-auf die echte Datenbank (Backup:
-`authority_matching.db.bak_pre_erschliessung_vg_rlp`).
+**269 neue MUNICIPALITY-Regeln, 0 Konflikte**, jeweils dry-run-getestet vor
+Anwendung auf die echte Datenbank. Alle Adressen wurden gegen das
+Destatis-Anschriftenverzeichnis (Abschnitt 13.1) gegengeprüft - exakte
+Übereinstimmung in allen 5 Fällen.
 
-**Beleglage bewusst niedriger markiert als beim Trier-Fall**: Trier nannte
-"Ausbaubeiträge UND Erschließungsbeiträge" explizit kombiniert. Für
-Bitburger Land und Altenkirchen-Flammersfeld bestätigen die amtlichen
-Quellen die genannte Abteilung nur für "Ausbaubeiträge" bzw. "Beiträge für
-Verkehrsanlagen/Infrastruktur" - nicht wörtlich für "Erschließungsbeiträge"
-(§ 127 ff. BauGB, rechtlich eine andere Grundlage als das kommunale
-Ausbaubeitragsrecht). In der Praxis bearbeitet fast immer dieselbe Stelle
-beides, das ist hier aber NICHT wörtlich einzeln belegt - in jeder Regel
-(`notes`-Feld) und im Skript-Docstring
-(`scripts/seed_erschliessung_vg_rlp.py`) explizit vermerkt, keine
-gleichwertige Beleglage vorgetäuscht.
+**Prüfstatus jetzt korrekt nach Beleglage getrennt** (siehe Abschnitt 13.3
+für die zugehörige Code-Korrektur): 132 Regeln (Prüm, Arzfeld,
+Simmern-Rheinböllen + Trier) `VERIFIED`, 138 Regeln (Bitburger Land,
+Altenkirchen-Flammersfeld) `AUTO_IMPORTED` - technisch nutzbar (benannte
+Organisation, belegter Geltungsbereich, echte Kontaktdaten), aber bewusst
+NICHT als fachlich verifiziert gezählt, weil die Quelle nur die eng
+verwandte "Ausbaubeiträge"-Zuständigkeit wörtlich bestätigt, nicht
+"Erschließungsbeiträge" selbst.
 
-**Realistischer Restaufwand**: 126 von 129 RLP-Verbandsgemeinden bleiben
+**Zurückgestellt**: Verbandsgemeinde Südeifel (65 Gemeinden) - Adresse aus
+dem Anschriftenverzeichnis bekannt (Pestalozzistr. 7, 54673 Neuerburg),
+aber die amtliche Organigramm-Seite ist clientseitig gerendert (JavaScript)
+und lieferte über WebFetch/Browser/Browser-Rendering keine auslesbare
+Abteilungsangabe für Erschließungsbeiträge - eine Adresse allein erfüllt
+NICHT die Anforderung "konkret benannte zuständige Organisation" für diese
+Auskunftsart, deshalb keine Regel angelegt.
+
+**Realistischer Restaufwand**: 124 von 129 RLP-Verbandsgemeinden bleiben
 offen, plus die strukturell entsprechenden "Amtsverwaltungen" in
 Schleswig-Holstein (SH nennt seine Verbandsgemeinde-Entsprechung "Amt")
 und alle Verbandsgemeinde-/Amt-Äquivalente der übrigen 14 Bundesländer.
-Bei einer Recherchedauer von real 1-3 Suchanfragen pro Einheit (wie hier
-demonstriert) ist das kein Fix, sondern ein mehrwöchiges
+Bei einer Recherchedauer von real 1-2 Suchanfragen pro Einheit (Adresse
+jetzt aus dem Anschriftenverzeichnis, nur noch die fachliche Zuständigkeit
+einzeln zu prüfen) ist das kein Fix, sondern ein mehrwöchiges
 Recherchevorhaben allein für RLP - der Nutzer hat dies nach Rückfrage
 ausdrücklich bestätigt (gleiches Tempo/gleiche Sorgfalt fortsetzen, kein
 verkürztes Verfahren).
+
+## 13. Erweiterte Methodik auf ausdrücklichen Wunsch: Anschriftenverzeichnis, PVOG-API-Befund, Prüfstatus-Trennung
+
+### 13.1 Destatis-Anschriftenverzeichnis der Gemeinde- und Stadtverwaltungen
+
+Vom Nutzer bereitgestellt: `20260131_Anschriften_der_Gemeinde_und_
+Stadtverwaltungen.xlsx` - das amtliche Destatis-Verzeichnis mit ARS/AGS,
+Adresse und allgemeiner E-Mail für JEDE deutsche Gemeinde-/Stadtverwaltung,
+jeden Landkreis und jede Verbandsgemeinde/jedes Amt/jede Samtgemeinde
+(13.750 Zeilen, Stand 31.01.2026).
+
+**Explizit beachtet** (Auftrag: "Die allgemeine Verwaltungs-E-Mail darf
+nicht automatisch zum bestätigten Fachamtkontakt werden"):
+`app/services/address_directory.py` liefert AUSSCHLIESSLICH
+Organisationsname/Adresse/allgemeine E-Mail über den Amtlichen
+Regionalschlüssel (ARS) - nie eine fachliche Zuständigkeitsaussage. Jede
+Verwendung im Projekt kombiniert diese Adressdaten mit einer SEPARAT
+belegten fachlichen Quelle (siehe Abschnitt 12).
+
+**Kreuzvalidierung**: die Adressen für alle 5 in Abschnitt 12 recherchierten
+Verbandsgemeinden stimmen exakt mit der unabhängigen Web-Recherche überein
+- ein starker Beleg für die Zuverlässigkeit beider Quellen. Das Verzeichnis
+beschleunigt künftige Durchläufe erheblich: die Adress-Recherche (bisher
+~1 Suchanfrage je Einheit) entfällt, es bleibt nur noch die fachliche
+Zuständigkeitsprüfung.
+
+Getestet mit einer synthetischen Mini-Fixture (`tests/fixtures/
+mini_anschriften.xlsx`) - die echte, große Datei wird NICHT in Tests
+eingebunden und NICHT ins Repository übernommen (Destatis-Werk, wie auch
+die VG250-Rohdaten).
+
+### 13.2 PVOG-Bereitstelldienst-API: definitiver Befund
+
+Auf Hinweis des Nutzers ("pvog.fitko.de - auch hier kannst du per API
+suchen") die tatsächliche OpenAPI-Spezifikation direkt abgerufen
+(`https://pvog.fitko.net/bereitstelldienst/api/v3/api-docs/
+Datenbestandabruf`, Lizenz der API selbst: CC BY-SA 4.0). Ergebnis:
+
+- **Genau ein Endpunkt** (`/v3/verwaltungsobjekte/xzufi-2-3-1`), der exakt
+  liefert, was gesucht wird: "Leistungen, Leistungsspezialisierungen,
+  Organisationseinheiten, Onlinedienste, Formulare und Zuständigkeiten"
+  als XZuFi-Nachrichten, einschränkbar nach Amtlichem Regionalschlüssel.
+- **Erfordert zwingend OAuth2** (`"security":[{"OAUTH2":[]}]`) mit einem
+  echten Keycloak-Authorization-Code-Flow bei
+  `pvog.fitko.net/auth/realms/pvog/...` - keine anonyme Nutzung möglich.
+
+Das ist jetzt ein **definitiver, belegter Befund statt einer offenen
+Frage** (vorheriger Stand: "Zugang unklar"). Eine Nutzung setzt voraus,
+dass sich eine Organisation (z.B. civeloq) bei der FITKO als Konsument
+registriert und OAuth2-Client-Credentials erhält - das kann nur der Nutzer
+selbst veranlassen, keine KI-Sitzung. Auf Wunsch kann ein Registrierungs-
+/Anfrage-Text dafür entworfen werden.
+
+### 13.3 Prüfstatus-Trennung: "technisch abgedeckt" vs. "fachlich verifiziert" jetzt im Schema selbst
+
+Der Auftrag definiert beide als getrennte Kennzahlen. Bisher setzte
+`approve_entry()` bei JEDER Freigabe pauschal `verification_status=
+VERIFIED` - unabhängig davon, ob die Quelle die Zuständigkeit wörtlich für
+GENAU diese Auskunftsart bestätigt oder nur für eine eng verwandte
+Leistung. Das hätte die 138 Bitburger-Land-/Altenkirchen-Flammersfeld-
+Regeln (Abschnitt 12) fälschlich als "fachlich verifiziert" ausgewiesen.
+
+**Korrektur**: `approve_entry()` hat jetzt einen
+`resulting_verification_status`-Parameter (Standard weiterhin `VERIFIED`,
+keine Verhaltensänderung für bereits bestehende Aufrufer). Bei schwächerer
+Beleglage kann der Aufrufer `AUTO_IMPORTED` übergeben - die Regel bleibt
+"technisch abgedeckt" (benannte Organisation + belegter Geltungsbereich +
+nutzbarer Kontaktweg), zählt aber nicht als "fachlich verifiziert". Die
+Begründung wird jetzt zusätzlich ins `notes`-Feld der Regel selbst
+übernommen, nicht nur auf den Staging-Eintrag - sichtbar auch bei direkter
+Abfrage von `jurisdictions`. Die 138 bereits (vor dieser Korrektur)
+freigegebenen Regeln wurden rückwirkend korrigiert
+(`scripts/fix_erschliessung_vg_verification_status.py`) - keine Änderung
+an Geltungsbereich oder Behörde, nur am Prüfstatus.
+
+Eigener Test (`test_approve_entry_with_weaker_evidence_does_not_get_
+marked_verified`) sichert dieses Verhalten ab. Volle Testsuite (159 Tests)
+weiterhin grün.
