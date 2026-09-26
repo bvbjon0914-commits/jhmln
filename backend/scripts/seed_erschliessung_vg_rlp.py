@@ -140,6 +140,14 @@ DAUN_AGS = [
     "07233075", "07233077", "07233079", "07233081", "07233084", "07233501",
 ]
 
+GEROLSTEIN_AGS = [
+    "07233002", "07233004", "07233005", "07233007", "07233019", "07233022", "07233023", "07233026",
+    "07233028", "07233029", "07233033", "07233035", "07233036", "07233038", "07233041", "07233050",
+    "07233053", "07233054", "07233056", "07233058", "07233060", "07233076", "07233080", "07233083",
+    "07233204", "07233209", "07233211", "07233214", "07233219", "07233223", "07233227", "07233229",
+    "07233232", "07233235", "07233237", "07233239", "07233240", "07233241",
+]
+
 VERBANDSGEMEINDEN = {
     "Verbandsgemeindeverwaltung Bitburger Land - Abt. 4 (Bauen und Umwelt)": dict(
         street="Hubert-Prim-Straße", house_number="7", postal_code="54634", city="Bitburg",
@@ -192,6 +200,16 @@ VERBANDSGEMEINDEN = {
         source_url="https://www.vgv-daun.de/buergerservice-1/abteilungen/RLP:department:267684/sachgebiet-4-2-abgaben/",
         belegt_fuer="'Erschließungsbeitrag zahlen' explizit als Aufgabe von Sachgebiet 4.2 - Abgaben gelistet",
         beleglage="stark", ags_liste=DAUN_AGS,
+    ),
+    "Verbandsgemeindeverwaltung Gerolstein - 2.2 (Bauleitplanung, Umwelt, Beiträge)": dict(
+        street="Kyllweg", house_number="1", postal_code="54568", city="Gerolstein",
+        phone="06591 13-0", email="post@gerolstein.de",
+        source_url="https://www.gerolstein.de/buergerservice/leistungen/RLP:entry:64968/anliegerbeitraege/",
+        belegt_fuer=(
+            "eigene Amtsseite 'Anliegerbeiträge' nennt Erschließungsbeiträge explizit als Unterart "
+            "('erstmaliger bebauungsplanmäßiger Ausbau'), Abteilung 2.2 Bauleitplanung, Umwelt, Beiträge"
+        ),
+        beleglage="stark", ags_liste=GEROLSTEIN_AGS,
     ),
 }
 
