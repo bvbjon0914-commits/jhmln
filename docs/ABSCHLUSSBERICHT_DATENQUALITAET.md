@@ -576,9 +576,63 @@ sofort wieder zerstören - für alle 16.446 Regeln, nicht nur für RLP/SH.
 **Was ich statt "100 % per Behauptung" anbiete**: denselben realen Prozess
 (Definition klären -> amtliche Quelle recherchieren -> Staging ->
 Konfliktprüfung -> Freigabe -> Matching-Test), gezielt auf den nächsten
-größten Hebel angewendet - z.B. Erschließungsbeiträge über eine
-VG250-Verbandsgemeinde-Zuordnung ausweiten, Einzelverifikation der
-bestehenden Altlasten-/Grundbuch-/Wasserschutz-Regeln, oder
-Bodendenkmalschutz/Liegenschaftskataster/Denkmalschutz für die übrigen 14
-Bundesländer. Das braucht weitere, einzeln benannte Recherche-Durchläufe wie diesen -
-keinen Knopfdruck.
+größten Hebel angewendet - siehe Abschnitt 12 für den konkreten nächsten
+Schritt (Erschließungsbeiträge über VG250-Verbandsgemeinde-Zuordnung) und
+die ehrliche Aufwandseinordnung, warum "ganz Deutschland, 100 %" auf
+diesem Weg Wochen bis Monate weiterer, einzeln benannter
+Recherche-Durchläufe braucht - keinen Knopfdruck.
+
+## 12. Erschließungsbeiträge: VG250-Verbandsgemeinde-Ausweitung (Anfang)
+
+Auf ausdrücklichen Wunsch begonnen, den Trier-Einzelfall (Abschnitt 3.2)
+über die amtliche BKG-VG250-Gemeinde-zu-Verbandsgemeinde-Zuordnung
+(Sheet `VGTB_VZ_GEM`, Spalten `ARS_V`/`GEN_V`/`BEZ_V` - dieselbe
+VG250-Ausgabe, die bereits für den AdministrativeUnit-Abgleich in
+Abschnitt 3 heruntergeladen wurde) auf weitere Verbandsgemeinden
+auszuweiten.
+
+**Tatsächliche Größenordnung, real gemessen**: Rheinland-Pfalz hat **129
+Verbandsgemeinden plus 41 verbandsfreie Gemeinden/kreisfreie Städte** (170
+insgesamt), die zusammen alle 2.300 RLP-Gemeinden abdecken. Jede einzelne
+braucht dieselbe Art Einzelrecherche wie beim Trier-Fall - es gibt keinen
+Landesamt-artigen Abkürzungsweg wie bei Bodendenkmalschutz/Kataster, weil
+Erschließungsbeiträge strukturell IMMER auf VG-/Gemeinde-Ebene organisiert
+sind. Von den 129 RLP-Verbandsgemeinden wurden bislang recherchiert:
+
+- **Verbandsgemeinde Bitburger Land** (71 Gemeinden, größte VG in RLP,
+  liegt im NO_MATCH-stärksten Kreis Eifelkreis Bitburg-Prüm): zuständig
+  ist Abt. 4 "Bauen und Umwelt", Hubert-Prim-Straße 7, 54634 Bitburg.
+- **Verbandsgemeinde Altenkirchen-Flammersfeld** (67 Gemeinden): zuständig
+  ist Fachgebiet 3.2 "Beiträge für Verkehrsanlagen, Infrastruktur",
+  Rathausstraße 13, 57610 Altenkirchen.
+- **Verbandsgemeinde Südeifel** (65 Gemeinden) geprüft, aber
+  zurückgestellt: die amtliche Organigramm-Seite ist clientseitig
+  gerendert (JavaScript) und lieferte über WebFetch/Browser keine
+  auslesbare Abteilungsangabe - keine Vermutung als Fundstelle
+  ausgegeben.
+
+138 neue MUNICIPALITY-Regeln, 0 Konflikte, dry-run-getestet vor Anwendung
+auf die echte Datenbank (Backup:
+`authority_matching.db.bak_pre_erschliessung_vg_rlp`).
+
+**Beleglage bewusst niedriger markiert als beim Trier-Fall**: Trier nannte
+"Ausbaubeiträge UND Erschließungsbeiträge" explizit kombiniert. Für
+Bitburger Land und Altenkirchen-Flammersfeld bestätigen die amtlichen
+Quellen die genannte Abteilung nur für "Ausbaubeiträge" bzw. "Beiträge für
+Verkehrsanlagen/Infrastruktur" - nicht wörtlich für "Erschließungsbeiträge"
+(§ 127 ff. BauGB, rechtlich eine andere Grundlage als das kommunale
+Ausbaubeitragsrecht). In der Praxis bearbeitet fast immer dieselbe Stelle
+beides, das ist hier aber NICHT wörtlich einzeln belegt - in jeder Regel
+(`notes`-Feld) und im Skript-Docstring
+(`scripts/seed_erschliessung_vg_rlp.py`) explizit vermerkt, keine
+gleichwertige Beleglage vorgetäuscht.
+
+**Realistischer Restaufwand**: 126 von 129 RLP-Verbandsgemeinden bleiben
+offen, plus die strukturell entsprechenden "Amtsverwaltungen" in
+Schleswig-Holstein (SH nennt seine Verbandsgemeinde-Entsprechung "Amt")
+und alle Verbandsgemeinde-/Amt-Äquivalente der übrigen 14 Bundesländer.
+Bei einer Recherchedauer von real 1-3 Suchanfragen pro Einheit (wie hier
+demonstriert) ist das kein Fix, sondern ein mehrwöchiges
+Recherchevorhaben allein für RLP - der Nutzer hat dies nach Rückfrage
+ausdrücklich bestätigt (gleiches Tempo/gleiche Sorgfalt fortsetzen, kein
+verkürztes Verfahren).
