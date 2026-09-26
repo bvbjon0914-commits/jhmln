@@ -662,6 +662,71 @@ Abteilungsangabe für Erschließungsbeiträge - eine Adresse allein erfüllt
 NICHT die Anforderung "konkret benannte zuständige Organisation" für diese
 Auskunftsart, deshalb keine Regel angelegt.
 
+### 12.1 Welle 2: 102 weitere Verbandsgemeinden (auf Nutzerauftrag "so viele Agenten wie möglich")
+
+Auf ausdrücklichen Nutzerauftrag ("starte so viele Agenten wie möglich um
+die NO_MATCH Fälle so schnell wie möglich zu vervollständigen") wurden 19
+parallele Recherche-Agenten für die verbleibenden 115 RLP-Verbandsgemeinden
+eingesetzt. Bewusstes Sicherheits-Design: die Agenten recherchierten
+AUSSCHLIESSLICH (Web-Suche, keine Code-/Datenbankzugriffe) und lieferten
+strukturierte Funde mit Quellenangabe zurück - jede Freigabe/jeder
+Datenbank-Schreibzugriff blieb seriell bei einer einzigen Instanz, um
+SQLite-Schreibkonflikte bei paralleler Nutzung zu vermeiden und die
+Sourcing-Qualitätsprüfung nicht auf viele Instanzen zu verteilen.
+
+**Ergebnis: 102 von 115 recherchierten Verbandsgemeinden mit amtlicher
+Quelle belegt** (72 stark, 30 schwächer), **1390 neue MUNICIPALITY-Regeln,
+0 Konflikte**. Damit sind jetzt **116 von 129 RLP-Verbandsgemeinden
+abgedeckt** (vorher 14) - **1999 aktive ERSCHLIESSUNG-Regeln in RLP
+insgesamt** (1578 `VERIFIED`, 421 `AUTO_IMPORTED`, direkt aus der
+Datenbank abgefragt).
+
+**12 Fälle blieben ehrlich als OFFEN gemeldet statt geraten** (keine
+amtliche Quelle mit konkreter Abteilungszuordnung auffindbar, trotz
+gründlicher Recherche inkl. Organigramm-PDFs, Telefonverzeichnissen,
+Mitarbeiterseiten und - wo zugänglich - dem Landesportal service.rlp.de):
+Adenau, Birkenfeld, Cochem, Selters (Westerwald), **Leiningerland**
+(erneut geprüft - weiterhin ausschließlich ein Zeitungsartikel als einzige
+gefundene Stütze, Sourcing-Standard bleibt konsequent angewendet),
+Brohltal, Hermeskeil, Landstuhl, Hauenstein, Lambsheim-Heßheim, Bad
+Breisig, Unkel. Zusammen mit Südeifel bleiben damit **13 von 129 RLP-VGs
+offen** - realistischer, ehrlich ausgewiesener Rest statt erfundener
+100 %.
+
+**Eigenständige Nachprüfung statt blindes Übernehmen**: bei vier Fällen,
+deren Beleglage von den Recherche-Agenten selbst als unsicher markiert
+wurde, wurde die Quelle zusätzlich selbst abgerufen (curl/pdftotext) und
+geprüft, bevor sie übernommen wurde:
+- **Sprendlingen-Gensingen**: Quelle trägt den Titel "Erschließung von
+  Grundstücken" - dieselbe Formulierung, die beim Daun-Fall (Abschnitt 12)
+  ursprünglich eine Wasser-/Abwasser-Verwechslung ausgelöst hatte. Eigene
+  Prüfung bestätigt: die Seite nennt "Erschließungsbeiträge" wörtlich UND
+  den für § 129 BauGB charakteristischen "Gemeindeanteil von mindestens
+  10 %" - eindeutig die richtige Rechtsgrundlage. Übernommen als stark.
+- **Weilerbach**: Beleg war ein PDF, das für den Agenten nicht
+  volltextdurchsuchbar war (Bild-Rendering-Verdacht) - eigene
+  `pdftotext`-Extraktion bestätigt "Sachgebiet 3.1.4 - Erschließungs- und
+  Ausbaubeiträge" wörtlich. Übernommen als stark.
+- **Herxheim**: Beleg war nur ein Suchmaschinen-Snippet - eigener
+  PDF-Abruf bestätigt eine amtliche "Beitragsrechtliche Stellungnahme in
+  Bezug auf Erschließungsbeiträge" von Fachbereich 2, sogar eindeutiger
+  als ursprünglich berichtet. Übernommen als stark.
+- **Oberes Glantal**: einzige Quelle war das Landesportal service.rlp.de,
+  das per ALTCHA-Bot-Schutz blockiert ist - weder der Agent noch die
+  eigene Nachprüfung (curl, VG-eigene Seite ist rein JavaScript-basiert)
+  konnte den Wortlaut selbst einsehen, nur mehrfach übereinstimmende
+  Suchergebnis-Snippets. Da nicht selbst verifizierbar, bewusst auf
+  **schwächer** herabgestuft statt mit derselben Sicherheit wie ein
+  selbst gelesener Beleg übernommen zu werden.
+
+Umgesetzt in `scripts/seed_erschliessung_vg_rlp_wave2.py`. AGS-Zuordnung
+wird zur Laufzeit aus den amtlichen VG250-Rohdaten (`rlp_gemeinde_vg_map.csv`,
+jetzt versioniert) nachgeschlagen statt (wie in der ersten Welle) je VG
+händisch als Konstante gepflegt - sicherer bei 102 statt 14 Einheiten.
+Dry-Run-Stichproben (u.a. Kirchheimbolanden-Stadt korrekt von der
+Nachbar-VG Nordpfälzer Land unterschieden) und volle Testsuite (159 Tests)
+grün vor Anwendung auf die echte Datenbank.
+
 **Realistischer Restaufwand**: 119 von 129 RLP-Verbandsgemeinden bleiben
 offen, plus die strukturell entsprechenden "Amtsverwaltungen" in
 Schleswig-Holstein (SH nennt seine Verbandsgemeinde-Entsprechung "Amt")
