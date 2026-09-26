@@ -198,6 +198,12 @@ LAUTERECKEN_WOLFSTEIN_AGS = [
     "07336105",
 ]
 
+LEININGERLAND_AGS = [
+    "07332001", "07332003", "07332004", "07332006", "07332007", "07332010", "07332012", "07332021",
+    "07332023", "07332027", "07332029", "07332030", "07332031", "07332033", "07332036", "07332038",
+    "07332040", "07332041", "07332042", "07332044", "07332047",
+]
+
 VERBANDSGEMEINDEN = {
     "Verbandsgemeindeverwaltung Bitburger Land - Abt. 4 (Bauen und Umwelt)": dict(
         street="Hubert-Prim-Straße", house_number="7", postal_code="54634", city="Bitburg",
@@ -306,6 +312,16 @@ VERBANDSGEMEINDEN = {
         source_url="https://www.vg-lw.de/buerger-verwaltung/verwaltung/finanzen/steuern-gebuehren-und-beitraege/erschliessungsbeitraege/",
         belegt_fuer="eigene, dedizierte Amtsseite 'Erschließungsbeiträge' unter Finanzen > Steuern, Gebühren und Beiträge",
         beleglage="stark", ags_liste=LAUTERECKEN_WOLFSTEIN_AGS,
+    ),
+    "Verbandsgemeindeverwaltung Leiningerland - Fachbereich Finanzen": dict(
+        street="Industriestraße", house_number="11", postal_code="67269", city="Grünstadt",
+        phone=None, email="info@vg-l.de",
+        source_url="https://www.rheinpfalz.de/lokal/gruenstadt_artikel,-wegen-neuberechnung-anwohner-muss-h%C3%B6here-beitr%C3%A4ge-zahlen-_arid,5312880.html",
+        belegt_fuer=(
+            "Presseartikel (Die Rheinpfalz) berichtet über einen realen Erschließungsbeitragsfall in "
+            "der VG - kein offizielles VG-Dokument mit expliziter Sachgebiets-Zuordnung gefunden"
+        ),
+        beleglage="schwaecher", ags_liste=LEININGERLAND_AGS,
     ),
 }
 
