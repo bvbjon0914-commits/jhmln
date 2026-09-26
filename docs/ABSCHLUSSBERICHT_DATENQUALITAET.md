@@ -600,42 +600,59 @@ Erschließungsbeiträge strukturell IMMER auf VG-/Gemeinde-Ebene organisiert
 sind (rechtlich zudem nicht garantiert einheitlich: nach § 67 GemO RLP
 kann, muss aber nicht, eine Verbandsgemeinde diese Aufgabe von ihren
 Ortsgemeinden übernommen haben - deshalb bewusst KEINE pauschale
-Übertragung auf alle 129 VGs ohne Einzelbeleg). Bislang recherchiert (10
-von 129):
+Übertragung auf alle 129 VGs ohne Einzelbeleg). Bislang recherchiert (14
+von 129, aktiver Bestand - Leiningerland siehe Rücknahme-Hinweis unten):
 
 | Verbandsgemeinde | Kreis | Gemeinden | Zuständige Stelle | Beleglage |
 |---|---|---|---|---|
 | Bitburger Land (größte VG in RLP) | Eifelkreis Bitburg-Prüm | 71 | Abt. 4 Bauen und Umwelt | schwächer (nur "Ausbaubeiträge" belegt) |
 | Altenkirchen-Flammersfeld | Altenkirchen | 67 | Fachgebiet 3.2 (Beiträge für Verkehrsanlagen, Infrastruktur) | schwächer |
+| Herrstein-Rhaunen | Birkenfeld | 50 | Fachbereich Finanzen, generisch "Abgaben" | schwächer |
+| Wittlich-Land | Bernkastel-Wittlich | 45 | Fachbereich Finanzen/Abgaben | schwächer |
 | Prüm | Eifelkreis Bitburg-Prüm | 44 | Abt. 2.9 "Erschließungs- u. Ausbaubeiträge" | **stark** |
 | Simmern-Rheinböllen | Rhein-Hunsrück-Kreis | 44 | Finanzen, "Erschließungsbeiträge Verkehrsanlagen" wörtlich gelistet | **stark** |
 | Arzfeld | Eifelkreis Bitburg-Prüm | 43 | Fachbereich Bauen & Umwelt, eigene Seite "Erschließungsbeiträge" | **stark** |
+| Lauterecken-Wolfstein | Kusel | 41 | Fachbereich Finanzen, "Erschließungsbeiträge" wörtlich gelistet | **stark** |
 | Kirchberg (Hunsrück) | Rhein-Hunsrück-Kreis | 40 | Bauen und Umwelt, "Erschließungs- oder Ausbaubeiträge" im FAQ | **stark** |
 | Daun | Vulkaneifel | 38 | Sachgebiet 4.2 Abgaben, "Erschließungsbeitrag zahlen" explizit gelistet | **stark** |
 | Gerolstein | Vulkaneifel | 38 | Sachgebiet 2.2 Bauleitplanung/Umwelt/Beiträge, "Anliegerbeiträge"-Seite nennt Erschließungsbeiträge | **stark** |
 | Nordpfälzer Land | Donnersbergkreis | 36 | Abteilung 2 Finanzen, nur generisch "Abgaben" | schwächer |
 | Kusel-Altenglan | Kusel | 34 | Verbandsgemeindeverwaltung insgesamt, Begriff wörtlich auf Amtsseite | **stark** |
+| Betzdorf-Gebhardshain | Altenkirchen | 17 | Fachbereich Finanzen, generisch "Abgaben" | schwächer |
 
-**455 neue MUNICIPALITY-Regeln, 0 Konflikte in allen 10 Durchläufen**,
+**608 neue MUNICIPALITY-Regeln, 0 Konflikte in allen 14 Durchläufen**,
 jeweils dry-run-getestet vor Anwendung auf die echte Datenbank. Alle
 Adressen wurden gegen das Destatis-Anschriftenverzeichnis (Abschnitt 13.1)
-gegengeprüft - exakte Übereinstimmung in allen 10 Fällen. Bei Daun wurde
+gegengeprüft - exakte Übereinstimmung in allen 14 Fällen. Bei Daun wurde
 eine Verwechslungsgefahr aktiv vermieden: die zuerst gefundene Seite
 "Erschließung von Grundstücken" betraf tatsächlich die Wasser-/Abwasser-
 Erschließung (Wirtschaftsbetriebe), nicht die hier gesuchte
 BauGB-Erschließungsbeiträge - erst die zweite, gezielt geprüfte Quelle
 (Sachgebiet 4.2 Abgaben) bestätigte den richtigen Zusammenhang.
 
-**Prüfstatus nach Beleglage getrennt** (siehe Abschnitt 13.3 für die
-Code-Korrektur): **282 Regeln `VERIFIED`** (Prüm, Simmern-Rheinböllen,
-Arzfeld, Kirchberg, Daun, Gerolstein, Kusel-Altenglan + Trier), **174
-Regeln `AUTO_IMPORTED`** (Bitburger Land, Altenkirchen-Flammersfeld,
-Nordpfälzer Land) - technisch nutzbar (benannte Organisation, belegter
-Geltungsbereich, echte Kontaktdaten), aber bewusst NICHT als fachlich
-verifiziert gezählt, weil die Quelle nur eine eng verwandte Zuständigkeit
-oder nur die generische Abgaben-Kategorie wörtlich bestätigt, nicht
-"Erschließungsbeiträge" selbst. (282 + 174 = 456 = 455 neue Regeln aus
-diesem Abschnitt + 1 bereits bestehende Trier-Regel.)
+**Zurückgenommen: Leiningerland** (Donnersbergkreis, 21 Gemeinden) - die
+einzige gefundene Stütze war ein Zeitungsartikel (Die Rheinpfalz), keine
+amtliche VG-Quelle. Auf ausdrücklichen Nutzer-Entscheid ("Nein, keine
+Zeitungsartikel - nur offizielle Quellen zählen") vollständig
+zurückgenommen: alle 21 Regeln deaktiviert (nicht gelöscht, Historie
+bleibt nachvollziehbar), die betroffenen Gemeinden fallen wieder korrekt
+auf NO_MATCH zurück. Der Sourcing-Standard ("source_url MUSS eine
+amtliche Quelle sein, NIE ein Zeitungsartikel") ist seither explizit im
+Docstring von `scripts/seed_erschliessung_vg_rlp.py` verankert.
+
+**Prüfstatus nach Beleglage getrennt, direkt aus der Datenbank abgefragt**
+(siehe Abschnitt 13.3 für die Code-Korrektur): **323 Regeln `VERIFIED`**
+(Prüm, Simmern-Rheinböllen, Arzfeld, Kirchberg, Daun, Gerolstein,
+Kusel-Altenglan, Lauterecken-Wolfstein + Trier), **286 Regeln
+`AUTO_IMPORTED`** (Bitburger Land, Altenkirchen-Flammersfeld,
+Nordpfälzer Land, Herrstein-Rhaunen, Wittlich-Land,
+Betzdorf-Gebhardshain) - technisch nutzbar (benannte Organisation,
+belegter Geltungsbereich, echte Kontaktdaten), aber bewusst NICHT als
+fachlich verifiziert gezählt, weil die Quelle nur eine eng verwandte
+Zuständigkeit oder nur die generische Abgaben-Kategorie wörtlich
+bestätigt, nicht "Erschließungsbeiträge" selbst. (323 + 286 = 609 aktive
+Regeln = 608 neue aus diesem Abschnitt + 1 bereits bestehende
+Trier-Regel; Leiningerlands 21 deaktivierte Regeln nicht mitgezählt.)
 
 **Zurückgestellt**: Verbandsgemeinde Südeifel (65 Gemeinden) - Adresse aus
 dem Anschriftenverzeichnis bekannt (Pestalozzistr. 7, 54673 Neuerburg),
@@ -733,3 +750,88 @@ an Geltungsbereich oder Behörde, nur am Prüfstatus.
 Eigener Test (`test_approve_entry_with_weaker_evidence_does_not_get_
 marked_verified`) sichert dieses Verhalten ab. Volle Testsuite (159 Tests)
 weiterhin grün.
+
+## 14. Strategiewechsel auf ausdrücklichen Wunsch: voller Fokus auf NO_MATCH bundesweit
+
+Nutzer-Auftrag: "ich möchte das du dich voll auf die NO_MATCH
+deutschlandweit konzentrierst" - statt der Land-für-Land-Recherche neuer
+Auskunftsarten (Abschnitt 12) wurden ab hier gezielt zwei bereits in RLP/SH
+diagnostizierte STRUKTURELLE Fehlermuster bundesweit gesucht und behoben,
+da sie ohne neue externe Recherche auskommen (dieselbe, bereits real und
+korrekt in der Datenbank vorhandene Behörde - nur ihr Geltungsbereich war
+technisch falsch kodiert).
+
+### 14.1 Kreisebenen-Scope-Fix bundesweit ausgeweitet
+
+Das in RLP/SH gefundene Muster (eine Kreisverwaltung ist bereits korrekt
+als Behörde vorhanden, ihre einzige Regel ist aber fälschlich auf eine
+einzelne, willkürliche Gemeinde-AGS gepinnt statt auf den Kreis-Schlüssel)
+wurde mit `app/services/kreis_scope_fix.py` (bereits getestet, 4 eigene
+Tests) auf alle 16 Bundesländer angewendet
+(`scripts/fix_kreis_level_scope_nationwide.py`). Befund außerhalb RLP/SH:
+**44 weitere Fälle**, ausschließlich BAUAKTEN/BAULASTEN, in Brandenburg,
+Mecklenburg-Vorpommern, Niedersachsen und Sachsen-Anhalt - **2.462
+betroffene Gemeinden**. Dry-Run-verifiziert (0 Konflikte), auf die lokale
+Dev-DB angewendet, per Stichprobe an 6 repräsentativen Gemeinden
+nachverifiziert, volle Testsuite grün (159 Tests).
+
+### 14.2 Nullscope-Fix bundesweit (12 weitere Fälle außerhalb RLP)
+
+Das zweite in RLP gefundene Muster (eine Regel mit
+ags/municipality/district/postal_code/street/state ALLE `None` - dadurch
+technisch nie erreichbar, obwohl die Behörde real und korrekt benannt in
+der Datenbank existiert) wurde bundesweit abgefragt: 68 aktive Regeln
+betroffen. Davon **12 Fälle direkt und sicher behoben**
+(`scripts/fix_nullscope_nationwide.py`, siehe Abschnitt dort für die
+vollständige Liste): Saarland (4 Landesbehörden, STATE-Ebene - bestehende
+Zeile direkt gepatcht statt eine neue zu staged, weil die
+Konflikterkennung `state`/`matching_level` nicht prüft und eine neue
+STATE-Regel dieselben `None`-Schlüsselfelder hätte wie die kaputte
+Vorgänger-Zeile selbst), Bremen/Bremerhaven (3 Fälle, Stadtgemeinde-Trennung
+per AGS verifiziert), Hamburg (1 zentrale Denkmalschutz-Behörde), Limburg
+an der Lahn und Neustadt a. Rbge. (je 1, MUNICIPALITY-Ebene), Landkreis
+Mühldorf a. Inn (2 Fälle, COUNTY-Ebene). Dry-Run-Stichprobe bestätigte u.a.
+die korrekte Bremen-Stadt-vs.-Bremerhaven-Trennung und dass in Saarland
+alle 52 Gemeinden für ALTLASTEN/DENKMALSCHUTZ jetzt matchen (vorher
+NO_MATCH, da keine andere Regel existierte). Volle Testsuite grün (159
+Tests).
+
+**Bewusst zurückgestellt** (verbleibende 56 der 68 Nullscope-Fälle):
+
+- **Berlins 12 Bezirksamt-Fälle** (DENKMALSCHUTZ + ALTLASTEN) und
+  **Hamburgs 7 Bezirksamt-Fälle** (WASSERSCHUTZ/HOCHWASSERSCHUTZ) - beide
+  Stadtstaaten haben in `AdministrativeUnit` nur EINE AGS
+  (Berlin=11000000, Hamburg=02000000). Mehrere gleichrangige Bezirksämter
+  können deshalb nicht je eine eigene MUNICIPALITY/COUNTY-Regel erhalten,
+  ohne dass der Matcher `MULTIPLE_MATCHES` meldet - korrekt wäre eine
+  DISTRICT-Ebene-Regel pro Bezirk, was voraussetzt, dass echte
+  Gebäudedaten ein befülltes `district`-Feld mit dem exakten Bezirksnamen
+  haben. Da aktuell 0 Gebäude importiert sind und beide Stadtstaaten in
+  der 118.239-Kombinationen-Kennzahl ohnehin nur je 1 AGS-Einheit
+  ausmachen, ist der Effekt auf die bundesweite NO_MATCH-Quote
+  vernachlässigbar - technisch korrekt lösbar, aber unwirtschaftlich vor
+  echten Gebäude-/Portfoliodaten.
+- **Baden-Württembergs 11 GVV/VVG-Fälle** (DENKMALSCHUTZ) - jede
+  Gemeindeverwaltungsgemeinschaft deckt eine SPEZIFISCHE, kleine Menge von
+  Gemeinden ab (nicht einen ganzen Kreis wie beim Kreisebenen-Fix) und
+  erfordert eine echte Mitgliedsgemeinden-Zuordnung pro GVV, die (anders
+  als RLPs VG250-Verbandsgemeinde-Daten) nicht ohne Weiteres vorliegt -
+  würde neue, gezielte Recherche pro GVV erfordern statt eines
+  strukturellen Fixes.
+- Ein Sonderfall ("Stiftung Preußische Schlösser und Gärten
+  Berlin-Brandenburg") wurde geprüft und bewusst NICHT behoben: ein
+  Sondervermögen für konkrete Schloss-/Parkanlagen hat keine
+  flächendeckende Gebietszuständigkeit - eine Kreis-/Gemeinde-Zuordnung
+  wäre erfunden, nicht belegt.
+
+### 14.3 Verbleibender Umfang
+
+Alle Zahlen aus Abschnitt 1-13 gelten mit den in 14.1/14.2 beschriebenen
+Korrekturen als Delta, nicht als vollständige Neuberechnung - eine frische
+bundesweite Kennzahl (118.239 Kombinationen) nach diesen Fixes ist im
+Anschluss an diesen Bericht separat abgefragt worden, siehe Gesprächsverlauf
+für den aktuellen Stand. Der weit überwiegende Teil des bundesweiten
+NO_MATCH-Bestands bleibt strukturell auf echte, noch nicht recherchierte
+externe Quellen angewiesen (Land-für-Land-Recherche wie in Abschnitt 12) -
+die hier behobenen Fälle sind bewusst nur die kostenlos (ohne neue externe
+Quelle) erreichbaren Strukturfehler.
