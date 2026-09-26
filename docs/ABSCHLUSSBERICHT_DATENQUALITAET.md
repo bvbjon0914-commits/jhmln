@@ -271,24 +271,36 @@ Sitzung zusätzlich:
   neuen COUNTY-Regeln aus Abschnitt 4.2 (`verification_status=VERIFIED`,
   aber `source_license="Interne Korrektur (keine externe Datenquelle)"` -
   bewusst unterscheidbar von einer Regel mit echter externer Recherche).
-  Zusammen sind das 89 `VERIFIED`-Zeilen von inzwischen 16.379 Zeilen in
-  `jurisdictions` (16.290 + 37 + 52 - vorher: 0 `VERIFIED`).
+- **Fachlich verifizierte Regeln (Recherche, bestehende Behörden erweitert)**:
+  die 48 neuen KATASTER-COUNTY-Regeln aus Abschnitt 9, die 4 neuen
+  DENKMALSCHUTZ-COUNTY-Regeln (Nullscope-Fix, Abschnitt 10.2) und die 15
+  neuen BODENDENKMALSCHUTZ-COUNTY-Regeln für Schleswig-Holstein (Abschnitt
+  10.3) - externe Fundstelle je Regel, teils für neu angelegte, teils für
+  bereits existierende, wiederverwendete Authority-Zeilen.
+- **Bestehende Regel nachträglich verifiziert (keine neue Zeile)**: die
+  eine Kampfmittel-SH-Regel aus Abschnitt 10.1, über
+  `verify_existing_rule()` ohne Änderung von Geltungsbereich oder Behörde.
+  Zusammen sind das 157 `VERIFIED`-Zeilen von inzwischen 16.446 Zeilen in
+  `jurisdictions` (16.290 + 37 + 52 + 48 + 4 + 15 - vorher: 0 `VERIFIED`).
 - **Bloße Datenkandidaten**: keine offenen/PENDING Staging-Einträge aus
-  dieser Sitzung (alle 89 wurden nach Prüfung freigegeben, keiner
+  dieser Sitzung (alle wurden nach Prüfung freigegeben, keiner
   zurückgestellt).
 
 ## 7. Verifikation
 
-- Vollständige Testsuite (150 Tests inkl. Staging-Pipeline-, Coverage-
-  Filter- und Kreis-Scope-Fix-Tests) läuft grün gegen die reale, migrierte
-  lokale Datenbank.
+- Vollständige Testsuite (155 Tests inkl. Staging-Pipeline-, Coverage-
+  Filter-, Kreis-Scope-Fix-, Kataster-Mapping- und `verify_existing_rule`-
+  Tests) läuft grün gegen die reale, migrierte lokale Datenbank.
 - `python -m flake8 app` (CI-Gate) clean.
-- Beide Änderungen (RLP-Pilot, Kreis-Scope-Fix) vorher jeweils gegen eine
-  DB-Kopie dry-run-getestet, erst danach auf die echte lokale Datenbank
-  angewendet.
+- Jede Änderung vorher gegen eine DB-Kopie dry-run-getestet, erst danach
+  auf die echte lokale Datenbank angewendet.
 - Backups der echten lokalen Datenbank vor jeder Änderung:
   `authority_matching.db.bak_pre_rlp_bodendenkmal_pilot`,
-  `authority_matching.db.bak_pre_kreis_scope_fix`.
+  `authority_matching.db.bak_pre_kreis_scope_fix`,
+  `authority_matching.db.bak_pre_kataster_rlp_sh`,
+  `authority_matching.db.bak_pre_kampfmittel_sh_verify`,
+  `authority_matching.db.bak_pre_denkmalschutz_nullscope_fix`,
+  `authority_matching.db.bak_pre_sh_bodendenkmal`.
 
 ## 8. Nächste sinnvolle Schritte (Empfehlung, keine Entscheidung)
 
@@ -300,39 +312,247 @@ Sitzung zusätzlich:
 3. Dieselbe Bodendenkmalschutz-Recherche für weitere Bundesländer
    wiederholen (Struktur/Ablauf jetzt als Vorlage vorhanden).
 
-## 9. Warum "100 % Abdeckung" nach diesem Durchlauf NICHT erreicht ist - und was das tatsächlich bräuchte
+## 9. Liegenschaftskataster (KATASTER) - RLP und SH
 
-Nach dem Kreis-Scope-Fix (RLP+SH, alle 11 Auskunftsarten, 37.444 Proben):
+Auf ausdrücklichen Wunsch als nächster Auskunftsart-Durchlauf recherchiert
+(gleiches Muster wie Bodendenkmalschutz: "Nutze denselben realen Prozess
+für den nächsthöchsten Hebel").
+
+**Fachliche Definition** (aus `templates/kataster.docx`): Auskunft aus dem
+Liegenschaftskataster (Flurstücksnachweis/Auszug aus der Liegenschaftskarte)
+nach dem **Vermessungs- und Katastergesetz DES LANDES** - wie
+Bodendenkmalschutz Landesrecht mit landesspezifischer Organisation.
+
+**Besonderheit gegenüber dem Bodendenkmalschutz-Piloten**: hier existierten
+bereits Authority-Zeilen für ALLE benötigten Stellen - alle 6
+rheinland-pfälzischen Vermessungs- und Katasterämter (VermKÄ) und alle 5
+schleswig-holsteinischen Katasteramt-Standorte, mit korrekten Adressen
+(unabhängig recherchiert und gegen die Datenbank abgeglichen - Übereinstimmung
+bestätigt, keine Abweichung gefunden). Das Problem war identisch zum bereits
+behobenen Kreisebenen-Scope-Bug: jede Stelle hatte nur eine Regel für ihren
+eigenen Sitz-Kreis/ihre eigene Sitz-Gemeinde, nicht für ihren tatsächlichen,
+mehrere Kreise umfassenden Zuständigkeitsbereich.
+
+**Quellen** (amtlich, abgerufen 2026-09-26):
+[LVermGeo RLP - Vermessungsbehörden](https://lvermgeo.rlp.de/service/vermessungsbehoerden-in-rheinland-pfalz)
+(Kreiszuordnung je der 6 VermKÄ, zusätzlich gegen die Amtsseiten der Ämter
+Rheinpfalz und Westpfalz einzeln gegengeprüft für die dort genannten "X
+weitere Städte"), [LVermGeo SH - Kontakt](https://www.schleswig-holstein.de/DE/landesregierung/ministerien-behoerden/LVERMGEOSH/Kontakt)
+(explizite Kreiszuordnung je der 5 Regionalstandorte Kiel, Lübeck,
+Flensburg, Husum, Elmshorn).
+
+**Durchlauf**: `backend/scripts/seed_kataster_rlp_sh.py`, eigener Test
+(`tests/test_seed_kataster_rlp_sh_mapping.py`) sichert die 36+15-Kreis-Zuordnung
+gegen Duplikate/Lücken ab. Dry-Run gegen eine DB-Kopie, danach auf die echte
+lokale Datenbank angewendet (Backup: `authority_matching.db.bak_pre_kataster_rlp_sh`).
+**48 neue COUNTY-Regeln gestaged** (36 RLP + 12 SH; 3 SH-Kreise - Flensburg,
+Kiel, Lübeck selbst - hatten bereits eine korrekt skalierte COUNTY-Regel und
+wurden nicht dupliziert), **0 Konflikte**, alle freigegeben. Volle Testsuite
+(152 Tests) und `flake8`-Gate weiterhin grün.
+
+**Wirkung** (RLP+SH, nur KATASTER, 3.404 Proben):
+
+| | Vorher | Nachher |
+|---|---|---|
+| VERIFIED | 0 | **3.393 (99,7 %)** |
+| UNVERIFIED_OR_STALE | 11 | 11 (unverändert) |
+| NO_MATCH | 3.393 | **0** |
+
+Die 11 unverändert `UNVERIFIED_OR_STALE` sind kein Fehler: es sind exakt die
+11 Gemeinden, für die schon VOR dieser Korrektur eine (teils richtig, teils
+falsch skalierte) Regel auf genau diese eine Gemeinde-AGS existierte - der
+Matcher prüft MUNICIPALITY/die eigene Kreis-AGS vor der neuen, allgemeineren
+COUNTY-Regel und trifft dort weiterhin zuerst die alte, nie geprüfte Zeile.
+Die zugeordnete Behörde ist in allen 11 Fällen dieselbe wie über die neue
+Regel - **kein Korrektheitsproblem**, nur eine noch nicht nachgezogene
+Prüfmarkierung an den ursprünglichen 11 Zeilen selbst (nicht in dieser
+Sitzung angefasst, da das ein Update bestehender statt nur das Ergänzen
+neuer Zeilen wäre - bewusst außerhalb des in Abschnitt 4 etablierten
+"nur ergänzen, nie überschreiben"-Musters).
+
+## 10. Kampfmittelauskunft, ein dritter Fehlerpattern (Nullscope) und Bodendenkmalschutz für Schleswig-Holstein
+
+Fortsetzung auf ausdrücklichen Wunsch, "die übrigen Auskunftsarten in
+RLP/SH" zu bearbeiten.
+
+### 10.1 Kampfmittelauskunft
+
+**Fachliche Definition** (`templates/kampfmittel.docx`): Auskunft über eine
+mögliche Kampfmittelbelastung nach den Vorschriften zur
+Kampfmittelräumung DES LANDES.
+
+**Schleswig-Holstein**: Es existierte bereits eine korrekt zugeordnete
+STATE-Regel (Landeskriminalamt Schleswig-Holstein - Kampfmittelräumdienst,
+Lärchenweg 17, 24242 Felde), aber nie geprüft. Recherche bestätigt: die
+Landesbauordnung SH verpflichtet Bauherren zur kostenpflichtigen Auskunft
+beim LKA vor Bauvorhaben/Tiefbauarbeiten - das LKA ist die tatsächliche
+gesetzliche Auskunftsstelle, die hinterlegte Adresse stimmt exakt mit der
+[amtlichen Kontaktseite](https://www.schleswig-holstein.de/DE/landesregierung/ministerien-behoerden/POLIZEI/DasSindWir/LKA/Kampfmittelraeumdienst/kampfmittelraeumdienst.html)
+überein. Über die neue Methode `JurisdictionStagingService.verify_existing_rule()`
+als `VERIFIED` markiert - **ohne** Geltungsbereich oder Behörde zu ändern.
+
+**Rheinland-Pfalz - bewusst KEINE Regel angelegt**: die zuständige
+Landesbehörde (ADD - Aufsichts- und Dienstleistungsdirektion,
+Kampfmittelräumdienst) erklärt auf ihrer
+[eigenen Amtsseite](https://add.rlp.de/themen/kommunales-und-sicherheit/kampfmittelraeumdienst)
+ausdrücklich: *"Mangels konkretem Gefahrenverdacht gehört es auch nicht zu
+den Aufgaben des Kampfmittelräumdienstes, die Kampfmittelbelastung bzw. -
+freiheit von Grundstücken im Vorfeld von Baumaßnahmen zu beurteilen oder zu
+bescheinigen."* Sie verweist stattdessen auf private
+Luftbildauswertungs-Unternehmen. Eine Jurisdiction-Regel für RLP würde der
+ADD eine Zuständigkeit zuschreiben, die sie selbst ausdrücklich verneint -
+das widerspricht dem Auftrag, keine Zuständigkeiten zu erfinden. Für RLP
+bleibt diese Auskunftsart deshalb ehrlich unbeantwortet, statt eine falsche
+Zuständigkeit zu behaupten.
+
+**Wichtige Einschränkung der Kennzahl**: Da Kampfmittelauskunft in SH über
+eine `matching_level=STATE`-Regel läuft, klassifiziert
+`CoverageAnalysisService` sie unabhängig vom Prüfstatus immer als
+`FALLBACK_ONLY` (siehe Abschnitt 1 - STATE/PLZ gelten dort bewusst als
+Fallback-Ebene, nicht als "eindeutig zugeordnet"). Die Verifikation ändert
+deshalb NICHTS an der `FALLBACK_ONLY`-Zahl im Gesamtbild unten - sie ist
+trotzdem real und im `jurisdictions`-Datensatz selbst
+(`verification_status`, `source_url`) nachprüfbar. Bekannte Grenze der
+5-Kategorien-Vereinfachung aus Task 1, nicht neu für diese Regel erfunden.
+
+### 10.2 Denkmalschutz: ein dritter, bisher nicht dokumentierter Fehlerpattern
+
+Bei der Suche nach schnell schließbaren Denkmalschutz-Lücken (301 von 3.404
+RLP+SH-Fällen NO_MATCH) gefunden: der bereits behobene Kreisebenen-Scope-Bug
+(Abschnitt 4.2) lag hier NICHT vor (`find_kreis_scope_bugs` fand 0 Fälle).
+Stattdessen: **drei, später vier aktive Jurisdiction-Zeilen ohne
+JEDEN Geltungsbereich** - `ags`, `municipality`, `district`, `postal_code`,
+`street` UND `state` sind bei allen vieren `None`. Eine solche Zeile matcht
+in KEINER der sieben Matching-Stufen jemals, für keine Anfrage - sie ist
+technisch inert, aber täuscht in der Datenbank eine bestehende Zuständigkeit
+vor. Laut `source`-Feld ("Denkmalschutzbehoerden Deutschland AGS-Matching")
+ist beim Import der AGS-Abgleich für genau diese Landkreise fehlgeschlagen,
+statt die Zeile zu überspringen oder einen Fehler zu melden.
+
+Betroffen: Kreisverwaltung Rhein-Hunsrück (137 Gemeinden), Kreisverwaltung
+Rhein-Lahn (137), Kreisverwaltung Rhein-Pfalz (25), Stadtverwaltung
+Ludwigshafen (kreisfreie Stadt, 1) - zusammen 300 der 301 NO_MATCH-Fälle.
+Für alle vier existierte die richtige Behörde bereits korrekt benannt in
+der Datenbank - ergänzt wurde nur die fehlende COUNTY-Regel, über denselben
+getesteten `apply_kreis_scope_fix()`-Mechanismus wie beim Bauakten/
+Baulasten-Fix.
+
+**Bewusst NICHT angefasst**: "Stadtverwaltung Neustadt - Untere
+Denkmalschutzbehörde" - Adresse (Asbach) und bestehende Regel (Kreis
+Neuwied) zeigen, dass dies tatsächlich "Neustadt (Wied)" ist, ein anderer
+Ort als das gesuchte "Neustadt an der Weinstraße" (kreisfreie Stadt). Für
+Neustadt an der Weinstraße existiert keine erkennbare Behörde in der
+Datenbank - diese eine Gemeinde bleibt eine echte, ungeschlossene Lücke,
+keine Verwechslung wurde in Kauf genommen.
+
+**Bundesweiter Befund, nicht behoben**: derselbe Nullscope-Fehler existiert
+noch 64-mal weitere Male außerhalb RLP/SH (v.a. ALTLASTEN in Berlin,
+WASSERSCHUTZ/HOCHWASSERSCHUTZ in Hamburg/Saarland/Bayern) - dokumentiert,
+aber nicht Teil dieses RLP/SH-fokussierten Durchlaufs.
+
+### 10.3 Bodendenkmalschutz Schleswig-Holstein
+
+Fortsetzung des RLP-Piloten (Abschnitt 3.1) für ein zweites Bundesland.
+
+**Quellen** (drei unabhängige, übereinstimmende Quellen abgerufen
+2026-09-26 - bewusst mehrfach abgesichert, da alle sekundär/Wikipedia sind,
+nicht der DSchG-SH-Originaltext selbst):
+[Wikipedia: Archäologisches Landesamt SH](https://de.wikipedia.org/wiki/Arch%C3%A4ologisches_Landesamt_Schleswig-Holstein),
+[Wikipedia: Bereich Archäologie und Denkmalpflege der Hansestadt Lübeck](https://de.wikipedia.org/wiki/Bereich_Arch%C3%A4ologie_und_Denkmalpflege_der_Hansestadt_L%C3%BCbeck),
+[Verband der Landesarchäologien - SH](https://www.landesarchaeologien.de/die-laender/schleswig-holstein/denkmalschutzbehoerden).
+
+Struktur: **Archäologisches Landesamt Schleswig-Holstein (ALSH)**,
+Brockdorff-Rantzau-Straße 70, 24837 Schleswig - obere Denkmalschutzbehörde
+für archäologische Kulturdenkmale im GANZEN Land AUSSER Lübeck (14 der 15
+Kreise/Städte). **Hansestadt Lübeck** ist eine bundesweite Besonderheit:
+der "Bereich Archäologie und Denkmalpflege der Hansestadt Lübeck",
+Königstraße 21, 23552 Lübeck, ist zugleich obere UND untere
+Denkmalschutzbehörde für Lübeck, unabhängig von den Landesämtern.
+
+15 neue COUNTY-Regeln (14 ALSH + 1 Lübeck), 2 neue Authority-Zeilen, 0
+Konflikte (SH hatte zuvor 0 BODENDENKMALSCHUTZ-Regeln). Dry-Run-verifiziert:
+korrektes Matching für beide Zuständigkeitsbereiche, RLPs bereits
+bestehende Regeln bleiben unberührt.
+
+**Wirkung**: Bodendenkmalschutzauskunft ist damit für RLP+SH zusammen zu
+**100 % VERIFIED** (3.404/3.404) - die erste und bislang einzige
+Auskunftsart, für die das in diesem Durchlauf für beide Bundesländer
+zutrifft.
+
+### 10.4 Geprüft und sauber befunden: keine weiteren billigen Treffer
+
+Für die übrigen Auskunftsarten (Altlasten, Grundbuch, Hochwasserschutz,
+Wasserschutzgebiet, Erschließungsbeiträge) wurden dieselben zwei
+Fehlermuster (Kreisebenen-Scope-Bug, Nullscope-Bug) systematisch mit den
+bestehenden Werkzeugen geprüft: **0 Funde in RLP/SH für alle fünf**. Das
+heißt nicht, dass diese Auskunftsarten fehlerfrei sind - es heißt, dass die
+verbleibenden Lücken dort NICHT über einen günstigen Struktur-Fix zu
+schließen sind:
+
+- **Altlasten/Grundbuch/Hochwasserschutz/Wasserschutzgebiet**: nominell
+  0 % NO_MATCH, aber 100 % `UNVERIFIED_OR_STALE` - jede einzelne Regel
+  wäre für sich zu prüfen (mutmaßlich hunderte verschiedene
+  Gemeinde-/Kreisbehörden, kein kleiner Kreis von Landesämtern wie bei
+  Kataster/Bodendenkmalschutz) - keine Massenverifikation ohne echte
+  Einzelprüfung.
+- **Erschließungsbeiträge**: strukturell Gemeinde-/Verbandsgemeinde-Ebene
+  (siehe Abschnitt 3.2) - eine Ausweitung über den Trier-Einzelfall hinaus
+  bräuchte eine VG250-Verbandsgemeinde-Zuordnung und Einzelrecherche für
+  vermutlich 150+ Verbandsgemeinden allein in RLP.
+
+## 11. Warum "100 % Abdeckung" nach diesem Durchlauf NICHT erreicht ist - und was das tatsächlich bräuchte
+
+Stand nach allen Korrekturen dieser Sitzung (Bodendenkmalschutz RLP+SH,
+Kreis-Scope-Fix, Liegenschaftskataster, Denkmalschutz-Nullscope-Fix,
+Kampfmittel-SH-Verifikation; RLP+SH, alle 11 Auskunftsarten, 37.444 Proben):
 
 | Kategorie | Vorher (Sitzungsbeginn) | Nachher |
 |---|---|---|
-| VERIFIED | 0 | 7.875 |
+| VERIFIED | 0 | **12.672** |
 | UNVERIFIED_OR_STALE | 16.828 | 16.828 (unverändert) |
-| NO_MATCH | 19.480 (RLP 14.021 + SH 5.459) | 11.605 |
+| NO_MATCH | 19.480 (RLP 14.021 + SH 5.459) | **6.808** |
 | CONFLICTING | 32 | 32 (unverändert) |
 | FALLBACK_ONLY | 1.104 | 1.104 (unverändert) |
 
-NO_MATCH sank um exakt 7.875 - genau die Zahl der neu `VERIFIED`-Regeln
-(2.301 aus dem Recherche-Piloten + 5.574 aus dem Struktur-Fix). Die anderen
-drei Kategorien sind rechnerisch unverändert (beide Korrekturen wandelten
-ausschließlich vorherige NO_MATCH-Fälle um, nichts sonst) - ein Beleg, dass
-keine Nebenwirkungen in andere Kategorien "durchgesickert" sind.
+NO_MATCH sank um exakt 12.672 - genau die Zahl der neu `VERIFIED`-Regeln
+(2.301 Bodendenkmalschutz-Pilot RLP + 5.574 Kreis-Scope-Fix + 3.393
+Liegenschaftskataster + 300 Denkmalschutz-Nullscope-Fix + 1.104
+Bodendenkmalschutz SH). Die anderen drei Kategorien sind rechnerisch
+unverändert (alle Korrekturen wandelten ausschließlich vorherige
+NO_MATCH-Fälle um, nichts sonst) - ein Beleg, dass keine Nebenwirkungen in
+andere Kategorien "durchgesickert" sind. RLP+SH liegen damit bei **33,9 %
+echt verifizierter Abdeckung** (von 0 % bei Sitzungsbeginn), NO_MATCH sank
+von 52,0 % auf 18,2 %.
+
+Pro Auskunftsart (RLP+SH, 3.404 je Auskunftsart): **Bodendenkmalschutz
+100 % VERIFIED** (3.404/3.404, einzige vollständig verifizierte
+Auskunftsart), Liegenschaftskataster 99,7 %, Bauakten/Baulasten je 81,9 %,
+Denkmalschutz 8,8 % VERIFIED + 91,2 % UNVERIFIED (nur noch 1 NO_MATCH-Fall:
+Neustadt an der Weinstraße). Altlasten/Grundbuch/Hochwasserschutz/
+Wasserschutzgebiet unverändert bei 0 % VERIFIED/100 % UNVERIFIED (kein
+günstiger Struktur-Fix gefunden, siehe Abschnitt 10.4). Kampfmittel: RLP
+weiterhin 0/2.300 (bewusst, siehe Abschnitt 10.1), SH weiterhin als
+`FALLBACK_ONLY` klassifiziert trotz jetzt echter Verifikation (Grenze der
+5-Kategorien-Metrik, kein Fehler). Erschließungsbeiträge: 1/3.404 (Trier).
 
 **Warum das nicht "100 %" ist, und warum ich das nicht einfach behaupte:**
 
-Von den verbleibenden 31,0 % NO_MATCH und 44,9 % UNVERIFIED_OR_STALE (RLP+SH)
+Von den verbleibenden 18,2 % NO_MATCH und 44,9 % UNVERIFIED_OR_STALE (RLP+SH)
 ist KEIN einziger Fall mit den Mitteln schließbar, die in diesem Durchlauf
 funktioniert haben (eine echte amtliche Quelle recherchieren, oder einen
-bereits vorhandenen, aber falsch skalierten Datensatz korrigieren) - hier
-fehlt tatsächlich sowohl die Regel als auch das Wissen, wer zuständig ist:
+bereits vorhandenen, aber falsch skalierten/ungescopten Datensatz
+korrigieren) - hier fehlt tatsächlich sowohl die Regel als auch das Wissen,
+wer zuständig ist, UND es wurde bereits systematisch nach den bekannten,
+günstigen Fehlermustern gesucht (Abschnitt 10.4):
 
-- **NO_MATCH (11.605 Fälle)**: für jeden davon müsste ich eine echte,
+- **NO_MATCH (6.808 Fälle)**: für jeden davon müsste ich eine echte,
   bislang nicht recherchierte Behörde finden und belegen - genau der
-  Rechercheaufwand aus Abschnitt 3, aber für 9 weitere Auskunftsarten in
-  zwei Bundesländern (und für alle 14 anderen Bundesländer, falls "100 %"
-  bundesweit gemeint ist). Das ist keine Korrektur mehr, sondern
-  Neuaufbau - realistisch Wochen bis Monate an Einzelrecherche, nicht in
-  einem weiteren Durchlauf zu erledigen.
+  Rechercheaufwand aus Abschnitt 3/9/10, aber für Erschließungsbeiträge in
+  voller Breite (3.403 der 6.808) und Kampfmittel in RLP (2.300, siehe
+  Abschnitt 10.1 warum bewusst offen), plus die übrigen 14 Bundesländer,
+  falls "100 %" bundesweit gemeint ist. Das ist keine Korrektur mehr,
+  sondern Neuaufbau - realistisch Wochen bis Monate an Einzelrecherche,
+  nicht in einem weiteren Durchlauf zu erledigen.
 - **UNVERIFIED_OR_STALE (16.828 Fälle)**: `VERIFIED` bedeutet in diesem
   System ausdrücklich "ein Mensch (oder in dieser Sitzung: ich, mit
   dokumentierter Fundstelle) hat diese konkrete Regel gegen eine Quelle
@@ -351,13 +571,14 @@ oder Prüfvermerke erfinden - das widerspricht der Grundregel dieses
 gesamten Auftrags ("Erfinde weder Behörden noch Zuständigkeiten ... noch
 vermeintliche Verifizierungen") und würde die gerade erst aufgebaute
 Unterscheidung zwischen "wirklich geprüft" und "nur automatisch importiert"
-sofort wieder zerstören - für alle 16.379 Regeln, nicht nur für RLP/SH.
+sofort wieder zerstören - für alle 16.446 Regeln, nicht nur für RLP/SH.
 
 **Was ich statt "100 % per Behauptung" anbiete**: denselben realen Prozess
-aus Abschnitt 3 (Definition klären -> amtliche Quelle recherchieren ->
-Staging -> Konfliktprüfung -> Freigabe -> Matching-Test) gezielt auf die
-nächsten Auskunftsarten/Bundesländer mit dem größten Hebel anwenden - z.B.
-Liegenschaftskataster oder Kampfmittelauskunft in RLP/SH (beide aktuell
-nahe 0 % echte Abdeckung), oder Bodendenkmalschutz für die übrigen 14
-Bundesländer. Das braucht weitere, einzeln benannte Recherche-Durchläufe
-wie diesen - keinen Knopfdruck.
+(Definition klären -> amtliche Quelle recherchieren -> Staging ->
+Konfliktprüfung -> Freigabe -> Matching-Test), gezielt auf den nächsten
+größten Hebel angewendet - z.B. Erschließungsbeiträge über eine
+VG250-Verbandsgemeinde-Zuordnung ausweiten, Einzelverifikation der
+bestehenden Altlasten-/Grundbuch-/Wasserschutz-Regeln, oder
+Bodendenkmalschutz/Liegenschaftskataster/Denkmalschutz für die übrigen 14
+Bundesländer. Das braucht weitere, einzeln benannte Recherche-Durchläufe wie diesen -
+keinen Knopfdruck.
