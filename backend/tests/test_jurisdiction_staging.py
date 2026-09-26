@@ -269,3 +269,61 @@ def test_batch_summary_counts_by_status_and_conflict_type(db_session):
     assert summary["by_status"]["APPROVED"] == 1
     assert summary["by_status"]["PENDING"] == 1
     assert summary["by_conflict_type"]["NEW"] == 2
+
+
+def test_verify_existing_rule_sets_verification_fields_without_touching_scope(db_session):
+    rt = make_request_type(db_session, code="KAMPFMITTEL")
+    authority = make_authority(db_session, name="LKA Testland")
+    rule = make_jurisdiction(
+        db_session, request_type_id=rt.request_type_id, authority_id=authority.authority_id,
+        state="Testland", matching_level="STATE", priority=60,
+    )
+    service = JurisdictionStagingService(db_session)
+
+    verified = service.verify_existing_rule(
+        rule.jurisdiction_id, reviewer="Testperson", source_url="https://example.gov/kmrd",
+        source="Amtliche Seite", source_license="Amtliche Auskunft",
+        notes="Unabhängig recherchiert und bestätigt.",
+    )
+    db_session.commit()
+
+    assert verified.jurisdiction_id == rule.jurisdiction_id
+    assert verified.verification_status == "VERIFIED"
+    assert verified.verified_by == "Testperson"
+    assert verified.source_url == "https://example.gov/kmrd"
+    assert verified.last_verified_at is not None
+    # Geltungsbereich und Behörde bleiben unveraendert.
+    assert verified.state == "Testland"
+    assert verified.matching_level == "STATE"
+    assert verified.authority_id == authority.authority_id
+
+
+def test_verify_existing_rule_refuses_to_overwrite_already_verified_rule(db_session):
+    rt = make_request_type(db_session, code="KAMPFMITTEL")
+    authority = make_authority(db_session, name="LKA Testland")
+    rule = make_jurisdiction(
+        db_session, request_type_id=rt.request_type_id, authority_id=authority.authority_id,
+        state="Testland", matching_level="STATE",
+        verification_status="VERIFIED", last_verified_at=days_ago(5), verified_by="Andere Person",
+    )
+    service = JurisdictionStagingService(db_session)
+
+    with pytest.raises(ValueError):
+        service.verify_existing_rule(
+            rule.jurisdiction_id, reviewer="Testperson", source_url="https://example.gov/andere-quelle",
+        )
+
+
+def test_verify_existing_rule_refuses_unknown_or_inactive_rule(db_session):
+    rt = make_request_type(db_session, code="KAMPFMITTEL")
+    authority = make_authority(db_session, name="LKA Testland")
+    inactive_rule = make_jurisdiction(
+        db_session, request_type_id=rt.request_type_id, authority_id=authority.authority_id,
+        state="Testland", matching_level="STATE", active=False,
+    )
+    service = JurisdictionStagingService(db_session)
+
+    with pytest.raises(ValueError):
+        service.verify_existing_rule("does-not-exist", reviewer="Testperson", source_url="https://example.gov")
+    with pytest.raises(ValueError):
+        service.verify_existing_rule(inactive_rule.jurisdiction_id, reviewer="Testperson", source_url="https://example.gov")

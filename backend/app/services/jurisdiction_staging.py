@@ -244,6 +244,55 @@ class JurisdictionStagingService:
         return entry
 
     # ------------------------------------------------------------------
+    # Verifikation einer bestehenden Regel (keine neue Regel, keine
+    # Änderung an Geltungsbereich/Behörde - nur der Prüfvermerk)
+    # ------------------------------------------------------------------
+
+    def verify_existing_rule(
+        self, jurisdiction_id: str, *, reviewer: str, source_url: str,
+        source: Optional[str] = None, source_license: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> Jurisdiction:
+        """
+        Markiert eine BESTEHENDE, bereits korrekt zugeordnete Regel als
+        fachlich geprüft, weil eine echte externe Quelle die Zuordnung
+        unabhängig bestätigt hat - ohne Geltungsbereich oder Behörde zu
+        verändern. Anders als approve_entry() (das eine NEUE Regel aus
+        einem Staging-Eintrag erzeugt) gibt es hier keinen
+        Konfliktprüfungsschritt, weil nichts Neues hinzukommt - nur der
+        Prüfvermerk einer bereits vorhandenen Zeile wird ergänzt.
+
+        Bewusst KEINE Sammel-Operation (immer genau eine jurisdiction_id) -
+        verhindert, dass diese Methode für ein pauschales "alles als
+        geprüft markieren" missbraucht wird. Verweigert die Verifikation,
+        wenn die Regel bereits VERIFIED/CORRECTED ist (keine ungeprüfte
+        Überschreibung einer schon bestehenden fachlichen Bestätigung).
+        """
+        rule = self.db.query(Jurisdiction).filter(Jurisdiction.jurisdiction_id == jurisdiction_id).first()
+        if rule is None:
+            raise ValueError(f"Jurisdiction {jurisdiction_id} nicht gefunden.")
+        if not rule.active:
+            raise ValueError(f"Jurisdiction {jurisdiction_id} ist nicht aktiv - keine Verifikation einer inaktiven Regel.")
+        if rule.verification_status in ("VERIFIED", "CORRECTED"):
+            raise ValueError(
+                f"Jurisdiction {jurisdiction_id} ist bereits {rule.verification_status} "
+                f"(von {rule.verified_by}) - keine ungeprüfte Überschreibung einer bestehenden Bestätigung."
+            )
+
+        rule.verification_status = "VERIFIED"
+        rule.last_verified_at = datetime.utcnow()
+        rule.verified_by = reviewer
+        rule.source_url = source_url
+        if source:
+            rule.source = source
+        if source_license:
+            rule.source_license = source_license
+        rule.source_retrieved_at = datetime.utcnow()
+        if notes:
+            rule.notes = (rule.notes + " | " if rule.notes else "") + notes
+        return rule
+
+    # ------------------------------------------------------------------
     # Übersicht
     # ------------------------------------------------------------------
 
