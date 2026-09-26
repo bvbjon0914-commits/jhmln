@@ -164,6 +164,22 @@ KUSEL_ALTENGLAN_AGS = [
     "07336103", "07336106",
 ]
 
+BETZDORF_GEBHARDSHAIN_AGS = [
+    "07132002", "07132006", "07132020", "07132024", "07132025", "07132030", "07132039", "07132042",
+    "07132059", "07132066", "07132071", "07132073", "07132095", "07132098", "07132107", "07132108",
+    "07132111",
+]
+
+HERRSTEIN_RHAUNEN_AGS = [
+    "07134003", "07134004", "07134006", "07134009", "07134012", "07134013", "07134014", "07134017",
+    "07134019", "07134025", "07134028", "07134030", "07134032", "07134035", "07134037", "07134038",
+    "07134039", "07134040", "07134041", "07134043", "07134044", "07134046", "07134047", "07134049",
+    "07134052", "07134055", "07134056", "07134059", "07134060", "07134064", "07134065", "07134066",
+    "07134067", "07134069", "07134076", "07134077", "07134079", "07134081", "07134082", "07134083",
+    "07134086", "07134087", "07134088", "07134089", "07134090", "07134091", "07134092", "07134093",
+    "07134095", "07134502",
+]
+
 VERBANDSGEMEINDEN = {
     "Verbandsgemeindeverwaltung Bitburger Land - Abt. 4 (Bauen und Umwelt)": dict(
         street="Hubert-Prim-Straße", house_number="7", postal_code="54634", city="Bitburg",
@@ -244,6 +260,20 @@ VERBANDSGEMEINDEN = {
             "Verbandsgemeindeverwaltung als Ganzes, nicht bei einem benannten Sachgebiet"
         ),
         beleglage="stark", ags_liste=KUSEL_ALTENGLAN_AGS,
+    ),
+    "Verbandsgemeindeverwaltung Betzdorf-Gebhardshain - Fachbereich Finanzen": dict(
+        street="Hellerstraße", house_number="2", postal_code="57518", city="Betzdorf",
+        phone=None, email="poststelle@vg-bg.de",
+        source_url="https://www.vg-bg.de/buergernah/verwaltung/aufbau/fachbereich-finanzen/steuern-gebuehren-beitraege/beitraege/",
+        belegt_fuer="Fachbereich Finanzen, Bereich 'Steuern, Gebühren, Beiträge' - keine wörtliche Einzelbestätigung für Erschließungsbeiträge auf der geprüften Seite",
+        beleglage="schwaecher", ags_liste=BETZDORF_GEBHARDSHAIN_AGS,
+    ),
+    "Verbandsgemeindeverwaltung Herrstein-Rhaunen - Kämmereiamt / Sachgebiet Abgaben": dict(
+        street="Brühlstraße", house_number="16", postal_code="55756", city="Herrstein",
+        phone="06785 79-4110", email="info@vg-hr.de",
+        source_url="https://www.vg-hr.de/",
+        belegt_fuer="Kämmereiamt / Sachgebiet Abgaben (Vermietung/Verpachtung, Sachversicherungen) - keine wörtliche Einzelbestätigung für Erschließungsbeiträge gefunden",
+        beleglage="schwaecher", ags_liste=HERRSTEIN_RHAUNEN_AGS,
     ),
 }
 
