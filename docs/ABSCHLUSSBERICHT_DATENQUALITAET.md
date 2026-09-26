@@ -201,14 +201,38 @@ in anderen Bundesländern durchaus (163 bzw. 92 bundesweit) - **nur RLP hat
 Hebel, um die RLP/SH-Abdeckung für BAUAKTEN/BAULASTEN zu verbessern -
 größer als jede Recherche einer komplett neuen Quelle, weil die richtige
 Behörde bereits korrekt in der Datenbank steht und nur die
-Geltungsbereichs-Ebene der bestehenden Regel falsch ist. **In diesem
-Durchlauf bewusst NICHT automatisch korrigiert** (der Auftrag verlangt an
-dieser Stelle Trennung/Diagnose, keine Reparatur; eine Umstellung von
-MUNICIPALITY- auf COUNTY-Ebene für 36 RLP-Regeln + die betroffenen
-SH-Regeln ist eine eigenständige, review-pflichtige Änderung und sollte
-selbst durch den Staging-Prozess laufen). Vollständige Liste:
-`backend/coverage_reports/kreis_level_wrong_scope_rlp_sh.csv` (gitignored,
-reproduzierbar über das Skript).
+Geltungsbereichs-Ebene der bestehenden Regel falsch ist. Vollständige
+Fund-Liste: `backend/coverage_reports/kreis_level_wrong_scope_rlp_sh.csv`
+(gitignored, reproduzierbar über `scripts/audit_kreis_level_rules_rlp_sh.py`).
+
+**Update - in einem zweiten Schritt korrigiert** (auf ausdrückliche
+Anweisung): `app/services/kreis_scope_fix.py` (mit eigenen Tests,
+`tests/test_kreis_scope_fix.py`) ergänzt für jede der 52 betroffenen
+(Auskunftsart, Kreis)-Kombinationen eine zusätzliche COUNTY-Regel für die
+bereits vorhandene Kreisverwaltungs-Behörde - über denselben
+`JurisdictionStagingService` (Konfliktprüfung: alle 52 = `NEW`, 0
+Konflikte; Freigabe durch benannten Prüfer mit Begründung "interne
+Struktur-Korrektur, keine neue externe Quelle"). Die bestehende,
+spezifischere Gemeinde-Regel bleibt unverändert bestehen (kein
+Widerspruch, da dieselbe Behörde). Legitim eng gefasste
+Stadtverwaltungs-/Verbandsgemeinde-Regeln wurden nachweislich NICHT
+angefasst (eigener Test dafür). Vorher an einer Kopie der lokalen
+Datenbank dry-run-getestet, dann auf die echte lokale Datenbank angewendet
+(Backup: `authority_matching.db.bak_pre_kreis_scope_fix`). Volle
+Testsuite (150 Tests) und `flake8`-Gate danach weiterhin grün.
+
+Wirkung (gezielter Nachlauf, RLP+SH, BAUAKTEN+BAULASTEN):
+
+| | Vorher (dieser Sitzung) | Nachher |
+|---|---|---|
+| VERIFIED | 0 | 5.574 |
+| NO_MATCH | ~6.678 (aus 5.558 Bug-Fällen + weiteren echten Lücken) | 1.104 |
+
+Die 1.104 verbleibenden NO_MATCH-Fälle sind KEIN Bug mehr - für diese
+Gemeinden/Kreise existiert schlicht (noch) keine Regel, mit welcher
+Zielbehörde auch immer (z.B. kreisfreie Städte ohne eigene erfasste
+Bauaufsichtsbehörde). Das ist jetzt eine ECHTE Abdeckungslücke im Sinne von
+Abschnitt 4.1, keine fehlerhafte Zuordnung mehr.
 
 ### 4.3 Fehlender Prüfvermerk
 
@@ -240,36 +264,100 @@ Sitzung zusätzlich:
 - **Lokale Testdaten**: die temporäre SQLite-Kopie für den Dry-Run
   (`$TEMP/dryrun_rlp.db`, gelöscht/verwerfbar) sowie alle pytest-eigenen
   Temp-Datenbanken - nie mit echten Recherchedaten vermischt.
-- **Fachlich verifizierte Regeln**: die 37 neuen RLP-Regeln aus Abschnitt 3
-  (`verification_status=VERIFIED`, mit Fundstelle) - die EINZIGEN
-  `VERIFIED`-Zeilen in der gesamten `jurisdictions`-Tabelle nach dieser
-  Sitzung (vorher: 0 von 16.290).
+- **Fachlich verifizierte Regeln (Recherche)**: die 37 neuen RLP-Regeln aus
+  Abschnitt 3 (`verification_status=VERIFIED`, mit externer Fundstelle -
+  `source_url` zeigt auf eine amtliche Seite).
+- **Fachlich korrigierte Regeln (Struktur, keine neue Quelle)**: die 52
+  neuen COUNTY-Regeln aus Abschnitt 4.2 (`verification_status=VERIFIED`,
+  aber `source_license="Interne Korrektur (keine externe Datenquelle)"` -
+  bewusst unterscheidbar von einer Regel mit echter externer Recherche).
+  Zusammen sind das 89 `VERIFIED`-Zeilen von inzwischen 16.379 Zeilen in
+  `jurisdictions` (16.290 + 37 + 52 - vorher: 0 `VERIFIED`).
 - **Bloße Datenkandidaten**: keine offenen/PENDING Staging-Einträge aus
-  dieser Sitzung (alle 37 wurden nach Prüfung freigegeben, keiner
-  zurückgestellt) - aber siehe Abschnitt 4.2, dessen Funde bewusst NICHT in
-  Regeländerungen umgesetzt wurden und daher reine Diagnose bleiben, keine
-  Datenkandidaten im engeren Sinn.
+  dieser Sitzung (alle 89 wurden nach Prüfung freigegeben, keiner
+  zurückgestellt).
 
 ## 7. Verifikation
 
-- Vollständige Testsuite (145 Tests inkl. der neuen Staging-Pipeline- und
-  Coverage-Filter-Tests) läuft grün gegen die reale, migrierte lokale
-  Datenbank.
+- Vollständige Testsuite (150 Tests inkl. Staging-Pipeline-, Coverage-
+  Filter- und Kreis-Scope-Fix-Tests) läuft grün gegen die reale, migrierte
+  lokale Datenbank.
 - `python -m flake8 app` (CI-Gate) clean.
-- Dry-Run gegen eine DB-Kopie VOR der Änderung an der echten lokalen
-  Datenbank durchgeführt.
-- Backup der echten lokalen Datenbank vor der Änderung:
-  `authority_matching.db.bak_pre_rlp_bodendenkmal_pilot`.
+- Beide Änderungen (RLP-Pilot, Kreis-Scope-Fix) vorher jeweils gegen eine
+  DB-Kopie dry-run-getestet, erst danach auf die echte lokale Datenbank
+  angewendet.
+- Backups der echten lokalen Datenbank vor jeder Änderung:
+  `authority_matching.db.bak_pre_rlp_bodendenkmal_pilot`,
+  `authority_matching.db.bak_pre_kreis_scope_fix`.
 
 ## 8. Nächste sinnvolle Schritte (Empfehlung, keine Entscheidung)
 
-1. **Größter Hebel**: die in Abschnitt 4.2 gefundenen 52
-   Kreisverwaltungs-Regeln (BAUAKTEN/BAULASTEN, RLP+SH) von MUNICIPALITY-
-   auf COUNTY-Ebene umstellen - schließt potenziell 5.558
-   Gemeinde-Auskunftsart-Lücken, ohne eine einzige neue externe Quelle zu
-   recherchieren. Sollte selbst durch den Staging-Prozess laufen.
+1. ~~Kreisverwaltungs-Regeln von MUNICIPALITY- auf COUNTY-Ebene
+   umstellen~~ - **erledigt, siehe Abschnitt 4.2 Update.**
 2. Erschließungsbeiträge für weitere RLP-Gemeinden erfordert entweder eine
    VG250-Verbandsgemeinde-Zuordnung (großer Aufwand) oder Einzelrecherche
    pro Verbandsgemeinde - bewusst nicht in diesem Durchlauf begonnen.
 3. Dieselbe Bodendenkmalschutz-Recherche für weitere Bundesländer
    wiederholen (Struktur/Ablauf jetzt als Vorlage vorhanden).
+
+## 9. Warum "100 % Abdeckung" nach diesem Durchlauf NICHT erreicht ist - und was das tatsächlich bräuchte
+
+Nach dem Kreis-Scope-Fix (RLP+SH, alle 11 Auskunftsarten, 37.444 Proben):
+
+| Kategorie | Vorher (Sitzungsbeginn) | Nachher |
+|---|---|---|
+| VERIFIED | 0 | 7.875 |
+| UNVERIFIED_OR_STALE | 16.828 | 16.828 (unverändert) |
+| NO_MATCH | 19.480 (RLP 14.021 + SH 5.459) | 11.605 |
+| CONFLICTING | 32 | 32 (unverändert) |
+| FALLBACK_ONLY | 1.104 | 1.104 (unverändert) |
+
+NO_MATCH sank um exakt 7.875 - genau die Zahl der neu `VERIFIED`-Regeln
+(2.301 aus dem Recherche-Piloten + 5.574 aus dem Struktur-Fix). Die anderen
+drei Kategorien sind rechnerisch unverändert (beide Korrekturen wandelten
+ausschließlich vorherige NO_MATCH-Fälle um, nichts sonst) - ein Beleg, dass
+keine Nebenwirkungen in andere Kategorien "durchgesickert" sind.
+
+**Warum das nicht "100 %" ist, und warum ich das nicht einfach behaupte:**
+
+Von den verbleibenden 31,0 % NO_MATCH und 44,9 % UNVERIFIED_OR_STALE (RLP+SH)
+ist KEIN einziger Fall mit den Mitteln schließbar, die in diesem Durchlauf
+funktioniert haben (eine echte amtliche Quelle recherchieren, oder einen
+bereits vorhandenen, aber falsch skalierten Datensatz korrigieren) - hier
+fehlt tatsächlich sowohl die Regel als auch das Wissen, wer zuständig ist:
+
+- **NO_MATCH (11.605 Fälle)**: für jeden davon müsste ich eine echte,
+  bislang nicht recherchierte Behörde finden und belegen - genau der
+  Rechercheaufwand aus Abschnitt 3, aber für 9 weitere Auskunftsarten in
+  zwei Bundesländern (und für alle 14 anderen Bundesländer, falls "100 %"
+  bundesweit gemeint ist). Das ist keine Korrektur mehr, sondern
+  Neuaufbau - realistisch Wochen bis Monate an Einzelrecherche, nicht in
+  einem weiteren Durchlauf zu erledigen.
+- **UNVERIFIED_OR_STALE (16.828 Fälle)**: `VERIFIED` bedeutet in diesem
+  System ausdrücklich "ein Mensch (oder in dieser Sitzung: ich, mit
+  dokumentierter Fundstelle) hat diese konkrete Regel gegen eine Quelle
+  geprüft". Das pauschal auf alle bestehenden Regeln zu setzen, ohne sie
+  tatsächlich zu prüfen, wäre genau die Praxis, die der ganze
+  Verification_status/Staging-Mechanismus verhindern soll - technisch ein
+  Befehl (`UPDATE jurisdictions SET verification_status='VERIFIED'`),
+  fachlich eine Lüge in den eigenen Daten.
+- **CONFLICTING (32 Fälle)**: erfordert pro Fall eine menschliche/fachliche
+  Entscheidung, WELCHE der widersprüchlichen Regeln stimmt - kann nicht
+  automatisiert aufgelöst werden, ohne eine der beiden Behörden zu
+  bevorzugen, ohne das zu prüfen.
+
+**Deshalb**: Ich werde für "100 % Abdeckung" keine Behörden, Zuständigkeiten
+oder Prüfvermerke erfinden - das widerspricht der Grundregel dieses
+gesamten Auftrags ("Erfinde weder Behörden noch Zuständigkeiten ... noch
+vermeintliche Verifizierungen") und würde die gerade erst aufgebaute
+Unterscheidung zwischen "wirklich geprüft" und "nur automatisch importiert"
+sofort wieder zerstören - für alle 16.379 Regeln, nicht nur für RLP/SH.
+
+**Was ich statt "100 % per Behauptung" anbiete**: denselben realen Prozess
+aus Abschnitt 3 (Definition klären -> amtliche Quelle recherchieren ->
+Staging -> Konfliktprüfung -> Freigabe -> Matching-Test) gezielt auf die
+nächsten Auskunftsarten/Bundesländer mit dem größten Hebel anwenden - z.B.
+Liegenschaftskataster oder Kampfmittelauskunft in RLP/SH (beide aktuell
+nahe 0 % echte Abdeckung), oder Bodendenkmalschutz für die übrigen 14
+Bundesländer. Das braucht weitere, einzeln benannte Recherche-Durchläufe
+wie diesen - keinen Knopfdruck.
