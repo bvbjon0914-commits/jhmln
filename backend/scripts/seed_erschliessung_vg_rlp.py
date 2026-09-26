@@ -148,6 +148,14 @@ GEROLSTEIN_AGS = [
     "07233232", "07233235", "07233237", "07233239", "07233240", "07233241",
 ]
 
+NORDPFAELZER_LAND_AGS = [
+    "07333003", "07333004", "07333008", "07333014", "07333016", "07333021", "07333023", "07333024",
+    "07333025", "07333028", "07333034", "07333036", "07333037", "07333043", "07333049", "07333050",
+    "07333051", "07333053", "07333054", "07333055", "07333061", "07333065", "07333066", "07333067",
+    "07333068", "07333072", "07333073", "07333077", "07333078", "07333079", "07333083", "07333084",
+    "07333201", "07333202", "07333203", "07333502",
+]
+
 VERBANDSGEMEINDEN = {
     "Verbandsgemeindeverwaltung Bitburger Land - Abt. 4 (Bauen und Umwelt)": dict(
         street="Hubert-Prim-Straße", house_number="7", postal_code="54634", city="Bitburg",
@@ -210,6 +218,13 @@ VERBANDSGEMEINDEN = {
             "('erstmaliger bebauungsplanmäßiger Ausbau'), Abteilung 2.2 Bauleitplanung, Umwelt, Beiträge"
         ),
         beleglage="stark", ags_liste=GEROLSTEIN_AGS,
+    ),
+    "Verbandsgemeindeverwaltung Nordpfälzer Land - 2. Finanzen": dict(
+        street="Bezirksamtsstraße", house_number="7", postal_code="67806", city="Rockenhausen",
+        phone="06361 451-0", email="info@vg-nl.de",
+        source_url="https://www.xn--nordpflzerland-bib.de/buergerservice/abteilungen/RLP:department:412/2-finanzen/",
+        belegt_fuer="Abteilung 2 Finanzen listet nur generisch 'Abgaben', NICHT wörtlich 'Erschließungsbeiträge'",
+        beleglage="schwaecher", ags_liste=NORDPFAELZER_LAND_AGS,
     ),
 }
 
