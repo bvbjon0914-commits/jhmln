@@ -189,6 +189,15 @@ WITTLICH_LAND_AGS = [
     "07231116", "07231117", "07231127", "07231503", "07231504",
 ]
 
+LAUTERECKEN_WOLFSTEIN_AGS = [
+    "07336001", "07336005", "07336012", "07336013", "07336014", "07336019", "07336023", "07336029",
+    "07336030", "07336033", "07336035", "07336036", "07336038", "07336040", "07336042", "07336043",
+    "07336044", "07336045", "07336048", "07336049", "07336050", "07336053", "07336057", "07336058",
+    "07336060", "07336061", "07336062", "07336065", "07336069", "07336072", "07336073", "07336074",
+    "07336075", "07336085", "07336086", "07336087", "07336090", "07336095", "07336100", "07336104",
+    "07336105",
+]
+
 VERBANDSGEMEINDEN = {
     "Verbandsgemeindeverwaltung Bitburger Land - Abt. 4 (Bauen und Umwelt)": dict(
         street="Hubert-Prim-Straße", house_number="7", postal_code="54634", city="Bitburg",
@@ -290,6 +299,13 @@ VERBANDSGEMEINDEN = {
         source_url="https://www.vg-wittlich-land.de/vg_wittlich_land/%C3%9Cber%20uns/Verbandsgemeindeverwaltung/Abteilungen%20A-Z/",
         belegt_fuer="Fachbereich 1, Sachgebietsgruppe Finanzen - keine wörtliche Einzelbestätigung für Erschließungsbeiträge auf der geprüften Abteilungsseite",
         beleglage="schwaecher", ags_liste=WITTLICH_LAND_AGS,
+    ),
+    "Verbandsgemeindeverwaltung Lauterecken-Wolfstein - Finanzen": dict(
+        street="Schulstraße", house_number="6a", postal_code="67742", city="Lauterecken",
+        phone="06382 791-0", email="info@vg-lw.de",
+        source_url="https://www.vg-lw.de/buerger-verwaltung/verwaltung/finanzen/steuern-gebuehren-und-beitraege/erschliessungsbeitraege/",
+        belegt_fuer="eigene, dedizierte Amtsseite 'Erschließungsbeiträge' unter Finanzen > Steuern, Gebühren und Beiträge",
+        beleglage="stark", ags_liste=LAUTERECKEN_WOLFSTEIN_AGS,
     ),
 }
 
