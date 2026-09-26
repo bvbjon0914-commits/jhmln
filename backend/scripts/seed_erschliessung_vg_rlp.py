@@ -156,6 +156,14 @@ NORDPFAELZER_LAND_AGS = [
     "07333201", "07333202", "07333203", "07333502",
 ]
 
+KUSEL_ALTENGLAN_AGS = [
+    "07336002", "07336003", "07336006", "07336009", "07336015", "07336018", "07336021", "07336022",
+    "07336024", "07336025", "07336034", "07336039", "07336046", "07336051", "07336052", "07336055",
+    "07336066", "07336067", "07336068", "07336070", "07336071", "07336077", "07336079", "07336081",
+    "07336084", "07336088", "07336089", "07336091", "07336094", "07336097", "07336098", "07336099",
+    "07336103", "07336106",
+]
+
 VERBANDSGEMEINDEN = {
     "Verbandsgemeindeverwaltung Bitburger Land - Abt. 4 (Bauen und Umwelt)": dict(
         street="Hubert-Prim-Straße", house_number="7", postal_code="54634", city="Bitburg",
@@ -225,6 +233,17 @@ VERBANDSGEMEINDEN = {
         source_url="https://www.xn--nordpflzerland-bib.de/buergerservice/abteilungen/RLP:department:412/2-finanzen/",
         belegt_fuer="Abteilung 2 Finanzen listet nur generisch 'Abgaben', NICHT wörtlich 'Erschließungsbeiträge'",
         beleglage="schwaecher", ags_liste=NORDPFAELZER_LAND_AGS,
+    ),
+    "Verbandsgemeindeverwaltung Kusel-Altenglan": dict(
+        street="Marktplatz", house_number="1", postal_code="66869", city="Kusel",
+        phone="06381 6080-0", email="info@vgka.de",
+        source_url="https://www.vgka.de/aktuelles/wiederkehrende-beitraege/allgemeines/",
+        belegt_fuer=(
+            "eigene Amtsseite nennt 'Erschließungsbeiträgen' wörtlich im Kontext wiederkehrender "
+            "Beiträge, aber ohne eigene Sachgebiets-Zuordnung - Zuständigkeit bei der "
+            "Verbandsgemeindeverwaltung als Ganzes, nicht bei einem benannten Sachgebiet"
+        ),
+        beleglage="stark", ags_liste=KUSEL_ALTENGLAN_AGS,
     ),
 }
 
