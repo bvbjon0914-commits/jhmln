@@ -158,3 +158,22 @@ def test_inactive_request_types_are_excluded(db_session):
 
     entries = CoverageAnalysisService(db_session).analyze()
     assert entries == []
+
+
+def test_analyze_can_be_scoped_to_state_and_request_type(db_session):
+    """
+    Für einen schnellen, gezielten Vorher-/Nachher-Vergleich nach einer
+    einzelnen Änderung (z.B. nur ein Bundesland + eine Auskunftsart) statt
+    des vollen bundesweiten Laufs.
+    """
+    rt_a = make_request_type(db_session, code="GRUNDBUCH")
+    make_request_type(db_session, code="BAUAKTEN")  # bewusst NICHT im gefilterten Ergebnis erwartet
+    make_administrative_unit(db_session, ags="05911000", state_name="NRW-A", municipality_name="Bochum")
+    make_administrative_unit(db_session, ags="09162000", state_name="BY-NOMATCH", municipality_name="Nirgendwo")
+
+    entries = CoverageAnalysisService(db_session).analyze(
+        state_names=["NRW-A"], request_type_ids=[rt_a.request_type_id],
+    )
+    assert len(entries) == 1
+    assert entries[0].ags == "05911000"
+    assert entries[0].request_type_id == rt_a.request_type_id

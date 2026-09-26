@@ -159,6 +159,8 @@ class CoverageAnalysisService:
         self,
         progress_callback: Optional[Callable[[int, int], None]] = None,
         progress_every: int = 2000,
+        state_names: Optional[List[str]] = None,
+        request_type_ids: Optional[List[str]] = None,
     ) -> List[CoverageEntry]:
         """
         Prüft JEDE offizielle Gemeinde (AdministrativeUnit) gegen JEDE aktive
@@ -166,11 +168,23 @@ class CoverageAnalysisService:
         TRANSIENTES (nie an die Session gehängtes, nie committetes) Building-
         Objekt je Gemeinde - der Matcher liest davon ausschließlich Attribute,
         persistiert nichts.
+
+        `state_names`/`request_type_ids` schränken den Lauf optional auf ein
+        Teilgebiet bzw. bestimmte Auskunftsarten ein - für einen schnellen,
+        gezielten Vorher-/Nachher-Vergleich nach einer einzelnen Änderung
+        (z.B. nur Rheinland-Pfalz + eine neu recherchierte Auskunftsart),
+        ohne den vollen bundesweiten Lauf (~60 Minuten) zu wiederholen. Ohne
+        Angabe bleibt das Verhalten unverändert (voller bundesweiter Lauf).
         """
-        units = self.db.query(AdministrativeUnit).all()
-        request_types = (
-            self.db.query(RequestType).filter(RequestType.active.is_(True)).all()
-        )
+        units_query = self.db.query(AdministrativeUnit)
+        if state_names:
+            units_query = units_query.filter(AdministrativeUnit.state_name.in_(state_names))
+        units = units_query.all()
+
+        request_types_query = self.db.query(RequestType).filter(RequestType.active.is_(True))
+        if request_type_ids:
+            request_types_query = request_types_query.filter(RequestType.request_type_id.in_(request_type_ids))
+        request_types = request_types_query.all()
         building_counts = self._building_counts_by_ags()
 
         results: List[CoverageEntry] = []
