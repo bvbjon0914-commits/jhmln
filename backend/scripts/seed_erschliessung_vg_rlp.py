@@ -231,10 +231,12 @@ def main():
         for entry, info in staged:
             if entry.conflict_type != "NEW":
                 continue
-            hinweis = BELEGLAGE_HINWEIS_STARK if info.get("beleglage") == "stark" else BELEGLAGE_HINWEIS_SCHWAECHER
+            is_stark = info.get("beleglage") == "stark"
+            hinweis = BELEGLAGE_HINWEIS_STARK if is_stark else BELEGLAGE_HINWEIS_SCHWAECHER
             staging.approve_entry(
                 entry.id, reviewer=REVIEWER,
                 review_notes=hinweis.format(belegt_fuer=info["belegt_fuer"]),
+                resulting_verification_status="VERIFIED" if is_stark else "AUTO_IMPORTED",
             )
             approved += 1
         db.commit()

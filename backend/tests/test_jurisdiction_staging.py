@@ -327,3 +327,33 @@ def test_verify_existing_rule_refuses_unknown_or_inactive_rule(db_session):
         service.verify_existing_rule("does-not-exist", reviewer="Testperson", source_url="https://example.gov")
     with pytest.raises(ValueError):
         service.verify_existing_rule(inactive_rule.jurisdiction_id, reviewer="Testperson", source_url="https://example.gov")
+
+
+def test_approve_entry_with_weaker_evidence_does_not_get_marked_verified(db_session):
+    """
+    Auftrag: "technisch abgedeckt" (benannte Organisation + Geltungsbereich +
+    Kontaktweg) und "fachlich verifiziert" sind getrennte Kennzahlen. Eine
+    Regel mit nur struktureller/indirekter Beleglage darf nicht denselben
+    VERIFIED-Status bekommen wie eine mit wörtlich bestätigter Zuständigkeit.
+    """
+    rt = make_request_type(db_session, code="ERSCHLIESSUNG")
+    authority = make_authority(db_session, name="Verbandsgemeindeverwaltung Test")
+    service = JurisdictionStagingService(db_session)
+
+    entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id, ags="07999001",
+        proposed_authority_id=authority.authority_id,
+    )
+    db_session.commit()
+
+    rule = service.approve_entry(
+        entry.id, reviewer="Testperson",
+        review_notes="Quelle bestätigt nur die eng verwandte Ausbaubeiträge-Zuständigkeit, nicht wörtlich Erschließung.",
+        resulting_verification_status="AUTO_IMPORTED",
+    )
+    db_session.commit()
+
+    assert rule.verification_status == "AUTO_IMPORTED"
+    assert not rule.is_professionally_verified()
+    assert "Ausbaubeiträge" in rule.notes
+    assert "Staging-Batch batch-1" in rule.notes

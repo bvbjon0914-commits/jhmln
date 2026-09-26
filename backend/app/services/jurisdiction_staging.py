@@ -151,11 +151,26 @@ class JurisdictionStagingService:
 
     def approve_entry(
         self, staging_id: int, *, reviewer: str, review_notes: Optional[str] = None,
+        resulting_verification_status: str = "VERIFIED",
     ) -> Jurisdiction:
         """
-        Übernimmt EINEN geprüften Staging-Eintrag als neue, fachlich bestätigte
-        Jurisdiction-Zeile. Erfordert einen expliziten Prüfer-Namen (reviewer) -
-        es gibt keinen Aufruf ohne menschlichen Namen.
+        Übernimmt EINEN geprüften Staging-Eintrag als neue Jurisdiction-Zeile.
+        Erfordert einen expliziten Prüfer-Namen (reviewer) - es gibt keinen
+        Aufruf ohne menschlichen Namen.
+
+        `resulting_verification_status` erlaubt, die tatsächliche Beleglage
+        ehrlich abzubilden: Standard ist "VERIFIED" (Quelle bestätigt die
+        Zuständigkeit für GENAU diese Auskunftsart wörtlich/eindeutig).
+        Bei schwächerer Beleglage (z.B. Quelle bestätigt nur eine eng
+        verwandte, aber andere Leistung, oder eine rein strukturelle
+        Ableitung ohne Einzelbestätigung) sollte der Aufrufer "AUTO_IMPORTED"
+        übergeben - die Regel bleibt dann technisch nutzbar (benannte
+        Organisation, belegter Geltungsbereich, nutzbarer Kontakt), zählt
+        aber bewusst NICHT als "fachlich verifiziert" in einer strengeren
+        Auswertung. `review_notes` wird sowohl auf dem Staging-Eintrag als
+        auch im `notes`-Feld der resultierenden Regel gespeichert, damit die
+        Begründung auch bei direkter Abfrage von `jurisdictions` sichtbar
+        bleibt, nicht nur über den Staging-Eintrag.
         """
         entry = self._require_pending_entry(staging_id)
 
@@ -206,9 +221,12 @@ class JurisdictionStagingService:
             source=entry.source, source_url=entry.source_url, source_license=entry.source_license,
             source_retrieved_at=entry.source_retrieved_at,
             last_verified_at=datetime.utcnow(), verified_by=reviewer,
-            verification_status="VERIFIED",
+            verification_status=resulting_verification_status,
             active=True,
-            notes=f"Übernommen aus Staging-Batch {entry.batch_id} (Eintrag #{entry.id}).",
+            notes=(
+                f"Übernommen aus Staging-Batch {entry.batch_id} (Eintrag #{entry.id})."
+                + (f" {review_notes}" if review_notes else "")
+            ),
         )
         self.db.add(new_rule)
         self.db.flush()
