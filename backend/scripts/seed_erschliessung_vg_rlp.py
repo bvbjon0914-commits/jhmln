@@ -14,6 +14,16 @@ Gemeinde-zu-Verbandsgemeinde-Zuordnung stammt aus der amtlichen
 BKG-VG250-Attributtabelle (Sheet VGTB_VZ_GEM, Spalten ARS_V/GEN_V/BEZ_V -
 siehe docs/OFFICIAL_SOURCES.md für die Quelle), NICHT selbst erfunden.
 
+SOURCING-STANDARD (ausdrücklich vom Nutzer bestätigt): `source_url` MUSS
+eine amtliche Quelle sein (VG-eigene Amtsseite, offizielles Landes-/
+Bundesportal). NIEMALS ein Zeitungsartikel oder eine sonstige
+Drittquelle - auch nicht für AUTO_IMPORTED-Einträge mit "schwächerer"
+Beleglage. Ein Fall (Verbandsgemeinde Leiningerland), der versehentlich
+nur mit einem Zeitungsartikel belegt wurde, wurde deshalb wieder
+zurückgenommen (siehe scripts/revert_erschliessung_leiningerland.py) -
+keine Regel für Leiningerland in diesem Skript, bis eine echte amtliche
+Quelle gefunden ist.
+
 WICHTIGE EINSCHRÄNKUNG DER BELEGLAGE (bewusst nicht verschwiegen): für
 beide unten aufgeführten Verbandsgemeinden bestätigt die jeweilige
 amtliche Quelle die Zuständigkeit der genannten Abteilung für
@@ -313,16 +323,11 @@ VERBANDSGEMEINDEN = {
         belegt_fuer="eigene, dedizierte Amtsseite 'Erschließungsbeiträge' unter Finanzen > Steuern, Gebühren und Beiträge",
         beleglage="stark", ags_liste=LAUTERECKEN_WOLFSTEIN_AGS,
     ),
-    "Verbandsgemeindeverwaltung Leiningerland - Fachbereich Finanzen": dict(
-        street="Industriestraße", house_number="11", postal_code="67269", city="Grünstadt",
-        phone=None, email="info@vg-l.de",
-        source_url="https://www.rheinpfalz.de/lokal/gruenstadt_artikel,-wegen-neuberechnung-anwohner-muss-h%C3%B6here-beitr%C3%A4ge-zahlen-_arid,5312880.html",
-        belegt_fuer=(
-            "Presseartikel (Die Rheinpfalz) berichtet über einen realen Erschließungsbeitragsfall in "
-            "der VG - kein offizielles VG-Dokument mit expliziter Sachgebiets-Zuordnung gefunden"
-        ),
-        beleglage="schwaecher", ags_liste=LEININGERLAND_AGS,
-    ),
+    # Verbandsgemeinde Leiningerland ABSICHTLICH NICHT hier: die einzige
+    # gefundene Stütze war ein Zeitungsartikel, kein amtliches VG-Dokument -
+    # per Nutzer-Entscheid zurückgenommen (siehe Docstring oben und
+    # scripts/revert_erschliessung_leiningerland.py). LEININGERLAND_AGS
+    # bleibt oben stehen (echte VG250-Daten), nur ohne zugehörige Regel.
 }
 
 BELEGLAGE_HINWEIS_SCHWAECHER = (
