@@ -31,12 +31,34 @@ Beleglage wie Trier gleichgesetzt - siehe `notes` je Regel.
 Bearbeitet in diesem Durchlauf (von 129 Verbandsgemeinden RLP):
   - Verbandsgemeinde Bitburger Land (71 Gemeinden) - größte VG in RLP
   - Verbandsgemeinde Altenkirchen-Flammersfeld (67 Gemeinden)
+  - Verbandsgemeinde Prüm (44 Gemeinden) - eigene Abteilung "2.9
+    Erschließungs- u. Ausbaubeiträge", wörtlich genannt - starke Beleglage
+  - Verbandsgemeinde Arzfeld (43 Gemeinden) - eigene Seite
+    "Erschließungsbeiträge" auf der Amtsseite, wörtlich genannt - starke
+    Beleglage; die Seite selbst weist zusätzlich korrekt darauf hin, dass
+    rechtlich die Ortsgemeinden erhebungsberechtigt sind und die VG-
+    Verwaltung die Sache verwaltungstechnisch bearbeitet
+  - Verbandsgemeinde Simmern-Rheinböllen (44 Gemeinden) - "Erschließungs-
+    beiträge Verkehrsanlagen" unter Finanzen, wörtlich genannt - starke
+    Beleglage
 
-NICHT bearbeitet: Verbandsgemeinde Südeifel (65 Gemeinden) - die
-amtliche Organigramm-Seite ist clientseitig gerendert und lieferte über
-WebFetch/Browser keine verwertbare Abteilungsangabe; zurückgestellt für
-einen künftigen Durchlauf statt eine Vermutung als Fundstelle auszugeben.
-Die übrigen 126 Verbandsgemeinden RLP sind unverändert offen.
+Adressen/E-Mails für alle Verbandsgemeinden wurden gegen das amtliche
+Destatis-Anschriftenverzeichnis der Gemeinde- und Stadtverwaltungen (Stand
+31.01.2026, vom Nutzer bereitgestellt) abgeglichen und stimmen exakt mit
+den unabhängig recherchierten Angaben überein (siehe
+app/services/address_directory.py) - AUSSCHLIESSLICH für Adresse/allgemeine
+E-Mail, NIE für die fachliche Zuständigkeitsaussage selbst (die bleibt je
+VG einzeln über eine amtliche, fachlich einschlägige Quelle belegt).
+
+NICHT bearbeitet: Verbandsgemeinde Südeifel (65 Gemeinden) - Adresse aus
+dem Anschriftenverzeichnis bekannt (Pestalozzistraße 7, 54673 Neuerburg),
+aber die amtliche Organigramm-Seite ist clientseitig gerendert und lieferte
+über WebFetch/Browser keine verwertbare Abteilungsangabe für
+Erschließungsbeiträge - zurückgestellt für einen künftigen Durchlauf statt
+eine Vermutung als Fundstelle auszugeben (eine Adresse allein erfüllt NICHT
+die Anforderung "konkret benannte zuständige Organisation" für diese
+Auskunftsart). Die übrigen 124 Verbandsgemeinden RLP sind unverändert
+offen.
 """
 import os
 import sys
@@ -71,29 +93,81 @@ ALTENKIRCHEN_FLAMMERSFELD_AGS = [
     "07132201", "07132501", "07132502",
 ]
 
+PRUEM_AGS = [
+    "07232202", "07232206", "07232207", "07232208", "07232209", "07232216", "07232222", "07232223",
+    "07232224", "07232226", "07232227", "07232230", "07232231", "07232236", "07232238", "07232250",
+    "07232256", "07232265", "07232266", "07232271", "07232272", "07232276", "07232279", "07232280",
+    "07232283", "07232284", "07232288", "07232290", "07232292", "07232295", "07232296", "07232300",
+    "07232302", "07232304", "07232305", "07232307", "07232308", "07232318", "07232320", "07232321",
+    "07232327", "07232328", "07232329", "07232332",
+]
+
+ARZFELD_AGS = [
+    "07232201", "07232211", "07232212", "07232213", "07232214", "07232217", "07232220", "07232221",
+    "07232229", "07232233", "07232234", "07232240", "07232245", "07232246", "07232247", "07232248",
+    "07232249", "07232253", "07232254", "07232255", "07232258", "07232259", "07232260", "07232261",
+    "07232262", "07232263", "07232264", "07232267", "07232270", "07232277", "07232285", "07232287",
+    "07232291", "07232293", "07232294", "07232297", "07232298", "07232301", "07232309", "07232310",
+    "07232315", "07232322", "07232333",
+]
+
+SIMMERN_RHEINBOELLEN_AGS = [
+    "07140002", "07140003", "07140008", "07140011", "07140012", "07140015", "07140020", "07140023",
+    "07140027", "07140035", "07140037", "07140039", "07140056", "07140058", "07140065", "07140068",
+    "07140070", "07140076", "07140077", "07140079", "07140085", "07140092", "07140096", "07140099",
+    "07140100", "07140101", "07140106", "07140113", "07140115", "07140118", "07140119", "07140121",
+    "07140123", "07140125", "07140126", "07140127", "07140134", "07140138", "07140139", "07140144",
+    "07140148", "07140150", "07140158", "07140166",
+]
+
 VERBANDSGEMEINDEN = {
     "Verbandsgemeindeverwaltung Bitburger Land - Abt. 4 (Bauen und Umwelt)": dict(
         street="Hubert-Prim-Straße", house_number="7", postal_code="54634", city="Bitburg",
         phone="06561 66-0", email="info@bitburgerland.de",
         source_url="https://www.bitburgerland.de/buergerservice-1/leistungen/RLP:entry:216385/strassenausbaubeitraege-wiederkehrende-strassenausbaubeitraege/",
         belegt_fuer="Straßenausbaubeiträge/wiederkehrende Beiträge für Verkehrsanlagen (Abt. 4: Bauen und Umwelt)",
-        ags_liste=BITBURGER_LAND_AGS,
+        beleglage="schwaecher", ags_liste=BITBURGER_LAND_AGS,
     ),
     "Verbandsgemeindeverwaltung Altenkirchen-Flammersfeld - Fachgebiet 3.2 (Beiträge für Verkehrsanlagen, Infrastruktur)": dict(
         street="Rathausstraße", house_number="13", postal_code="57610", city="Altenkirchen",
         phone="02681 85-0", email="rathaus@vg-ak-ff.de",
         source_url="https://www.vg-altenkirchen-flammersfeld.de/gemeinde-politik/rathaus/buergerservice/organisationseinheiten",
         belegt_fuer="Fachgebiet 3.2 - Beiträge für Verkehrsanlagen, Infrastruktur (Fachbereich 3: Infrastruktur, Umwelt und Bauen)",
-        ags_liste=ALTENKIRCHEN_FLAMMERSFELD_AGS,
+        beleglage="schwaecher", ags_liste=ALTENKIRCHEN_FLAMMERSFELD_AGS,
+    ),
+    "Verbandsgemeindeverwaltung Prüm - Abt. 2.9 (Erschließungs- u. Ausbaubeiträge)": dict(
+        street="Tiergartenstraße", house_number="54", postal_code="54595", city="Prüm",
+        phone="06551 943-0", email="poststelle@vg-pruem.de",
+        source_url="https://www.pruem.de/rathaus-buergerservice/fachbereiche/",
+        belegt_fuer="Abt. 2.9 - Erschließungs- u. Ausbaubeiträge (wörtlich genannt)",
+        beleglage="stark", ags_liste=PRUEM_AGS,
+    ),
+    "Verbandsgemeindeverwaltung Arzfeld - Fachbereich Bauen & Umwelt": dict(
+        street="Luxemburger Straße", house_number="6", postal_code="54687", city="Arzfeld",
+        phone="06550 974-0", email="info@vg-arzfeld.de",
+        source_url="https://www.vg-arzfeld.de/rathaus/buergerservice/bauen/erschliessungsbeitraege",
+        belegt_fuer="eigene Amtsseite 'Erschließungsbeiträge' (Fachbereich Bauen & Umwelt), wörtlich genannt",
+        beleglage="stark", ags_liste=ARZFELD_AGS,
+    ),
+    "Verbandsgemeindeverwaltung Simmern-Rheinböllen - Finanzen": dict(
+        street="Brühlstraße", house_number="2", postal_code="55469", city="Simmern/Hunsrück",
+        phone=None, email="info@sim-rhb.de",
+        source_url="https://www.sim-rhb.de/rathaus/verwaltung/was-erledige-ich-wo",
+        belegt_fuer="'Erschließungsbeiträge Verkehrsanlagen' unter Finanzen, wörtlich genannt",
+        beleglage="stark", ags_liste=SIMMERN_RHEINBOELLEN_AGS,
     ),
 }
 
-BELEGLAGE_HINWEIS = (
+BELEGLAGE_HINWEIS_SCHWAECHER = (
     "Quelle bestätigt die Zuständigkeit dieser Organisationseinheit ausdrücklich für '{belegt_fuer}', "
     "NICHT wörtlich für 'Erschließungsbeiträge' (§ 127 ff. BauGB) - beide Beitragsarten werden in der "
     "kommunalen Praxis nahezu durchgängig von derselben Stelle bearbeitet, das ist hier aber nicht "
     "wörtlich einzeln belegt (anders als beim bereits verifizierten Trier-Fall). Schwächere Beleglage, "
     "explizit als solche markiert."
+)
+BELEGLAGE_HINWEIS_STARK = (
+    "Quelle bestätigt '{belegt_fuer}' - Begriff 'Erschließung(s)' wörtlich auf der amtlichen Seite "
+    "genannt, gleichwertige Beleglage wie beim bereits verifizierten Trier-Fall."
 )
 
 
@@ -157,9 +231,10 @@ def main():
         for entry, info in staged:
             if entry.conflict_type != "NEW":
                 continue
+            hinweis = BELEGLAGE_HINWEIS_STARK if info.get("beleglage") == "stark" else BELEGLAGE_HINWEIS_SCHWAECHER
             staging.approve_entry(
                 entry.id, reviewer=REVIEWER,
-                review_notes=BELEGLAGE_HINWEIS.format(belegt_fuer=info["belegt_fuer"]),
+                review_notes=hinweis.format(belegt_fuer=info["belegt_fuer"]),
             )
             approved += 1
         db.commit()
