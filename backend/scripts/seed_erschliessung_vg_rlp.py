@@ -180,6 +180,15 @@ HERRSTEIN_RHAUNEN_AGS = [
     "07134095", "07134502",
 ]
 
+WITTLICH_LAND_AGS = [
+    "07231001", "07231003", "07231007", "07231009", "07231010", "07231013", "07231021", "07231022",
+    "07231023", "07231024", "07231025", "07231026", "07231031", "07231036", "07231037", "07231044",
+    "07231046", "07231049", "07231050", "07231051", "07231053", "07231062", "07231065", "07231069",
+    "07231074", "07231080", "07231082", "07231085", "07231091", "07231095", "07231096", "07231100",
+    "07231101", "07231103", "07231104", "07231107", "07231108", "07231111", "07231113", "07231114",
+    "07231116", "07231117", "07231127", "07231503", "07231504",
+]
+
 VERBANDSGEMEINDEN = {
     "Verbandsgemeindeverwaltung Bitburger Land - Abt. 4 (Bauen und Umwelt)": dict(
         street="Hubert-Prim-Straße", house_number="7", postal_code="54634", city="Bitburg",
@@ -274,6 +283,13 @@ VERBANDSGEMEINDEN = {
         source_url="https://www.vg-hr.de/",
         belegt_fuer="Kämmereiamt / Sachgebiet Abgaben (Vermietung/Verpachtung, Sachversicherungen) - keine wörtliche Einzelbestätigung für Erschließungsbeiträge gefunden",
         beleglage="schwaecher", ags_liste=HERRSTEIN_RHAUNEN_AGS,
+    ),
+    "Verbandsgemeindeverwaltung Wittlich-Land - Fachbereich 1, Sachgebietsgruppe Finanzen": dict(
+        street="Kurfürstenstraße", house_number="1", postal_code="54516", city="Wittlich",
+        phone=None, email="info@vg-wittlich-land.de",
+        source_url="https://www.vg-wittlich-land.de/vg_wittlich_land/%C3%9Cber%20uns/Verbandsgemeindeverwaltung/Abteilungen%20A-Z/",
+        belegt_fuer="Fachbereich 1, Sachgebietsgruppe Finanzen - keine wörtliche Einzelbestätigung für Erschließungsbeiträge auf der geprüften Abteilungsseite",
+        beleglage="schwaecher", ags_liste=WITTLICH_LAND_AGS,
     ),
 }
 
