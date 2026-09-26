@@ -41,6 +41,10 @@ Bearbeitet in diesem Durchlauf (von 129 Verbandsgemeinden RLP):
   - Verbandsgemeinde Simmern-Rheinböllen (44 Gemeinden) - "Erschließungs-
     beiträge Verkehrsanlagen" unter Finanzen, wörtlich genannt - starke
     Beleglage
+  - Verbandsgemeinde Kirchberg (Hunsrück) (40 Gemeinden, Rhein-Hunsrück-
+    Kreis) - "Erschließungs- oder Ausbaubeiträge" im FAQ der Seite
+    "Wiederkehrende Beiträge" (Abteilung Bauen und Umwelt), wörtlich
+    genannt - starke Beleglage
 
 Adressen/E-Mails für alle Verbandsgemeinden wurden gegen das amtliche
 Destatis-Anschriftenverzeichnis der Gemeinde- und Stadtverwaltungen (Stand
@@ -120,6 +124,14 @@ SIMMERN_RHEINBOELLEN_AGS = [
     "07140148", "07140150", "07140158", "07140166",
 ]
 
+KIRCHBERG_HUNSRUECK_AGS = [
+    "07140006", "07140007", "07140024", "07140028", "07140029", "07140030", "07140040", "07140041",
+    "07140044", "07140048", "07140049", "07140050", "07140053", "07140062", "07140067", "07140071",
+    "07140081", "07140082", "07140086", "07140090", "07140094", "07140105", "07140107", "07140109",
+    "07140111", "07140120", "07140122", "07140128", "07140129", "07140130", "07140135", "07140141",
+    "07140145", "07140146", "07140151", "07140154", "07140159", "07140163", "07140164", "07140165",
+]
+
 VERBANDSGEMEINDEN = {
     "Verbandsgemeindeverwaltung Bitburger Land - Abt. 4 (Bauen und Umwelt)": dict(
         street="Hubert-Prim-Straße", house_number="7", postal_code="54634", city="Bitburg",
@@ -155,6 +167,16 @@ VERBANDSGEMEINDEN = {
         source_url="https://www.sim-rhb.de/rathaus/verwaltung/was-erledige-ich-wo",
         belegt_fuer="'Erschließungsbeiträge Verkehrsanlagen' unter Finanzen, wörtlich genannt",
         beleglage="stark", ags_liste=SIMMERN_RHEINBOELLEN_AGS,
+    ),
+    "Verbandsgemeindeverwaltung Kirchberg (Hunsrück) - Bauen und Umwelt": dict(
+        street="Marktplatz", house_number="5", postal_code="55481", city="Kirchberg (Hunsrück)",
+        phone="06763 910-0", email="rathaus@kirchberg-hunsrueck.de",
+        source_url="https://www.kirchberg-hunsrueck.de/de/rathaus/bauen-umwelt/wiederkehrende-beitraege/",
+        belegt_fuer=(
+            "'Erschließungs- oder Ausbaubeiträge' im FAQ der Seite 'Wiederkehrende Beiträge' "
+            "(Abteilung Bauen und Umwelt), Begriff 'Erschließung' wörtlich genannt"
+        ),
+        beleglage="stark", ags_liste=KIRCHBERG_HUNSRUECK_AGS,
     ),
 }
 
