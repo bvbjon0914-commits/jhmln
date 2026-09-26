@@ -600,30 +600,42 @@ Erschließungsbeiträge strukturell IMMER auf VG-/Gemeinde-Ebene organisiert
 sind (rechtlich zudem nicht garantiert einheitlich: nach § 67 GemO RLP
 kann, muss aber nicht, eine Verbandsgemeinde diese Aufgabe von ihren
 Ortsgemeinden übernommen haben - deshalb bewusst KEINE pauschale
-Übertragung auf alle 129 VGs ohne Einzelbeleg). Bislang recherchiert (5 von
-129):
+Übertragung auf alle 129 VGs ohne Einzelbeleg). Bislang recherchiert (10
+von 129):
 
-| Verbandsgemeinde | Gemeinden | Zuständige Stelle | Adresse | Beleglage |
+| Verbandsgemeinde | Kreis | Gemeinden | Zuständige Stelle | Beleglage |
 |---|---|---|---|---|
-| Bitburger Land (größte VG in RLP, Eifelkreis Bitburg-Prüm) | 71 | Abt. 4 Bauen und Umwelt | Hubert-Prim-Str. 7, 54634 Bitburg | schwächer (nur "Ausbaubeiträge" belegt) |
-| Altenkirchen-Flammersfeld | 67 | Fachgebiet 3.2 (Beiträge für Verkehrsanlagen, Infrastruktur) | Rathausstr. 13, 57610 Altenkirchen | schwächer |
-| Prüm (Eifelkreis Bitburg-Prüm) | 44 | Abt. 2.9 "Erschließungs- u. Ausbaubeiträge" | Tiergartenstr. 54, 54595 Prüm | **stark** - Begriff wörtlich genannt |
-| Arzfeld (Eifelkreis Bitburg-Prüm) | 43 | Fachbereich Bauen & Umwelt, eigene Seite "Erschließungsbeiträge" | Luxemburger Str. 6, 54687 Arzfeld | **stark** |
-| Simmern-Rheinböllen (Rhein-Hunsrück-Kreis) | 44 | Finanzen, "Erschließungsbeiträge Verkehrsanlagen" wörtlich gelistet | Brühlstr. 2, 55469 Simmern/Hunsrück | **stark** |
+| Bitburger Land (größte VG in RLP) | Eifelkreis Bitburg-Prüm | 71 | Abt. 4 Bauen und Umwelt | schwächer (nur "Ausbaubeiträge" belegt) |
+| Altenkirchen-Flammersfeld | Altenkirchen | 67 | Fachgebiet 3.2 (Beiträge für Verkehrsanlagen, Infrastruktur) | schwächer |
+| Prüm | Eifelkreis Bitburg-Prüm | 44 | Abt. 2.9 "Erschließungs- u. Ausbaubeiträge" | **stark** |
+| Simmern-Rheinböllen | Rhein-Hunsrück-Kreis | 44 | Finanzen, "Erschließungsbeiträge Verkehrsanlagen" wörtlich gelistet | **stark** |
+| Arzfeld | Eifelkreis Bitburg-Prüm | 43 | Fachbereich Bauen & Umwelt, eigene Seite "Erschließungsbeiträge" | **stark** |
+| Kirchberg (Hunsrück) | Rhein-Hunsrück-Kreis | 40 | Bauen und Umwelt, "Erschließungs- oder Ausbaubeiträge" im FAQ | **stark** |
+| Daun | Vulkaneifel | 38 | Sachgebiet 4.2 Abgaben, "Erschließungsbeitrag zahlen" explizit gelistet | **stark** |
+| Gerolstein | Vulkaneifel | 38 | Sachgebiet 2.2 Bauleitplanung/Umwelt/Beiträge, "Anliegerbeiträge"-Seite nennt Erschließungsbeiträge | **stark** |
+| Nordpfälzer Land | Donnersbergkreis | 36 | Abteilung 2 Finanzen, nur generisch "Abgaben" | schwächer |
+| Kusel-Altenglan | Kusel | 34 | Verbandsgemeindeverwaltung insgesamt, Begriff wörtlich auf Amtsseite | **stark** |
 
-**269 neue MUNICIPALITY-Regeln, 0 Konflikte**, jeweils dry-run-getestet vor
-Anwendung auf die echte Datenbank. Alle Adressen wurden gegen das
-Destatis-Anschriftenverzeichnis (Abschnitt 13.1) gegengeprüft - exakte
-Übereinstimmung in allen 5 Fällen.
+**455 neue MUNICIPALITY-Regeln, 0 Konflikte in allen 10 Durchläufen**,
+jeweils dry-run-getestet vor Anwendung auf die echte Datenbank. Alle
+Adressen wurden gegen das Destatis-Anschriftenverzeichnis (Abschnitt 13.1)
+gegengeprüft - exakte Übereinstimmung in allen 10 Fällen. Bei Daun wurde
+eine Verwechslungsgefahr aktiv vermieden: die zuerst gefundene Seite
+"Erschließung von Grundstücken" betraf tatsächlich die Wasser-/Abwasser-
+Erschließung (Wirtschaftsbetriebe), nicht die hier gesuchte
+BauGB-Erschließungsbeiträge - erst die zweite, gezielt geprüfte Quelle
+(Sachgebiet 4.2 Abgaben) bestätigte den richtigen Zusammenhang.
 
-**Prüfstatus jetzt korrekt nach Beleglage getrennt** (siehe Abschnitt 13.3
-für die zugehörige Code-Korrektur): 132 Regeln (Prüm, Arzfeld,
-Simmern-Rheinböllen + Trier) `VERIFIED`, 138 Regeln (Bitburger Land,
-Altenkirchen-Flammersfeld) `AUTO_IMPORTED` - technisch nutzbar (benannte
-Organisation, belegter Geltungsbereich, echte Kontaktdaten), aber bewusst
-NICHT als fachlich verifiziert gezählt, weil die Quelle nur die eng
-verwandte "Ausbaubeiträge"-Zuständigkeit wörtlich bestätigt, nicht
-"Erschließungsbeiträge" selbst.
+**Prüfstatus nach Beleglage getrennt** (siehe Abschnitt 13.3 für die
+Code-Korrektur): **282 Regeln `VERIFIED`** (Prüm, Simmern-Rheinböllen,
+Arzfeld, Kirchberg, Daun, Gerolstein, Kusel-Altenglan + Trier), **174
+Regeln `AUTO_IMPORTED`** (Bitburger Land, Altenkirchen-Flammersfeld,
+Nordpfälzer Land) - technisch nutzbar (benannte Organisation, belegter
+Geltungsbereich, echte Kontaktdaten), aber bewusst NICHT als fachlich
+verifiziert gezählt, weil die Quelle nur eine eng verwandte Zuständigkeit
+oder nur die generische Abgaben-Kategorie wörtlich bestätigt, nicht
+"Erschließungsbeiträge" selbst. (282 + 174 = 456 = 455 neue Regeln aus
+diesem Abschnitt + 1 bereits bestehende Trier-Regel.)
 
 **Zurückgestellt**: Verbandsgemeinde Südeifel (65 Gemeinden) - Adresse aus
 dem Anschriftenverzeichnis bekannt (Pestalozzistr. 7, 54673 Neuerburg),
@@ -633,7 +645,7 @@ Abteilungsangabe für Erschließungsbeiträge - eine Adresse allein erfüllt
 NICHT die Anforderung "konkret benannte zuständige Organisation" für diese
 Auskunftsart, deshalb keine Regel angelegt.
 
-**Realistischer Restaufwand**: 124 von 129 RLP-Verbandsgemeinden bleiben
+**Realistischer Restaufwand**: 119 von 129 RLP-Verbandsgemeinden bleiben
 offen, plus die strukturell entsprechenden "Amtsverwaltungen" in
 Schleswig-Holstein (SH nennt seine Verbandsgemeinde-Entsprechung "Amt")
 und alle Verbandsgemeinde-/Amt-Äquivalente der übrigen 14 Bundesländer.
