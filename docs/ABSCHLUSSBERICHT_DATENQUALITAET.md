@@ -1325,14 +1325,51 @@ Sekundärquellen-Schätzung (158+21) entspricht. 70 neue Authorities, 179
 neue MUNICIPALITY-Regeln (`scripts/seed_erschliessung_sn.py`), 0
 Konflikte.
 
-### 19.4 Zwischenstand
+### 19.4 Sachsen-Anhalt und Brandenburg: dieselbe Adress-Abkürzung
 
-**Erschließungsbeiträge sind damit jetzt in 5 von 16 Bundesländern
+Nachdem sich das bundesweite Anschriftenverzeichnis bereits für
+Niedersachsen und Sachsen als vollständige Adress- UND
+Gemeinde-Zuordnungsquelle erwiesen hatte, wurde direkt geprüft, ob es
+auch die beiden anderen bereits als hebelbar identifizierten Länder
+(Sachsen-Anhalt: 18 Verbandsgemeinden, Brandenburg: ca. 50 Ämter)
+abdeckt - beide Male ja, exakt mit der erwarteten Anzahl (18 bzw. 52
+Einheiten). Für beide Länder war daher nur noch eine fokussierte
+Rechtsgrundlagen-Recherche pro Land nötig, keine Adress-Agentenwelle.
+
+**Sachsen-Anhalt**: § 91 Abs. 2 Satz 1 KVG LSA - "Die
+Verbandsgemeindeverwaltung führt die Verwaltungsgeschäfte aller
+Aufgaben des eigenen Wirkungskreises der Mitgliedsgemeinden in deren
+Namen und in deren Auftrag." Wortlaut per Live-Browser-Abruf direkt
+gegen die amtliche Landesrecht-Datenbank
+(landesrecht.sachsen-anhalt.de) wort-für-wort verifiziert (die
+JS-basierte "Bürgerservice"-Anwendung ließ sich per Browser, aber nicht
+per curl rendern). 18 neue Authorities, 114 neue MUNICIPALITY-Regeln
+(`scripts/seed_erschliessung_sachsenanhalt.py`), 0 Konflikte.
+
+**Brandenburg**: § 135 Abs. 3 BbgKVerf - "Das Amt besorgt die Kassen-
+und Rechnungsführung ... für die amtsangehörigen Gemeinden. Dazu
+gehören auch die Veranschlagung und Erhebung der Gemeindeabgaben."
+Ebenfalls per Live-Browser-Abruf direkt gegen bravors.brandenburg.de
+wort-für-wort verifiziert. Von 52 gefundenen Verwaltungseinheiten sind
+50 klassische "Ämter" (direkt durch die verifizierte Vorschrift
+gedeckt, Tier "stark"/VERIFIED); 2 Sonderfälle mit abweichender
+Bezeichnung ("Verbandsgemeinde Liebenwerda", "Erfüllende Gemeinde"
+Schwedt/Oder) wurden vorsichtshalber als "schwächer"/AUTO_IMPORTED
+eingestuft, da ihre genaue Rechtsgrundlage (vermutlich GKGBbg statt
+BbgKVerf) nicht einzeln verifiziert wurde. 52 neue Authorities, 272
+neue MUNICIPALITY-Regeln (`scripts/seed_erschliessung_brandenburg.py`),
+0 Konflikte.
+
+### 19.5 Zwischenstand
+
+**Erschließungsbeiträge sind damit jetzt in 7 von 16 Bundesländern
 strukturell abgedeckt** (Rheinland-Pfalz, Mecklenburg-Vorpommern,
-Schleswig-Holstein, Niedersachsen, Sachsen) - zusammen 2531 neue
-MUNICIPALITY-Regeln in dieser Sitzung. In allen Ländern bewusst NICHT
-abgedeckt: die kreisfreien Städte und amtsfreien/eigenständigen
-Gemeinden, die sich selbst verwalten und Einzelrecherche bräuchten -
-das bleibt für eine spätere Sitzung offen, ebenso wie die übrigen 11
-Länder (Baden-Württemberg, Bayern, Berlin, Brandenburg, Bremen,
-Hamburg, Hessen, NRW, Saarland, Sachsen-Anhalt, Thüringen).
+Schleswig-Holstein, Niedersachsen, Sachsen, Sachsen-Anhalt,
+Brandenburg) - zusammen 2917 neue MUNICIPALITY-Regeln in dieser
+Sitzung. In allen Ländern bewusst NICHT abgedeckt: die kreisfreien
+Städte und amtsfreien/eigenständigen Gemeinden, die sich selbst
+verwalten und Einzelrecherche bräuchten - das bleibt für eine spätere
+Sitzung offen, ebenso wie die übrigen 9 Länder (Baden-Württemberg,
+Bayern, Berlin, Bremen, Hamburg, Hessen, NRW, Saarland, Thüringen -
+für die letzten beiden ist laut früherer Strukturrecherche ohnehin
+kaum Hebelwirkung zu erwarten).
