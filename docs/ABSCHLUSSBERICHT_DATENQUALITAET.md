@@ -1360,16 +1360,68 @@ BbgKVerf) nicht einzeln verifiziert wurde. 52 neue Authorities, 272
 neue MUNICIPALITY-Regeln (`scripts/seed_erschliessung_brandenburg.py`),
 0 Konflikte.
 
-### 19.5 Zwischenstand
+### 19.5 Baden-Württemberg, Thüringen, Bayern: dieselbe Adress-Abkürzung, deutlich größerer Massstab
 
-**Erschließungsbeiträge sind damit jetzt in 7 von 16 Bundesländern
+Ein direkter Blick in dieselbe bundesweite Anschriftendatei zeigte, dass
+noch drei weitere, bisher nicht als "RLP-artig hebelbar" identifizierte
+Länder eine sehr grosse Verwaltungsgemeinschafts-Struktur besitzen -
+alle drei bereits mit vollständiger Adresse UND Mitgliedsgemeinden-
+Zuordnung in der Datei enthalten:
+
+| Land | Einheiten | Abgedeckte Gemeinden | Anteil |
+|---|---|---|---|
+| Baden-Württemberg | 270 (156 GVV + 114 vereinbarte VG) | 911 von 1101 | 83 % |
+| Thüringen | 79 (42 VG + 37 erfüllende Gemeinden) | 491 von 601 | 82 % |
+| Bayern | 311 Verwaltungsgemeinschaften | 982 von 2056 | 48 % |
+
+Bayern hat trotz des niedrigeren Prozentsatzes (viele grosse
+eigenständige Städte/Gemeinden zusätzlich) mit 982 Gemeinden die
+grösste absolute Einzel-Länder-Ergänzung dieser gesamten Welle.
+
+**Rechtsgrundlagen** (jeweils per Live-Browser-Abruf direkt gegen die
+amtliche Quelle wort-für-wort verifiziert):
+- **Baden-Württemberg**: § 61 Abs. 3 Nr. 4 GemO BW zählt "die Abgaben-,
+  Kassen- und Rechnungsgeschäfte" explizit als sog. "Erledigungsaufgabe"
+  des Gemeindeverwaltungsverbands auf; Abs. 7 erstreckt dies
+  ausdrücklich auf die vereinbarte Verwaltungsgemeinschaft.
+- **Thüringen**: § 47 Abs. 2 Satz 2-3 ThürKO - die Verwaltungsgemeinschaft
+  "führt diese Aufgaben ... als Behörde der jeweiligen Mitgliedsgemeinde
+  nach deren Weisung aus"; § 51 Abs. 1 Satz 2 ThürKO erstreckt dies auf
+  die erfüllende Gemeinde.
+- **Bayern**: Art. 4 Abs. 2 VGemO - dieselbe "als Behörde ... nach deren
+  Weisung"-Formulierung wie in Thüringen (beide Länder haben historisch
+  denselben Vorschriftentyp).
+
+**Datenqualitätsfund**: Beim Parsen der Bayern-Daten wurden 946 echte
+Dubletten in der Rohdatei selbst entdeckt (identische ARS/AGS-Zeile
+mehrfach gelistet, dasselbe Muster wie bereits bei Sachsen und
+Brandenburg) und bereinigt. Zusätzlich wurden 3 echte Namenskollisionen
+gefunden (zwei bayerische Verwaltungsgemeinschaften heissen jeweils
+"Altenstadt", "Velden" bzw. "Rain", liegen aber in verschiedenen
+Landkreisen) - ohne Behebung hätte die zweite Zeile beim Aufbau des
+Python-Dictionarys die erste stillschweigend überschrieben und deren
+Gemeinden verloren (von flake8 automatisch als F601 "dictionary key
+repeated" erkannt). Behoben durch Anhängen der Postleitzahl an den
+Namen zur Disambiguierung, verifiziert dass beide Einheiten korrekt als
+getrennte Authorities mit ihren jeweiligen Mitgliedsgemeinden bestehen.
+
+Ergebnis: 270 + 79 + 311 = 660 neue Authorities, 911 + 491 + 982 = 2384
+neue MUNICIPALITY-Regeln (`scripts/seed_erschliessung_bw.py`,
+`scripts/seed_erschliessung_thueringen.py`,
+`scripts/seed_erschliessung_bayern.py`), 0 Konflikte. Matching
+stichprobenartig verifiziert inkl. der beiden disambiguierten
+Bayern-Kollisionsfälle.
+
+### 19.6 Zwischenstand
+
+**Erschließungsbeiträge sind damit jetzt in 10 von 16 Bundesländern
 strukturell abgedeckt** (Rheinland-Pfalz, Mecklenburg-Vorpommern,
 Schleswig-Holstein, Niedersachsen, Sachsen, Sachsen-Anhalt,
-Brandenburg) - zusammen 2917 neue MUNICIPALITY-Regeln in dieser
-Sitzung. In allen Ländern bewusst NICHT abgedeckt: die kreisfreien
-Städte und amtsfreien/eigenständigen Gemeinden, die sich selbst
-verwalten und Einzelrecherche bräuchten - das bleibt für eine spätere
-Sitzung offen, ebenso wie die übrigen 9 Länder (Baden-Württemberg,
-Bayern, Berlin, Bremen, Hamburg, Hessen, NRW, Saarland, Thüringen -
-für die letzten beiden ist laut früherer Strukturrecherche ohnehin
-kaum Hebelwirkung zu erwarten).
+Brandenburg, Baden-Württemberg, Thüringen, Bayern) - zusammen 5301 neue
+MUNICIPALITY-Regeln in dieser Sitzung. In allen Ländern bewusst NICHT
+abgedeckt: die kreisfreien Städte und amtsfreien/eigenständigen
+Gemeinden, die sich selbst verwalten und Einzelrecherche bräuchten -
+das bleibt für eine spätere Sitzung offen, ebenso wie die übrigen 6
+Länder (Berlin, Bremen, Hamburg - Stadtstaaten ohne
+Verbandsgemeinde-Konzept; Hessen, NRW, Saarland - laut Strukturrecherche
+kaum bzw. keine Hebelwirkung vorhanden).
