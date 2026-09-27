@@ -1093,3 +1093,83 @@ beschriebene Fix (state jetzt Teil des Vergleichs) griff hier korrekt
 (0 Konflikte beim Dry-Run) - ein Beleg dafür, dass der Fix tatsächlich
 für alle künftigen STATE-Ebene-Regeln wirkt, nicht nur für den
 ursprünglichen KAMPFMITTEL-Fall.
+
+## 17. Bodendenkmalschutz: Brandenburg, Bremen, Hamburg, Sachsen-Anhalt, NRW
+
+### 17.1 Drei weitere zentrale Landesbehörden
+
+Analog zu Abschnitt 16.2 zentralisieren auch Brandenburg, Bremen und
+Hamburg die Nachforschungs-/Grabungsgenehmigung bei einer einzigen
+Landesbehörde (`scripts/fix_bodendenkmalschutz_zentrale_laender_2.py`),
+jeweils per curl gegen die amtliche Impressum-/Kontaktseite
+selbstständig verifiziert:
+
+| Bundesland | Zentrale Behörde |
+|---|---|
+| Brandenburg | Brandenburgisches Landesamt für Denkmalpflege und Archäologisches Landesmuseum (BLDAM), Wünsdorf |
+| Bremen | Landesamt für Denkmalpflege Bremen - Landesarchäologie (Bremen UND Bremerhaven) |
+| Hamburg | Archäologisches Museum Hamburg (Helms-Museum) |
+
+Bremens neue Regel ist bewusst eine eigene, von der bereits bestehenden
+(Abschnitt 10) Bremen-Stadt-only-Regel für die allgemeine
+Denkmalschutzbehörde getrennte Authority, da die Bodendenkmalpflege
+anders als die allgemeine Baudenkmalpflege für beide Städte (Bremen und
+Bremerhaven) zentral beim Landesamt liegt. 3 neue STATE-Regeln, 0
+Konflikte - erneute Bestätigung des Abschnitt-15.2/16.3-Fixes.
+
+### 17.2 Sachsen-Anhalt: Kreis-Ebene mit 2 Sonderstädten
+
+Nach § 9 Abs. 3 DenkmSchG LSA ist die untere Denkmalschutzbehörde
+(Landkreis/kreisfreie Stadt) zuständig; das Landesamt für Denkmalpflege
+und Archäologie (LDA, Halle) ist reine Fachbehörde ohne
+Genehmigungskompetenz. 3 parallele Recherche-Agenten belegten **alle 14
+Landkreise/kreisfreien Städte** mit amtlicher Quelle (meist über die
+einheitliche Leistungsseite "Bodendenkmalpflege" des
+Bürgerservice-Portals Sachsen-Anhalt) - keine offenen Fälle
+(`scripts/seed_bodendenkmalschutz_sachsenanhalt.py`). Zusätzlich 2
+kreisangehörige Städte mit eigener, vom Landkreis getrennter unterer
+Denkmalschutzbehörde identifiziert: Köthen (Anhalt) (Landkreis
+Anhalt-Bitterfeld) und Hansestadt Stendal (Landkreis Stendal - dort mit
+explizitem Hinweis, dass das Bauordnungsamt des Landkreises für das
+Gebiet der Hansestadt NICHT zuständig ist). Ergebnis: 14 COUNTY- + 2
+MUNICIPALITY-Regeln, 0 Konflikte.
+
+### 17.3 Nordrhein-Westfalen: gespaltenes System nach Gemeindetyp
+
+NRW hat als einziges bisher untersuchtes Bundesland eine echte
+Zweiteilung nach § 15 i.V.m. § 21 DSchG NRW: für kreisangehörige
+Gemeinden ist der Landrat als "untere staatliche Verwaltungsbehörde"
+Obere Denkmalbehörde (wie ein normales Kreismuster), für kreisfreie
+Städte dagegen NICHT die Stadt selbst, sondern die zuständige
+Bezirksregierung (5 in NRW: Arnsberg, Detmold, Düsseldorf, Köln,
+Münster) - landeseinheitlich organisiert als "Dezernat 35". 10 parallele
+Recherche-Agenten (`scripts/seed_bodendenkmalschutz_nrw.py`):
+
+- **25 von 31 Landkreisen** mit amtlicher Quelle belegt (COUNTY-Ebene).
+  6 blieben ehrlich offen (Borken, Düren, Herford, Höxter,
+  Rhein-Erft-Kreis, Soest - keine amtliche Quelle mit konkreter
+  Organisationseinheit auffindbar).
+- **Alle 5 Bezirksregierungen** amtlich belegt und jeweils allen ihren
+  kreisfreien Städten zugeordnet - diese Zuordnung wurde NICHT vom
+  Agenten übernommen, sondern direkt aus der echten
+  `AdministrativeUnit.ags_regierungsbezirk`-Struktur abgeleitet und
+  stichprobenartig gegen die Agenten-Aussagen verifiziert (Bielefeld →
+  Detmold, Bonn/Köln/Leverkusen → Köln - beide bestätigt).
+
+Ergebnis: 25 COUNTY- + 22 COUNTY-Regeln (kreisfreie Städte, matching
+level COUNTY da Regierungsbezirks-weit) = 47 neue Regeln, 0 Konflikte.
+Matching stichprobenartig verifiziert: Bielefeld (kreisfrei) → BezReg
+Detmold, Bonn (kreisfrei) → BezReg Köln, Borken (offen) → korrekt
+NO_MATCH.
+
+### 17.4 Zwischenstand Bodendenkmalschutz
+
+**Bodendenkmalschutz ist damit jetzt in 12 von 16 Bundesländern
+strukturell abgedeckt** (Bayern, Baden-Württemberg, Mecklenburg-
+Vorpommern, Thüringen, Hessen, Sachsen, Niedersachsen, Brandenburg,
+Bremen, Hamburg, Sachsen-Anhalt, Nordrhein-Westfalen) sowie zusätzlich
+Rheinland-Pfalz und Schleswig-Holstein aus früheren Sitzungen (macht 14
+von 16). Offen bleiben: Berlin (strukturell blockiert - Bezirksdaten auf
+Gebäude-Ebene fehlen) und Saarland (Landesbehörde identifiziert, aber
+Adresse wegen Bot-Schutz auf saarland.de noch nicht unabhängig
+verifizierbar).
