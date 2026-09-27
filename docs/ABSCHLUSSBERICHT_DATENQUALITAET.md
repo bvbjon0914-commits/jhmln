@@ -900,3 +900,119 @@ NO_MATCH-Bestands bleibt strukturell auf echte, noch nicht recherchierte
 externe Quellen angewiesen (Land-für-Land-Recherche wie in Abschnitt 12) -
 die hier behobenen Fälle sind bewusst nur die kostenlos (ohne neue externe
 Quelle) erreichbaren Strukturfehler.
+
+## 15. Paralleler Multi-Agenten-Durchlauf auf ausdrücklichen Nutzerauftrag ("so viele Agenten wie möglich")
+
+Auftrag: "starte so viele Agenten wie möglich um die NO_MATCH Fälle so
+schnell wie möglich zu vervollständigen". Sicherheits-Design (unverändert
+gegenüber Abschnitt 14 beibehalten): Agenten recherchieren AUSSCHLIESSLICH
+(Web-Suche, kein Code-/Datenbankzugriff); jede Freigabe/jeder
+Datenbank-Schreibzugriff blieb seriell bei einer einzigen Instanz, um
+SQLite-Schreibkonflikte zu vermeiden und die Sourcing-Qualitätsprüfung
+nicht auf viele Instanzen zu verteilen. Insgesamt liefen in diesem
+Durchlauf 31 parallele Recherche-Agenten in mehreren Wellen.
+
+### 15.1 Erschließungsbeiträge RLP - Welle 2 (102 weitere Verbandsgemeinden)
+
+Siehe Abschnitt 12.1 für die vollständige Darstellung. Kurzfassung: 19
+Agenten, 115 der verbleibenden 129 RLP-Verbandsgemeinden recherchiert,
+102 mit amtlicher Quelle belegt (1390 neue Regeln), 13 ehrlich offen
+(inkl. Südeifel). RLP-Erschließungsbeiträge damit von 14 auf 116 von 129
+Verbandsgemeinden abgedeckt.
+
+### 15.2 KAMPFMITTEL: fehlende Bundesländer ergänzt
+
+Ein Recherche-Agent stellte fest, dass KAMPFMITTEL (Kampfmittelräumung)
+bereits für 11 von 16 Bundesländern als zentrale Landesbehörde vorlag,
+für Rheinland-Pfalz, Bayern, Sachsen und Sachsen-Anhalt aber komplett
+fehlte - eine echte Lücke im ursprünglichen Datenbestand. Ergebnis:
+- **Rheinland-Pfalz**: ADD - Kampfmittelräumdienst (KMRD), STATE-Ebene.
+- **Sachsen**: PPSI - Kampfmittelbeseitigungsdienst (KMBD), STATE-Ebene.
+- **Bayern**: KEINE einzige zentrale Stelle, sondern genau 2
+  Sprengkommandos (München, Nürnberg), deren Zuständigkeit an
+  Landkreisgrenzen verläuft (Ausnahme: Eichstätt und Donau-Ries gehen an
+  Nürnberg trotz Regierungsbezirk-Zugehörigkeit zu München-Gebieten) - 96
+  COUNTY-Regeln.
+- **Sachsen-Anhalt**: bewusst NICHT behoben - der KBD ist organisatorisch
+  identifiziert, aber die amtliche Seite veröffentlicht keine Adresse/
+  Telefonnummer und verweist Bürger stattdessen an ihre örtliche
+  Sicherheitsbehörde - kein amtlich belegter "verwendbarer Kontakt- oder
+  Einreichungsweg" im Sinne des Auftrags.
+
+Alle Quellen (RLP, Sachsen, Bayern-Telefonnummern) wurden eigenständig per
+`curl` gegen die amtlichen Originalseiten nachverifiziert, nicht nur die
+Agenten-Aussage übernommen.
+
+**Bug gefunden und behoben**: beim Versuch, die RLP-Regel zu stagen, wurde
+sie fälschlich als Konflikt mit der bereits bestehenden, völlig
+unabhängigen Schleswig-Holstein-Regel gemeldet. Ursache:
+`_find_matching_existing()` in `JurisdictionStagingService` verglich
+ags/municipality/district/postal_code/street/house_number, aber NICHT
+`state` - bei einer reinen STATE-Ebene-Regel sind alle diese Felder
+IMMER None, wodurch jede neue STATE-Regel fälschlich mit der STATE-Regel
+JEDES ANDEREN Bundeslands kollidierte. Behoben (state jetzt Teil des
+Vergleichs), Regressionstest ergänzt, volle Testsuite grün (160 Tests).
+Dieser Fix wirkt sich auf JEDE künftige STATE-Ebene-Regel aus, nicht nur
+auf die vier hier ergänzten.
+
+### 15.3 BODENDENKMALSCHUTZ Bayern: die auffälligste bundesweite Einzellücke
+
+Vor diesem Durchlauf: 0 % Abdeckung in Bayern (2.056 von 2.056 Gemeinden
+NO_MATCH) - der größte einzelne Cluster bundesweit. Ein Recherche-Agent
+klärte zunächst die Verwaltungsstruktur: nach Art. 10 BayDSchG ist die
+jeweilige Kreisverwaltungsbehörde (Landratsamt/kreisfreie Stadt) die
+"Untere Denkmalschutzbehörde" - 96 COUNTY-Regeln decken damit ALLE
+bayerischen Gemeinden ab (Faktor-~21-Hebel), keine Gemeinde-
+Einzelrecherche nötig. (Derselbe Agent stellte außerdem fest: BAULASTEN
+existiert in Bayern strukturell NICHT - amtlich bestätigt durch die
+Bauordnungsamt-FAQ der Stadt Nürnberg - und KATASTER läuft über 51 Ämter
+für Digitalisierung, Breitband und Vermessung, AEDBV, nicht über die
+Landratsämter; beides bewusst nicht in diesem Durchlauf behoben, siehe
+15.4.)
+
+9 parallele Recherche-Agenten (8 Batches × 12 Kreise + 1 Nachtrag für
+Garmisch-Partenkirchen, das im ursprünglichen Batch-Split versehentlich
+ausgelassen wurde - selbst entdeckt durch einen programmatischen
+Vollständigkeits-Abgleich gegen die echten 96 `AdministrativeUnit`-Kreise,
+nicht durch manuelles Nachzählen). Ergebnis: **90 von 96
+Kreisverwaltungen mit amtlicher Quelle belegt** (73 stark, 17
+schwächer), **6 ehrlich als OFFEN gemeldet** statt geraten: Amberg
+(kreisfreie Stadt - einzige gefundene Stütze war ein Zeitungsartikel,
+bewusst nicht übernommen), Dillingen a.d.Donau, Neumarkt i.d.OPf.,
+Neustadt a.d.Aisch-Bad Windsheim, Pfaffenhofen a.d.Ilm, Straubing-Bogen
+(zwei konkurrierende, gleichrangige Organisationseinheiten ohne
+eindeutige amtliche Zuordnung).
+
+**Zweiter Bug gefunden und behoben** (vor Anwendung auf die echte DB):
+eine Namens-Heuristik zur Unterscheidung Landkreis/kreisfreie Stadt hätte
+mehreren kreisfreien Städten ohne "kreisfreie"/"Landkreis" im Namen
+(München, Ingolstadt, Erlangen, Nürnberg, Kaufbeuren, Kempten, Memmingen,
+Schwabach, Straubing, Weiden) fälschlich ein "Landratsamt"-Präfix
+vorangestellt. Durch die tatsächliche `AdministrativeUnit`-Struktur
+ersetzt (kreisfreie Stadt = ein Kreis, der aus genau einer Gemeinde
+besteht - `ags_gemeinde="000"`), keine Namens-Heuristik mehr. Vor dem Fix
+wären z.B. München-Stadt und München-Landkreis zwar nicht kollidiert
+(unterschiedliche Namen im Skript), aber die Stadt-Behörde hätte
+fälschlich "Landratsamt" im Namen getragen.
+
+Dry-Run mehrfach verifiziert (u.a. München-Stadt vs. München-Landkreis,
+Bayreuth-Stadt vs. -Landkreis, alle Namenskollisionsfälle korrekt
+unterschieden, Garmisch-Partenkirchen), auf lokale Dev-DB angewendet,
+volle Testsuite grün (160 Tests).
+
+### 15.4 Bewusst zurückgestellt
+
+- **Bayern BAULASTEN**: existiert strukturell nicht (s.o.) - sollte in
+  einer künftigen Kennzahl-Betrachtung als "entfällt", nicht als
+  NO_MATCH gezählt werden; das erfordert ggf. eine kleine
+  Schema-Erweiterung (aktuell gibt es keine "nicht anwendbar"-Kategorie
+  in `CoverageAnalysisService`), wurde in diesem Durchlauf bewusst nicht
+  umgesetzt, um keine ungeprüfte Schemaänderung "nebenbei" einzuführen.
+- **Bayern KATASTER**: 51 AEDBV-Regeln (statt 96 Kreis-Regeln, da AEDBV-
+  Zuständigkeitsgrenzen nicht exakt den Landkreisgrenzen folgen) wären
+  ein ähnlich großer Hebel wie Bodendenkmalschutz - Zielliste (AEDBV-Name,
+  Adresse, zugeordnete Landkreise) noch nicht recherchiert.
+- **Bayern ERSCHLIESSUNG**: laut Recherche-Agent echte Gemeinde-/VGem-
+  Ebene wie in RLP - kein struktureller Shortcut, müsste analog zu
+  Abschnitt 12/15.1 Gemeinde für Gemeinde bzw. Verwaltungsgemeinschaft
+  für Verwaltungsgemeinschaft recherchiert werden.
