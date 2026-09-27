@@ -1286,13 +1286,53 @@ Michaelisdonn", "Heider Umland", "Eider"). Ergebnis: 83 neue
 Authorities, 1018 neue MUNICIPALITY-Regeln
 (`scripts/seed_erschliessung_sh.py`), 0 Konflikte.
 
-### 19.3 Zwischenstand
+### 19.3 Niedersachsen und Sachsen: keine Adress-Recherche mehr nötig
 
-**Erschließungsbeiträge sind damit jetzt in 3 von 16 Bundesländern
+Bei der Strukturrecherche zu Niedersachsen fiel auf, dass das amtliche
+Anschriftenverzeichnis "Anschriften der Gemeinde- und Stadtverwaltungen"
+(Statistische Ämter des Bundes und der Länder), das in dieser Sitzung
+bereits für Kreis-Adressen bei BODENDENKMALSCHUTZ und KATASTER genutzt
+wurde (`app/services/address_directory.py`), auch eine eigene Satzart
+für die Verwaltungsgemeinschafts-Ebene führt (`SATZART_VERBANDSGEMEINDE
+= 50`, Kommentar im Modul: "Verwaltungsgemeinschaft/Verbandsgemeinde/
+Amt/Samtgemeinde"). Ein direkter Blick in die bereits lokal vorliegende
+Datei bestätigte: sowohl Niedersachsens 114 Samtgemeinden als auch
+Sachsens 70 Verwaltungsgemeinschaften/-verbände sind darin mit
+vollständiger Anschrift UND der kompletten Mitgliedsgemeinden-Zuordnung
+(inkl. amtlichem Gemeindeschlüssel) enthalten - für beide Länder war
+dadurch KEINE zusätzliche Recherche-Agentenwelle für Adressen nötig
+(anders als noch bei Schleswig-Holstein), nur eine Rechtsgrundlagen-
+Recherche pro Land.
+
+**Niedersachsen**: § 98 Abs. 5 Satz 1 NKomVG (unabhängig über zwei
+Quellen bestätigt) - die Samtgemeinde "führt die Kassengeschäfte der
+Mitgliedsgemeinden und veranlagt und erhebt für diese die
+Gemeindeabgaben". 114 neue Authorities, 650 neue MUNICIPALITY-Regeln
+(`scripts/seed_erschliessung_ni.py`), 0 Konflikte.
+
+**Sachsen**: die Rechtsgrundlage liegt - anders als ursprünglich
+angenommen - nicht in der SächsGemO, sondern im eigenständigen
+Sächsischen Gesetz über kommunale Zusammenarbeit (SächsKomZG): § 8
+Abs. 1 (Verwaltungsverband erledigt "Vorbereitung und Vollzug der
+Beschlüsse der Mitgliedsgemeinden" und "Geschäfte der laufenden
+Verwaltung"), § 5 Abs. 4 (Vorschriften über Gebühren/Beiträge gelten
+entsprechend), § 36 Abs. 3 (gilt für Verwaltungsgemeinschaften
+entsprechend). Beim Parsen der Datei wurde eine echte Dublette in der
+Rohdatei selbst entdeckt (zwei Gemeinden mit identischer ARS/AGS-Zeile
+zweifach gelistet) und bereinigt - danach exakt 179 zugeordnete
+Gemeinden, was exakt der unabhängig recherchierten
+Sekundärquellen-Schätzung (158+21) entspricht. 70 neue Authorities, 179
+neue MUNICIPALITY-Regeln (`scripts/seed_erschliessung_sn.py`), 0
+Konflikte.
+
+### 19.4 Zwischenstand
+
+**Erschließungsbeiträge sind damit jetzt in 5 von 16 Bundesländern
 strukturell abgedeckt** (Rheinland-Pfalz, Mecklenburg-Vorpommern,
-Schleswig-Holstein) - zusammen 1702 neue MUNICIPALITY-Regeln in dieser
-Sitzung. In beiden neuen Ländern bewusst NICHT abgedeckt: die
-kreisfreien Städte und amtsfreien Gemeinden/Städte, die sich selbst
-verwalten und Einzelrecherche bräuchten - das bleibt für eine spätere
-Sitzung offen, ebenso wie Niedersachsen/Sachsen (mittlere Hebelwirkung)
-und die übrigen 11 Länder.
+Schleswig-Holstein, Niedersachsen, Sachsen) - zusammen 2531 neue
+MUNICIPALITY-Regeln in dieser Sitzung. In allen Ländern bewusst NICHT
+abgedeckt: die kreisfreien Städte und amtsfreien/eigenständigen
+Gemeinden, die sich selbst verwalten und Einzelrecherche bräuchten -
+das bleibt für eine spätere Sitzung offen, ebenso wie die übrigen 11
+Länder (Baden-Württemberg, Bayern, Berlin, Brandenburg, Bremen,
+Hamburg, Hessen, NRW, Saarland, Sachsen-Anhalt, Thüringen).
