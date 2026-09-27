@@ -65,6 +65,37 @@ def test_contradicts_verified_rule_is_detected(db_session):
     assert entry.conflicts_with_jurisdiction_id == old_rule.jurisdiction_id
 
 
+def test_state_level_rule_does_not_conflict_with_other_states_state_level_rule(db_session):
+    """
+    Regressionstest für einen echten Bug: eine reine STATE-Ebene-Regel hat
+    ags/municipality/district/postal_code/street/house_number IMMER alle
+    None - ohne `state` als zusätzliches Vergleichsfeld hätte JEDE neue
+    STATE-Regel fälschlich mit der STATE-Regel JEDES ANDEREN Bundeslands
+    kollidiert (gefunden beim Versuch, eine fehlende Rheinland-Pfalz-Regel
+    zu ergänzen, die fälschlich als Konflikt mit einer bereits bestehenden,
+    völlig unabhängigen Schleswig-Holstein-Regel gemeldet wurde).
+    """
+    rt = make_request_type(db_session, code="KAMPFMITTEL")
+    sh_authority = make_authority(db_session, name="LKA Schleswig-Holstein")
+    rlp_authority = make_authority(db_session, name="ADD Rheinland-Pfalz")
+    make_jurisdiction(
+        db_session, request_type_id=rt.request_type_id, authority_id=sh_authority.authority_id,
+        state="Schleswig-Holstein", matching_level="STATE",
+        verification_status="VERIFIED", last_verified_at=days_ago(10), verified_by="Prüfer A",
+    )
+
+    service = JurisdictionStagingService(db_session)
+    entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id,
+        state="Rheinland-Pfalz", matching_level="STATE",
+        proposed_authority_id=rlp_authority.authority_id,
+    )
+    db_session.commit()
+
+    assert entry.conflict_type == ConflictType.NEW
+    assert entry.conflicts_with_jurisdiction_id is None
+
+
 def test_contradicts_unverified_rule_is_detected(db_session):
     rt = make_request_type(db_session, code="GRUNDBUCH")
     old_authority = make_authority(db_session, name="Alte Behörde")

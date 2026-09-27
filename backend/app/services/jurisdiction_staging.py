@@ -39,19 +39,29 @@ class JurisdictionStagingService:
     # ------------------------------------------------------------------
 
     def _find_matching_existing(
-        self, *, request_type_id, ags, municipality, district, postal_code, street, house_number,
+        self, *, request_type_id, state, ags, municipality, district, postal_code, street, house_number,
     ) -> List[Jurisdiction]:
         """
         Bestehende Regeln mit demselben fachlichen Geltungsbereich (dieselben
         geografischen Schlüsselfelder wie im Matcher selbst) für dieselbe
         Auskunftsart - unabhängig von deren Gültigkeitszeitraum, damit auch
         eine bereits abgelaufene Regel als Historie erkannt wird.
+
+        `state` gehört bewusst zu den Schlüsselfeldern: bei einer reinen
+        STATE-Ebene-Regel sind ags/municipality/district/postal_code/street/
+        house_number IMMER alle None - ohne `state` im Vergleich würde jede
+        neue STATE-Regel fälschlich mit der STATE-Regel jedes ANDEREN
+        Bundeslands kollidieren (gefunden beim Versuch, die fehlende
+        Rheinland-Pfalz-KAMPFMITTEL-Regel zu ergänzen: sie wurde fälschlich
+        als Konflikt mit der bereits bestehenden, völlig unabhängigen
+        Schleswig-Holstein-Regel gemeldet).
         """
         return (
             self.db.query(Jurisdiction)
             .filter(
                 Jurisdiction.request_type_id == request_type_id,
                 Jurisdiction.active.is_(True),
+                Jurisdiction.state == state,
                 Jurisdiction.ags == ags,
                 Jurisdiction.municipality == municipality,
                 Jurisdiction.district == district,
@@ -63,11 +73,11 @@ class JurisdictionStagingService:
         )
 
     def _detect_conflict(
-        self, *, request_type_id, ags, municipality, district, postal_code,
+        self, *, request_type_id, state, ags, municipality, district, postal_code,
         street, house_number, proposed_authority_id,
     ):
         existing = self._find_matching_existing(
-            request_type_id=request_type_id, ags=ags, municipality=municipality,
+            request_type_id=request_type_id, state=state, ags=ags, municipality=municipality,
             district=district, postal_code=postal_code, street=street, house_number=house_number,
         )
         if not existing:
@@ -124,7 +134,7 @@ class JurisdictionStagingService:
             )
 
         conflict_type, conflict_jurisdiction, conflict_reason = self._detect_conflict(
-            request_type_id=request_type_id, ags=ags, municipality=municipality, district=district,
+            request_type_id=request_type_id, state=state, ags=ags, municipality=municipality, district=district,
             postal_code=postal_code, street=street, house_number=house_number,
             proposed_authority_id=proposed_authority_id,
         )
