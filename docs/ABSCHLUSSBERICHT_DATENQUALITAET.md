@@ -1236,3 +1236,63 @@ damit strukturell in 11 von 16 Bundesländern neu abgedeckt (zusammen
 mit Bayern/RLP/SH: 14 von 16) - offen bleiben nur noch Berlin
 (strukturell, s.o.) und ein kleiner Rest einzelner Landkreise ohne
 auffindbare amtliche Quelle.
+
+## 19. Erschließungsbeiträge: Mecklenburg-Vorpommern und Schleswig-Holstein
+
+Erschließungsbeiträge (§ 127 ff. BauGB) werden bundesweit grundsätzlich
+von der einzelnen GEMEINDE selbst erhoben - mit ca. 11.000 Gemeinden
+deutschlandweit das strukturell schwierigste Feld dieser Mandats. In
+Rheinland-Pfalz (frühere Sitzung) löste sich das über die
+Verbandsgemeinden. Eine Strukturrecherche in 8 weiteren Bundesländern
+ergab: Mecklenburg-Vorpommern (76 Ämter decken 684 von 724 Gemeinden ab,
+-84 % Rechercheaufwand) und Schleswig-Holstein (83 Ämter decken 1018
+von ca. 1104 Gemeinden ab, >92 %) haben die beste Hebelwirkung;
+Niedersachsen und Sachsen sind mittelgut, Hessen und Saarland praktisch
+nicht hebelbar (fast nur Einheitsgemeinden).
+
+### 19.1 Mecklenburg-Vorpommern
+
+Nach § 127 Abs. 2 KV M-V (Kommunalverfassung M-V) "besorgt das Amt ...
+die Veranlagung und Erhebung der Gemeindeabgaben für die
+amtsangehörigen Gemeinden" - Erschließungsbeiträge sind Gemeindeabgaben
+im Sinne des KAG M-V. Ein Recherche-Agent fand zusätzlich eine einzige
+offizielle XLSX-Datei des Ministeriums für Inneres, Bau und
+Digitalisierung M-V ("Kommunalverzeichnis"), die sowohl alle 76
+Amtsadressen ALS AUCH die vollständige Gemeinde-AGS-Zuordnung enthält -
+selbst heruntergeladen und geparst (kein externer Kreuzreferenz-Bedarf
+wie noch bei RLP). Ergebnis: 76 neue Authorities, 684 neue
+MUNICIPALITY-Regeln (`scripts/seed_erschliessung_mv.py`), 0 Konflikte.
+
+### 19.2 Schleswig-Holstein
+
+Nach § 3 Abs. 1 AO (Amtsordnung SH) "führt [das Amt] nach [den]
+Beschlüssen die Selbstverwaltungsaufgaben der amtsangehörigen Gemeinden
+durch" - unabhängig gegen den Gesetzestext verifiziert. Anders als M-V
+gibt es in SH keine einzelne Datei mit Amtsadressen UND
+Gemeinde-Zuordnung zugleich - daher wurden zwei komplementäre Quellen
+kombiniert:
+- Die amtliche Destatis-Datei "Gemeinden in Deutschland ... am
+  31.12.2025" (Amtlicher Regionalschlüssel mit Gemeindeverband-Spalte)
+  wurde selbst heruntergeladen und geparst - liefert die vollständige
+  Gemeinde-zu-Amt-Zuordnung (1018 Gemeinden in 83 Ämtern) inkl. AGS.
+- 11 parallele Recherche-Agenten ermittelten für jedes der 83 Ämter
+  einzeln die Amtssitzadresse von dessen offizieller Website (keine
+  zentrale Adressliste vorhanden).
+
+Alle 83 recherchierten Adressen konnten eindeutig den 83
+Destatis-Amtsnamen zugeordnet werden (3 Sonderfälle mit abweichender
+amtlicher Kurzbezeichnung im Destatis-Verzeichnis: "Burg-St.
+Michaelisdonn", "Heider Umland", "Eider"). Ergebnis: 83 neue
+Authorities, 1018 neue MUNICIPALITY-Regeln
+(`scripts/seed_erschliessung_sh.py`), 0 Konflikte.
+
+### 19.3 Zwischenstand
+
+**Erschließungsbeiträge sind damit jetzt in 3 von 16 Bundesländern
+strukturell abgedeckt** (Rheinland-Pfalz, Mecklenburg-Vorpommern,
+Schleswig-Holstein) - zusammen 1702 neue MUNICIPALITY-Regeln in dieser
+Sitzung. In beiden neuen Ländern bewusst NICHT abgedeckt: die
+kreisfreien Städte und amtsfreien Gemeinden/Städte, die sich selbst
+verwalten und Einzelrecherche bräuchten - das bleibt für eine spätere
+Sitzung offen, ebenso wie Niedersachsen/Sachsen (mittlere Hebelwirkung)
+und die übrigen 11 Länder.
