@@ -1173,3 +1173,66 @@ von 16). Offen bleiben: Berlin (strukturell blockiert - Bezirksdaten auf
 Gebäude-Ebene fehlen) und Saarland (Landesbehörde identifiziert, aber
 Adresse wegen Bot-Schutz auf saarland.de noch nicht unabhängig
 verifizierbar).
+
+## 18. Liegenschaftskataster (KATASTER): zweite Welle, 11 von 16 Ländern neu abgedeckt
+
+Nach Abschluss der aktuellen Bodendenkmalschutz-Welle wurde die
+NO_MATCH-Analyse auf andere Auskunftsarten ausgeweitet. Eine
+state-gescopte Auszählung ergab: KATASTER war nach Bayern/RLP/SH nur in
+3 von 16 Ländern abgedeckt, mit 91 von 401 Landkreisen/kreisfreien
+Städten bundesweit ohne COUNTY-Regel - der größte verbleibende
+strukturelle Nationwide-NO_MATCH-Block. 6 parallele Recherche-Agenten
+(je ein Batch für Hessen, Thüringen, Niedersachsen, Sachsen-Anhalt,
+Baden-Württemberg/Saarland/Mecklenburg-Vorpommern, sowie einen
+Kleinstlücken-Batch für NRW/Sachsen/Hamburg/Berlin) deckten sechs
+unterschiedliche Organisationsmuster ab (`scripts/seed_kataster_wave2.py`):
+
+| Bundesland | Muster |
+|---|---|
+| Sachsen-Anhalt | Zentral: LVermGeo, 4 "Geokompetenz-Center" (Magdeburg, Stendal, Dessau-Roßlau, Halle) |
+| Niedersachsen | LGLN, Regionaldirektionen mit einzelnen Katasterämtern je Kreisstadt |
+| Baden-Württemberg | Jeder Land-/Stadtkreis führt sein Kataster selbst |
+| Saarland | Zentral: LVGL, eine "Zentrale Außenstelle" (Saarlouis) für alle Kreise |
+| Mecklenburg-Vorpommern | Untere Vermessungs- und Geoinformationsbehörden je Landkreis/kreisfreier Stadt |
+| Hessen | HVBG, 7 "Ämter für Bodenmanagement" (ÄfB) |
+| Thüringen | TLBG, 8 Zweigstellen je nach Kreisstadt |
+| NRW/Sachsen | städtische Vermessungsämter für einzelne Restlücken |
+
+Wichtiger Zwischenschritt: Von den 91 zunächst als fehlend markierten
+Kreisen erwiesen sich **9 als Scheinlücken** (Freiburg, Stadtkreis
+Heilbronn, Stadtkreis Karlsruhe, Oldenburg-Stadt, Osnabrück-Stadt,
+Rostock-Stadt, Mülheim an der Ruhr, Solingen, Leipzig-Stadt sowie
+Hamburg) - die reine COUNTY-Auszählung hatte jeweils eine bereits
+bestehende, höher priorisierte MUNICIPALITY-Regel übersehen; eine neue
+COUNTY/STATE-Regel wäre dort wirkungslos (toter Code) gewesen und wurde
+deshalb nicht angelegt. Dabei wurde zusätzlich ein Datenfehler im
+ersten Skriptentwurf gefunden und korrigiert: die AGS von Stadtkreis
+und Landkreis Heilbronn (08121 vs. 08125) bzw. Stadtkreis und Landkreis
+Karlsruhe (08212 vs. 08215) waren zunächst vertauscht (beide Male
+identischer `county_name` "Heilbronn"/"Karlsruhe" ohne Kreis-/
+Stadt-Unterscheidung in den Rohdaten) - richtiggestellt anhand der
+tatsächlichen Gemeinde-Anzahl je AGS.
+
+Ein weiterer Nebenfund: Hessens neue kreisfreie Stadt Hanau (AGS 06415,
+"Hanau-Auskreisungsgesetz", ausgegliedert aus dem Main-Kinzig-Kreis
+zum 1.1.2026) wurde unabhängig über die offizielle Pressemitteilung
+des Hessischen Innenministeriums verifiziert. Die Datenbank enthält
+aktuell 0 Gebäude mit dieser neuen AGS oder mit der alten
+Main-Kinzig-Kreis-AGS und Stadt Hanau - die Kreisreform hat also noch
+keine aktive Auswirkung auf bestehende Zuordnungen, sollte aber bei
+künftigen Adressimporten beachtet werden.
+
+Berlin bleibt strukturell offen: es existieren bereits 12 bezirkliche
+MUNICIPALITY-Regeln (aus einer früheren Sitzung), die wegen fehlender
+Bezirks-Granularität in den Gebäudedaten alle gleichzeitig zutreffen
+und korrekt `MULTIPLE_MATCHES` statt eines geratenen Einzeltreffers
+ergeben - derselbe strukturelle Engpass wie bei BODENDENKMALSCHUTZ.
+
+**Ergebnis: 80 neue COUNTY-Regeln, 0 Konflikte.** Matching
+stichprobenartig verifiziert (Köthen/Anhalt-Bitterfeld, Gera/TLBG
+Zeulenroda-Triebes, Main-Kinzig-Kreis/Hanau, Landkreis Heilbronn/
+Karlsruhe nach Korrektur, Schwerin/Ludwigslust-Parchim). KATASTER ist
+damit strukturell in 11 von 16 Bundesländern neu abgedeckt (zusammen
+mit Bayern/RLP/SH: 14 von 16) - offen bleiben nur noch Berlin
+(strukturell, s.o.) und ein kleiner Rest einzelner Landkreise ohne
+auffindbare amtliche Quelle.
