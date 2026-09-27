@@ -1008,11 +1008,88 @@ volle Testsuite grün (160 Tests).
   Schema-Erweiterung (aktuell gibt es keine "nicht anwendbar"-Kategorie
   in `CoverageAnalysisService`), wurde in diesem Durchlauf bewusst nicht
   umgesetzt, um keine ungeprüfte Schemaänderung "nebenbei" einzuführen.
-- **Bayern KATASTER**: 51 AEDBV-Regeln (statt 96 Kreis-Regeln, da AEDBV-
-  Zuständigkeitsgrenzen nicht exakt den Landkreisgrenzen folgen) wären
-  ein ähnlich großer Hebel wie Bodendenkmalschutz - Zielliste (AEDBV-Name,
-  Adresse, zugeordnete Landkreise) noch nicht recherchiert.
 - **Bayern ERSCHLIESSUNG**: laut Recherche-Agent echte Gemeinde-/VGem-
   Ebene wie in RLP - kein struktureller Shortcut, müsste analog zu
   Abschnitt 12/15.1 Gemeinde für Gemeinde bzw. Verwaltungsgemeinschaft
   für Verwaltungsgemeinschaft recherchiert werden.
+
+## 16. Fortsetzung desselben Durchlaufs: Kataster Bayern und Bodendenkmalschutz bundesweit
+
+### 16.1 Kataster Bayern (Fortsetzung von 15.4)
+
+Bayern führt das amtliche Liegenschaftskataster nicht über die 96
+Landkreise/kreisfreien Städte, sondern über **51 Ämter für
+Digitalisierung, Breitband und Vermessung (AEDBV)**, von denen jedes oft
+mehrere Landkreise gemeinsam abdeckt. Ein Recherche-Agent erstellte die
+vollständige Zuordnung anhand der rechtsverbindlichen VermBezV
+(Verordnung über die Bezeichnung, den Sitz und die Bezirke der AEDBV in
+Bayern) - eine noch belastbarere Quelle als eine reine Amtsseite, da
+geltendes Recht statt einer Verwaltungsauskunft. **Alle 96 Landkreise
+sind zugeordnet, keine offenen Fälle bei dieser Auskunftsart.** 96 neue
+COUNTY-Regeln umgesetzt (`scripts/seed_kataster_bayern.py`); zwei bereits
+bestehende MUNICIPALITY-Regeln (München, Augsburg) nehmen wie erwartet
+weiterhin Vorrang.
+
+### 16.2 Bodendenkmalschutz: 6 weitere Bundesländer
+
+Zwei Recon-Agenten klärten die Struktur in 6 weiteren Bundesländern.
+Ergebnis: **5 Länder zentralisieren die eigentliche Grabungs-/
+Nachforschungsgenehmigung bei EINER Landesbehörde** - ein noch größerer
+Hebel als Bayerns Kreismuster (`scripts/
+fix_bodendenkmalschutz_zentrale_laender.py`):
+
+| Bundesland | Zentrale Behörde | Rechtsgrundlage |
+|---|---|---|
+| Baden-Württemberg | Landesamt für Denkmalpflege im RP Stuttgart | § 21 DSchG BW |
+| Mecklenburg-Vorpommern | Landesamt für Kultur und Denkmalpflege (LAKD) | § 12 DSchG M-V |
+| Thüringen | Thüringisches Landesamt für Denkmalpflege und Archäologie (TLDA) | § 18 ThürDSchG |
+| Hessen | Landesamt für Denkmalpflege Hessen / hessenARCHÄOLOGIE | § 22 HDSchG |
+| Sachsen | Landesamt für Archäologie Sachsen | § 14 Abs. 2 SächsDSchG |
+
+Bei Sachsen betrifft die Landesregel ausdrücklich NUR die Nachforschungs-
+/Grabungsgenehmigung (§ 14 Abs. 2) - Erdarbeiten an bereits bekannten
+Fundstellen (§ 14 Abs. 1) blieben bewusst unberührt, dort bliebe die
+Kreis-Ebene zuständig. Alle 5 Adressen von einem zweiten Agenten gegen
+die jeweilige amtliche Kontakt-/Impressumsseite verifiziert; Hessen
+zusätzlich eigenständig per curl gegen denkmal.hessen.de/impressum
+bestätigt.
+
+**Niedersachsen** erwies sich als strukturell deutlich komplexer als
+Bayern: nach § 19 Abs. 1 NDSchG ist der Landkreis untere
+Denkmalschutzbehörde, ABER Gemeinden mit eigener unterer
+Bauaufsichtsbehörde sind für ihr Gebiet SELBST zuständig. 8 parallele
+Recherche-Agenten deckten dabei zwei Ausnahme-Kategorien auf
+(`scripts/seed_bodendenkmalschutz_niedersachsen.py`):
+1. Die abschließende gesetzliche Liste der "großen selbständigen
+   Städte" (§ 14 Abs. 5 NKomVG): Celle, Cuxhaven, Goslar, Hameln,
+   Hildesheim, Lingen (Ems), Lüneburg.
+2. Weitere Städte OHNE diesen gesetzlichen Status, die laut eigener/
+   Landkreis-Website trotzdem eigenständig zuständig sind (vermutlich
+   individuelle Übertragung nach § 57 NBauO): Wolfenbüttel, Peine,
+   Göttingen, Einbeck, Melle, Winsen (Luhe).
+
+Sonderfall Region Hannover: **keine pauschale Kreis-Regel**, da die
+Region nur für 8 namentlich amtlich bestätigte Mitgliedskommunen
+zuständig ist; für die übrigen Mitgliedskommunen war das nicht amtlich
+verifizierbar und bleibt bewusst offen statt geraten. Ergebnis: 41
+Landkreis-/kreisfreie-Stadt-Regeln + 22 Sonderstadt-Regeln. 3 Landkreise
+blieben ehrlich offen (Grafschaft Bentheim, Harburg, Heidekreis).
+
+**Bodendenkmalschutz ist damit jetzt in 7 von 16 Bundesländern
+strukturell abgedeckt** (Bayern, Baden-Württemberg, Mecklenburg-
+Vorpommern, Thüringen, Hessen, Sachsen, Niedersachsen) - die übrigen 9
+Länder (Berlin, Brandenburg, Bremen, Hamburg, Nordrhein-Westfalen,
+Rheinland-Pfalz, Saarland, Sachsen-Anhalt, Schleswig-Holstein) sind für
+diese Auskunftsart noch nicht systematisch untersucht.
+
+### 16.3 Weiterer Bug-Fix mit bundesweiter Wirkung
+
+Beim Versuch, die erste zentrale Landesregel zu stagen, wurde ein
+bereits in Abschnitt 15.2 dokumentierter, aber erst dort für KAMPFMITTEL
+gefundener Bug erneut relevant: `_find_matching_existing()` prüfte
+`state` nicht mit, wodurch jede neue STATE-Ebene-Regel fälschlich mit
+JEDER anderen STATE-Regel kollidiert wäre. Der bereits in Abschnitt 15.2
+beschriebene Fix (state jetzt Teil des Vergleichs) griff hier korrekt
+(0 Konflikte beim Dry-Run) - ein Beleg dafür, dass der Fix tatsächlich
+für alle künftigen STATE-Ebene-Regeln wirkt, nicht nur für den
+ursprünglichen KAMPFMITTEL-Fall.
