@@ -1959,3 +1959,48 @@ bestehenden 47.
 **Damit ist BODENDENKMALSCHUTZ bundesweit abgeschlossen: nur noch
 Berlin offen** (strukturell, identisches Muster wie bei allen anderen
 Auskunftsarten in dieser Datenbank).
+
+## 28. Berlin komplett: DENKMALSCHUTZ und BODENDENKMALSCHUTZ als letzte fehlende Auskunftsarten geschlossen
+
+Eine Bestandsaufnahme, welche Auskunftsarten fuer Berlin (ags=11000000)
+und Hamburg (ags=02000000) noch fehlen, ergab eine Ueberraschung:
+Berlin war entgegen der bisherigen Annahme ("strukturell blockiert wie
+Hamburg") tatsaechlich schon fuer 9 von 11 Auskunftsarten bezirklich
+abgedeckt (BAUAKTEN, BAULASTEN, KATASTER, ERSCHLIESSUNG, ALTLASTEN,
+HOCHWASSERSCHUTZ, WASSERSCHUTZ, KAMPFMITTEL, GRUNDBUCH) - nur
+DENKMALSCHUTZ und BODENDENKMALSCHUTZ fehlten noch komplett. Hamburg
+wiederum fehlte nur noch bei HOCHWASSERSCHUTZ (bereits in Kapitel 26
+bewusst offen gelassen).
+
+Recherche ergab: beide fehlenden Berlin-Auskunftsarten werden von
+DERSELBEN Behoerde je Bezirk wahrgenommen - der "Unteren
+Denkmalschutzbehoerde" (Bezirksamt). § 6 Abs. 2/3 DSchG Bln:
+"Untere Denkmalschutzbehoerden sind die Bezirksaemter; sie sind fuer
+alle Ordnungsaufgaben nach diesem Gesetz zustaendig" - § 2 Abs. 1
+definiert "Denkmale" einheitlich als "Baudenkmale, Denkmalbereiche,
+Gartendenkmale sowie Bodendenkmale", ohne Sonderzuweisung der
+Bodendenkmalpflege an eine zentrale Landesbehoerde (anders als in
+Sachsen/Saarland). Woertlich bestaetigt durch die amtliche
+Uebersichtsseite der Senatsverwaltung fuer Stadtentwicklung: "Ihnen
+obliegt die Genehmigung denkmalrechtlich relevanter Massnahmen wie die
+Erteilung und Versagung von Genehmigungen fuer Grabungen nach
+Bodendenkmalen." Das Landesdenkmalamt (Denkmalfachbehoerde) wird nur im
+Einvernehmensverfahren beteiligt (§ 6 Abs. 5 DSchG Bln), hat aber keine
+eigene Erstentscheidungskompetenz gegenueber Buergerinnen und Buergern
+- exakt das aus Bayern bekannte "Fachbehoerde beraet, untere Behoerde
+genehmigt"-Muster, hier auf Bezirksebene uebertragen.
+
+Diese zentrale Senatsseite lieferte zugleich amtlich verifizierte
+Adressen fuer alle 12 Bezirke und loeste zwei kleinere Diskrepanzen
+zwischen einzelnen Bezirksamt-Unterseiten auf (Marzahn-Hellersdorf,
+Neukoelln) zugunsten der autoritativeren zentralen Quelle. Gefixt mit
+`seed_denkmalschutz_berlin.py`: 12 Bezirke x 2 Auskunftsarten = 24
+neue Regeln (dieselbe Authority je Bezirk fuer beide Auskunftsarten
+wiederverwendet, da es sich um dasselbe Amt handelt).
+
+**Damit ist Berlin jetzt fuer alle 11 Auskunftsarten in dieser
+Datenbank abgedeckt** - der letzte grosse strukturelle "Berlin/Hamburg
+bezirklich blockiert"-Rest ist damit aufgeloest; die einzige
+verbleibende bewusst offene Luecke bundesweit ist Hamburg
+HOCHWASSERSCHUTZ (siehe Kapitel 26, aus geografischen Gruenden bewusst
+nicht modelliert).
