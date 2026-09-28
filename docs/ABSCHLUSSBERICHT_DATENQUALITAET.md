@@ -1845,3 +1845,50 @@ jeder neuen Kampagne den tatsaechlichen Bestand zusaetzlich ueber
 `ags LIKE '<Laendercode>%'` (ohne `state`-Filter) pruefen, siehe bereits
 [[feedback-ags-level-coverage-check]] und
 [[feedback-staging-dedup-null-fields]].
+
+## 26. Letzte strukturelle Luecken: Berlin ALTLASTEN und Hamburg WASSERSCHUTZ
+
+Eine bundesweite Nachpruefung von ALTLASTEN, KATASTER,
+HOCHWASSERSCHUTZ und WASSERSCHUTZ mit der korrekten Methodik (beide
+AGS-Ebenen + STATE-Level-Ausschluss) ergab: KATASTER ist bundesweit
+vollstaendig (0 Luecken), ALTLASTEN/HOCHWASSERSCHUTZ/WASSERSCHUTZ
+haben je nur noch genau eine strukturelle Luecke - Berlin
+(ALTLASTEN) bzw. Hamburg (HOCHWASSERSCHUTZ und WASSERSCHUTZ) -,
+identisch zum bereits etablierten Muster bei Bauaufsicht/
+Bodendenkmalschutz.
+
+**Berlin ALTLASTEN:** gefixt nach demselben Muster wie die anderen
+Berlin-Auskunftsarten in dieser Datenbank - 12 einzeln recherchierte
+Bezirksamt-Zeilen (`seed_altlasten_berlin.py`). In allen 12 Bezirken
+liegt die untere Bodenschutzbehoerde beim "Umwelt- und
+Naturschutzamt" des Bezirksamts; 11 von 12 mit direktem woertlichem
+Aufgaben-Zitat von der amtlichen berlin.de-Seite belegt (VERIFIED),
+Marzahn-Hellersdorf nur ueber Kontakt-/Organigrammdaten bestaetigt
+(ehrlich als AUTO_IMPORTED gekennzeichnet statt zu ueberzeichnen).
+Tempelhof-Schoeneberg bestaetigt den Rechtsbegriff "untere
+Bodenschutzbehoerde" sogar woertlich.
+
+**Hamburg WASSERSCHUTZ:** anders als bei der bezirklichen
+Bauaufsicht ist Hamburgs Zustaendigkeit fuer Wasserschutzgebiete/
+Grundwasserschutz ZENTRAL bei der Behoerde fuer Umwelt, Klima,
+Energie und Agrarwirtschaft (BUKEA, Referat W12) - die 7 bezirklichen
+"unteren Wasserbehoerden" sind laut ihren eigenen Webseiten
+ausdruecklich nur fuer Gewaesserbenutzung/-aufsicht an oberirdischen
+Gewaessern II. Ordnung zustaendig, nicht fuer Wasserschutzgebiete.
+Gefixt mit `seed_wasserschutz_hamburg.py` (1 zentrale Regel).
+
+**Hamburg HOCHWASSERSCHUTZ: bewusst weiterhin OFFEN.** Die Recherche
+ergab zwar, dass der Vollzug (Ausnahmegenehmigungen in
+Ueberschwemmungsgebieten) tatsaechlich bezirklich liegt - aber die
+Zustaendigkeit haengt vom konkret betroffenen, NAMENTLICH benannten
+Gewaesser ab (z. B. Bezirksamt Bergedorf nur fuer Brookwetterung/
+Dove-Elbe/Gose-Elbe), nicht von einer flaechendeckenden bezirklichen
+Aufteilung wie bei der Bauaufsicht. Die meisten Grundstuecke in einem
+Bezirk liegen ueberhaupt nicht in einem Ueberschwemmungsgebiet - eine
+pauschale "Bezirk X = zustaendig fuer HWS"-Regel waere daher
+geografisch falsch und wuerde das ags/Strasse-basierte Datenmodell
+dieser Datenbank ueberdehnen. Zusaetzlich ist die Zustaendigkeit fuer
+5 seit 2017 neu hinzugekommene Ueberschwemmungsgebiete (Alster,
+Bille, Wandse u. a.) nicht amtlich eindeutig belegt. Bewusst als
+dokumentierte, begruendete Luecke stehengelassen statt zu raten -
+konsistent mit dem Grundsatz, unklare Faelle als OFFEN zu markieren.
