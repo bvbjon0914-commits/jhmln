@@ -1546,3 +1546,60 @@ diese Kreis-Ebene-Kampagne abgedeckt wurde). Damit ist die
 Bauakten-/Baulastenauskunft-Welle fachlich abgeschlossen; alle
 verbleibenden Luecken sind dokumentierte, bewusste Ausnahmen und keine
 stillen Fehlstellen.
+
+## 21. Nachtrag: falscher Alarm bei 12 kreisfreien Staedten (Messfehler in der Luecken-Query) - und ein echter Fund
+
+Im Anschluss an Kapitel 20 wurde eine bundesweite ags-basierte
+Luecken-Analyse ueber ALLE Auskunftsarten hinweg gefahren, um das
+naechste sinnvolle Ziel zu finden. Eine erste Abfrage (COUNTY-Level
+distinct ags) zeigte scheinbare Luecken bei KATASTER (9 kreisfreie
+Staedte) und, in einem zweiten Schritt, bei DENKMALSCHUTZ,
+BODENDENKMALSCHUTZ, ALTLASTEN, HOCHWASSERSCHUTZ und WASSERSCHUTZ fuer
+insgesamt 12 kreisfreie Staedte (Darmstadt, Hanau, Kassel, Heilbronn,
+Karlsruhe, Freiburg im Breisgau, Rostock, Leipzig, Oldenburg,
+Osnabrueck, Muelheim an der Ruhr, Solingen). Drei parallele
+Recherche-Agenten wurden losgeschickt und lieferten sauber belegte,
+amtlich verifizierte Rechtsgrundlagen fuer alle 5 betroffenen
+Bundeslaender.
+
+**Der Fund war jedoch grossteils ein Messfehler:** die Lueckenanalyse
+verglich fuer kreisfreie Staedte durchgaengig nur die 5-stellige
+`ags_kreis` gegen `matching_level='COUNTY'` - und uebersah dabei
+systematisch bereits bestehende `MUNICIPALITY`-Level-Regeln, die auf
+die 8-stellige AGS (ags_kreis + "000") verweisen und wegen ihrer
+hoeheren Prioritaet die fehlende COUNTY-Regel ohnehin korrekt
+ersetzen. Ein Hinweis einer parallel arbeitenden Session (die
+unabhaengig an BW-Kataster-AGS-Dubletten arbeitete) zeigte, dass
+Heilbronn und Karlsruhe laengst korrekt abgedeckt waren - das war der
+Ausloeser fuer eine Nachpruefung. Nach Korrektur der Abfrage (beide
+AGS-Formen + beide Matching-Level pruefen, plus STATE-Level-Regeln mit
+`ags IS NULL` separat beruecksichtigen) loesten sich KATASTER,
+DENKMALSCHUTZ und BODENDENKMALSCHUTZ vollstaendig in Luft auf - alle
+12 Staedte waren fuer diese drei Auskunftsarten bereits abgedeckt.
+
+**Einziger echter Fund:** Kassel (als einzige der drei hessischen
+kreisfreien Staedte) fehlten tatsaechlich ALTLASTEN, HOCHWASSERSCHUTZ
+und WASSERSCHUTZ - eine isolierte historische Import-Luecke. Gefixt
+mit `seed_altlasten_wasser_kassel.py` (3 neue Regeln, § 15 Abs. 3
+HAltBodSchG / § 64 Abs. 3 HWG, gegen rv.hessenrecht.hessen.de
+verifiziert).
+
+**Zweiter, groesserer und noch offener Fund (unabhaengig vom
+Messfehler, ueber eine gesonderte Pruefung bestaetigt):**
+Nordrhein-Westfalen hat aktuell **ueberhaupt keine KAMPFMITTEL-
+Abdeckung** - weder eine STATE-Level-Regel (anders als 13 der uebrigen
+15 Laender) noch auch nur eine einzige COUNTY-Regel fuer irgendeinen
+der ca. 53 Kreise/kreisfreien Staedte. Das ist keine Verwechslung,
+sondern ein echter, substanzieller Fund, der aber eine eigene
+Rechercheentscheidung braucht (vermutlich Bezirksregierungs-Ebene statt
+Kreis-Ebene) und daher bewusst NICHT in dieser Sitzung bearbeitet,
+sondern als eigene Aufgabe fuer eine kuenftige Sitzung vorgemerkt
+wurde.
+
+**Lehre fuer kuenftige Luecken-Analysen dieser Art:** bei kreisfreien
+Staedten immer sowohl die 5-stellige `ags_kreis` (COUNTY) als auch die
+8-stellige AGS (MUNICIPALITY) pruefen, sowie STATE-Level-Regeln (mit
+`ags IS NULL`) separat gegenchecken, bevor eine vermeintliche Luecke
+als echter Rechercheauftrag an Agenten weitergegeben wird - sonst
+droht wie hier erheblicher Rechercheaufwand fuer nicht-existente
+Luecken.
