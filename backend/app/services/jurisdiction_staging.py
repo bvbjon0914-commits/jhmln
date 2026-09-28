@@ -47,30 +47,55 @@ class JurisdictionStagingService:
         Auskunftsart - unabhängig von deren Gültigkeitszeitraum, damit auch
         eine bereits abgelaufene Regel als Historie erkannt wird.
 
-        `state` gehört bewusst zu den Schlüsselfeldern: bei einer reinen
-        STATE-Ebene-Regel sind ags/municipality/district/postal_code/street/
-        house_number IMMER alle None - ohne `state` im Vergleich würde jede
-        neue STATE-Regel fälschlich mit der STATE-Regel jedes ANDEREN
-        Bundeslands kollidieren (gefunden beim Versuch, die fehlende
-        Rheinland-Pfalz-KAMPFMITTEL-Regel zu ergänzen: sie wurde fälschlich
-        als Konflikt mit der bereits bestehenden, völlig unabhängigen
-        Schleswig-Holstein-Regel gemeldet).
+        `state` wird NUR bei einer reinen STATE-Ebene-Regel (ags/municipality/
+        district/postal_code/street/house_number sind dort IMMER alle None)
+        als zusätzliches Schlüsselfeld verglichen - ohne das würde jede neue
+        STATE-Regel fälschlich mit der STATE-Regel jedes ANDEREN Bundeslands
+        kollidieren (gefunden beim Versuch, die fehlende Rheinland-Pfalz-
+        KAMPFMITTEL-Regel zu ergänzen: sie wurde fälschlich als Konflikt mit
+        der bereits bestehenden, völlig unabhängigen Schleswig-Holstein-Regel
+        gemeldet).
+
+        Sobald irgendein geografisches Feld gesetzt ist (typischerweise
+        `ags`), wird `state` bewusst NICHT mitgefiltert: der AGS ist
+        bundesweit eindeutig und identifiziert die Geografie bereits
+        vollständig, während ältere Massenimport-Zeilen `state` oft nicht
+        gesetzt haben. Ein strikter Abgleich hätte sonst (gefunden beim
+        Ergänzen von BAUAKTEN Bayern/Sachsen) bestehende
+        `state=NULL`-Altregeln für denselben AGS NICHT als Duplikat erkannt,
+        sodass zwei aktive Regeln für dieselbe Gemeinde nebeneinander stehen
+        blieben, ohne dass ein Konflikt gemeldet wurde.
+
+        Ist `ags` gesetzt, wird aus demselben Grund auch `municipality`
+        NICHT mitgefiltert: `municipality` ist nur ein redundantes
+        Anzeige-Textfeld, das manche (Alt-)Regeln zusätzlich zum AGS
+        pflegen und andere nicht - ein exakter Textabgleich hätte sonst
+        (ebenfalls bei BAUAKTEN Bayern gefunden: 8 von 10
+        Ausnahme-Gemeinden hatten bereits eine `municipality`-befüllte
+        Altregel für denselben AGS) echte Duplikate übersehen, nur weil das
+        Textfeld unterschiedlich gepflegt war. `district`/`postal_code`/
+        `street`/`house_number` bleiben dagegen immer Teil des Vergleichs,
+        damit unterschiedliche Straßen/Bezirke innerhalb desselben AGS
+        weiterhin als eigenständige Regeln erkannt werden.
         """
-        return (
-            self.db.query(Jurisdiction)
-            .filter(
-                Jurisdiction.request_type_id == request_type_id,
-                Jurisdiction.active.is_(True),
-                Jurisdiction.state == state,
-                Jurisdiction.ags == ags,
-                Jurisdiction.municipality == municipality,
-                Jurisdiction.district == district,
-                Jurisdiction.postal_code == postal_code,
-                Jurisdiction.street == street,
-                Jurisdiction.house_number == house_number,
-            )
-            .all()
+        is_pure_state_level = not any(
+            [ags, municipality, district, postal_code, street, house_number]
         )
+        filters = [
+            Jurisdiction.request_type_id == request_type_id,
+            Jurisdiction.active.is_(True),
+            Jurisdiction.district == district,
+            Jurisdiction.postal_code == postal_code,
+            Jurisdiction.street == street,
+            Jurisdiction.house_number == house_number,
+        ]
+        if ags is not None:
+            filters.append(Jurisdiction.ags == ags)
+        else:
+            filters += [Jurisdiction.ags.is_(None), Jurisdiction.municipality == municipality]
+        if is_pure_state_level:
+            filters.append(Jurisdiction.state == state)
+        return self.db.query(Jurisdiction).filter(*filters).all()
 
     def _detect_conflict(
         self, *, request_type_id, state, ags, municipality, district, postal_code,

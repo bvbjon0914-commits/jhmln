@@ -96,6 +96,72 @@ def test_state_level_rule_does_not_conflict_with_other_states_state_level_rule(d
     assert entry.conflicts_with_jurisdiction_id is None
 
 
+def test_geo_scoped_rule_with_null_state_on_existing_row_is_still_detected_as_duplicate(db_session):
+    """
+    Regressionstest für einen echten Bug: eine bestehende, geografisch
+    verortete Regel (ags gesetzt) aus einem älteren Massenimport hatte
+    `state` oft nicht gesetzt (NULL). Ein strikter `state`-Abgleich in
+    `_find_matching_existing` hätte eine neue Regel mit demselben AGS aber
+    explizit gesetztem `state` NICHT als Duplikat erkannt (NULL == 'Bayern'
+    ist in SQL nie wahr) - gefunden beim Ergänzen von BAUAKTEN für Bayern:
+    80 von 106 neuen Regeln landeten unbemerkt als zweite aktive Regel für
+    denselben AGS neben einer bereits bestehenden `state=NULL`-Altregel,
+    ohne dass ein Konflikt gemeldet wurde. Der AGS ist bundesweit eindeutig
+    und identifiziert die Geografie bereits vollständig, `state` darf daher
+    bei geografisch verorteten Regeln kein hartes Vergleichsfeld sein.
+    """
+    rt = make_request_type(db_session, code="BAUAKTEN")
+    old_authority = make_authority(db_session, name="Altregel ohne state")
+    new_authority = make_authority(db_session, name="Neue Regel mit state")
+    old_rule = make_jurisdiction(
+        db_session, request_type_id=rt.request_type_id, authority_id=old_authority.authority_id,
+        ags="09162000", state=None, verification_status="VERIFIED",
+        last_verified_at=days_ago(10), verified_by="Prüfer A",
+    )
+
+    service = JurisdictionStagingService(db_session)
+    entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id,
+        ags="09162000", state="Bayern", proposed_authority_id=new_authority.authority_id,
+    )
+    db_session.commit()
+
+    assert entry.conflict_type == ConflictType.CONTRADICTS_VERIFIED
+    assert entry.conflicts_with_jurisdiction_id == old_rule.jurisdiction_id
+
+
+def test_ags_scoped_rule_with_populated_municipality_on_existing_row_is_still_detected_as_duplicate(db_session):
+    """
+    Regressionstest für einen zweiten, mit dem obigen `state`-Bug eng
+    verwandten Fund: eine bestehende Altregel hatte zusätzlich zum AGS auch
+    das Textfeld `municipality` befüllt (z. B. "Burghausen"), während eine
+    neue Regel für denselben AGS `municipality` nicht setzt. Ein exakter
+    Textabgleich auf `municipality` hätte das als "kein Duplikat"
+    durchgehen lassen (gefunden bei 8 von 10 Ausnahme-Gemeinden beim
+    Ergänzen von BAUAKTEN Bayern) - `municipality` ist nur ein redundantes
+    Anzeigefeld, `ags` allein bestimmt die Gemeinde-Geografie bereits
+    eindeutig und muss daher als alleiniger Schlüssel ausreichen.
+    """
+    rt = make_request_type(db_session, code="BAUAKTEN")
+    old_authority = make_authority(db_session, name="Altregel mit municipality-Text")
+    new_authority = make_authority(db_session, name="Neue Regel ohne municipality-Text")
+    old_rule = make_jurisdiction(
+        db_session, request_type_id=rt.request_type_id, authority_id=old_authority.authority_id,
+        ags="09171112", municipality="Burghausen", verification_status="VERIFIED",
+        last_verified_at=days_ago(10), verified_by="Prüfer A",
+    )
+
+    service = JurisdictionStagingService(db_session)
+    entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id,
+        ags="09171112", proposed_authority_id=new_authority.authority_id,
+    )
+    db_session.commit()
+
+    assert entry.conflict_type == ConflictType.CONTRADICTS_VERIFIED
+    assert entry.conflicts_with_jurisdiction_id == old_rule.jurisdiction_id
+
+
 def test_contradicts_unverified_rule_is_detected(db_session):
     rt = make_request_type(db_session, code="GRUNDBUCH")
     old_authority = make_authority(db_session, name="Alte Behörde")
