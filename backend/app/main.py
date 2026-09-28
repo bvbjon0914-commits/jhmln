@@ -23,6 +23,7 @@ from app.database import init_db
 from app.api import (
     buildings, authorities, request_types, matching, documents, requests_api,
     imports, geo, jurisdictions, auth, data_quality, cases, data_sources, mailbox_inbound,
+    users,
 )
 from app.api.auth import require_login
 
@@ -215,6 +216,7 @@ _versioned_routers = [
     (data_quality.router, protected),
     (cases.router, protected),
     (data_sources.router, protected),
+    (users.router, protected),
 ]
 for router, deps in _versioned_routers:
     kwargs = {"dependencies": deps} if deps else {}

@@ -3,11 +3,13 @@ import type { ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { api, setUnauthorizedHandler } from "../../services/api";
 import type { AuthStatus } from "../../types/auth";
+import type { User } from "../../types/user";
 import { Login } from "./Login";
 
 interface AuthContextValue {
   isMain: boolean;
   loginRequired: boolean;
+  user: User | null;
   logout: () => Promise<void>;
   refresh: () => void;
 }
@@ -21,7 +23,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     api
       .authStatus()
       .then(setStatus)
-      .catch(() => setStatus({ login_required: true, logged_in: false, is_main: false }));
+      .catch(() => setStatus({ login_required: true, logged_in: false, is_main: false, user: null }));
   }, []);
 
   useEffect(() => {
@@ -50,7 +52,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ isMain: status.is_main, loginRequired: status.login_required, logout, refresh }}
+      value={{
+        isMain: status.is_main,
+        loginRequired: status.login_required,
+        user: status.user ?? null,
+        logout,
+        refresh,
+      }}
     >
       {children}
     </AuthContext.Provider>

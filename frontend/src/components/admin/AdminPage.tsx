@@ -6,6 +6,7 @@ import { RequestsAdmin } from "./RequestsAdmin";
 import { DataQualityAdmin } from "./DataQualityAdmin";
 import { MailboxAdmin } from "./MailboxAdmin";
 import { SettingsAdmin } from "./SettingsAdmin";
+import { UsersAdmin } from "./UsersAdmin";
 import type { AdminFilterRequest } from "../../types/adminFilter";
 
 export type Tab =
@@ -15,6 +16,7 @@ export type Tab =
   | "requests"
   | "data-quality"
   | "mailbox"
+  | "users"
   | "settings";
 
 export function AdminPage({ isMain }: { isMain: boolean }) {
@@ -43,6 +45,7 @@ export function AdminPage({ isMain }: { isMain: boolean }) {
     { value: "requests", label: "Anfragen" },
     { value: "data-quality", label: "Datenqualität" },
     ...(isMain ? [{ value: "mailbox" as Tab, label: "Postfach" }] : []),
+    ...(isMain ? [{ value: "users" as Tab, label: "Nutzer" }] : []),
     ...(isMain ? [{ value: "settings" as Tab, label: "Einstellungen" }] : []),
   ];
 
@@ -88,6 +91,7 @@ export function AdminPage({ isMain }: { isMain: boolean }) {
       {tab === "requests" && <RequestsAdmin initialFilter={pendingFilter} />}
       {tab === "data-quality" && <DataQualityAdmin onNavigate={navigateWithFilter} />}
       {tab === "mailbox" && isMain && <MailboxAdmin />}
+      {tab === "users" && isMain && <UsersAdmin />}
       {tab === "settings" && isMain && <SettingsAdmin />}
     </div>
   );

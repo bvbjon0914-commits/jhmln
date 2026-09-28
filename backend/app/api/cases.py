@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.auth import require_main
+from app.api.auth import get_current_user, require_main
 from app.api.matching import _get_or_create_progress
 from app.config import GENERATED_DIR, TEMPLATES_DIR
 from app.database import get_db_session
@@ -29,6 +29,7 @@ from app.models.case import Case, CaseBuilding, CaseRequest
 from app.models.request import Request, RequestItem
 from app.models.request_item_progress import RequestItemProgress
 from app.models.request_type import RequestType
+from app.models.user import User
 from app.services import DocumentGenerationService, DocumentGenerationError, MailgunError, send_email
 
 router = APIRouter()
@@ -293,6 +294,7 @@ def send_bundle(
     case_id: str,
     payload: SendBundlePayload,
     db: Session = Depends(get_db_session),
+    current_user: Optional[User] = Depends(get_current_user),
     _: None = Depends(require_main),
 ):
     """
@@ -390,7 +392,7 @@ def send_bundle(
             )
 
         try:
-            doc = generator.generate_document(building, authority, request_type, aktenzeichen)
+            doc = generator.generate_document(building, authority, request_type, aktenzeichen, sender=current_user)
         except DocumentGenerationError as exc:
             raise HTTPException(status_code=502, detail=f"{item_id}: Dokument konnte nicht erzeugt werden: {exc}")
 

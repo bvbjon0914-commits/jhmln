@@ -47,6 +47,8 @@ from app.models.authority import Authority  # noqa: E402
 from app.models.jurisdiction import Jurisdiction  # noqa: E402
 from app.models.request_type import RequestType, STANDARD_REQUEST_TYPES  # noqa: E402
 from app.models.administrative_unit import AdministrativeUnit  # noqa: E402
+from app.models.user import User  # noqa: E402
+from app.services.auth import hash_password  # noqa: E402
 
 
 @pytest.fixture()
@@ -72,7 +74,12 @@ def app_client(db_session):
         yield db_session
 
     app.dependency_overrides[get_db_session] = _override
-    client = TestClient(app)
+    # base_url MUSS https sein: das Auth-Cookie wird mit Secure=True gesetzt
+    # (COOKIE_SECURE-Default), httpx' Cookie-Jar sendet ein Secure-Cookie bei
+    # Folge-Requests sonst nicht zurück (http://testserver-Default waere
+    # sonst kein echter Login-Test, sondern wuerde nur die erste Anfrage
+    # nach dem Login pruefen).
+    client = TestClient(app, base_url="https://testserver")
     try:
         yield client
     finally:
@@ -117,6 +124,27 @@ def make_authority(db, name="Testbehörde", city="Bochum", **kwargs):
     db.add(a)
     db.commit()
     return a
+
+
+def make_user(db, email="test@example.com", password="test-password-123", full_name="Test Nutzer", **kwargs):
+    u = User(
+        user_id=kwargs.pop("user_id", str(uuid.uuid4())),
+        email=email,
+        password_hash=hash_password(password),
+        full_name=full_name,
+        phone=kwargs.pop("phone", "0234 000000"),
+        function=kwargs.pop("function", "Testfunktion"),
+        street=kwargs.pop("street", "Teststraße"),
+        house_number=kwargs.pop("house_number", "1"),
+        postal_code=kwargs.pop("postal_code", "44787"),
+        city=kwargs.pop("city", "Bochum"),
+        is_main=kwargs.pop("is_main", False),
+        active=kwargs.pop("active", True),
+        **kwargs,
+    )
+    db.add(u)
+    db.commit()
+    return u
 
 
 def make_jurisdiction(db, request_type_id, authority_id, priority=100,

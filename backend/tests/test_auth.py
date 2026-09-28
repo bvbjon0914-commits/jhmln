@@ -1,11 +1,13 @@
 """
 Regressionstests für die im Auditbericht (Priorität 2) genannten
 Sicherheitsfixes: Cookie-Konfiguration, CORS-Einschränkung, Login-
-Ratenbegrenzung.
+Ratenbegrenzung. Sowie Tests für den echten Nutzer-Account-Login (email+
+password), der NEBEN dem alten Zwei-Passwoerter-Weg existiert.
 """
 import pytest
 
 from app.services import rate_limiter
+from tests.conftest import make_user
 
 
 @pytest.fixture(autouse=True)
@@ -84,3 +86,57 @@ class TestLoginRateLimiting:
         scope = {"type": "http", "client": ("203.0.113.5", 12345), "headers": []}
         request = Request(scope)
         assert _client_key(request) == "203.0.113.5"
+
+
+class TestUserAccountLogin:
+    """Echter Nutzer-Account-Login (email+password) - existiert NEBEN dem
+    alten Zwei-Passwoerter-Weg, der oben unveraendert weiter getestet wird."""
+
+    def test_login_with_valid_credentials_succeeds(self, app_client, db_session):
+        make_user(db_session, email="anna@example.com", password="geheim123", is_main=False)
+        response = app_client.post("/api/auth/login", json={"email": "anna@example.com", "password": "geheim123"})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["is_main"] is False
+        assert body["user"]["email"] == "anna@example.com"
+        assert "password_hash" not in body["user"]
+
+    def test_login_is_main_reflects_user_flag(self, app_client, db_session):
+        make_user(db_session, email="chef@example.com", password="geheim123", is_main=True)
+        response = app_client.post("/api/auth/login", json={"email": "chef@example.com", "password": "geheim123"})
+        assert response.status_code == 200
+        assert response.json()["is_main"] is True
+
+    def test_login_wrong_password_rejected(self, app_client, db_session):
+        make_user(db_session, email="anna@example.com", password="geheim123")
+        response = app_client.post("/api/auth/login", json={"email": "anna@example.com", "password": "falsch"})
+        assert response.status_code == 401
+
+    def test_login_unknown_email_rejected_with_same_message_as_wrong_password(self, app_client, db_session):
+        make_user(db_session, email="anna@example.com", password="geheim123")
+        wrong_pw = app_client.post("/api/auth/login", json={"email": "anna@example.com", "password": "falsch"})
+        unknown_email = app_client.post("/api/auth/login", json={"email": "nobody@example.com", "password": "x"})
+        assert unknown_email.status_code == 401
+        assert unknown_email.json()["detail"] == wrong_pw.json()["detail"]
+
+    def test_login_deactivated_user_rejected(self, app_client, db_session):
+        make_user(db_session, email="ex@example.com", password="geheim123", active=False)
+        response = app_client.post("/api/auth/login", json={"email": "ex@example.com", "password": "geheim123"})
+        assert response.status_code == 401
+
+    def test_auth_status_returns_user_profile_without_password_hash(self, app_client, db_session):
+        make_user(db_session, email="anna@example.com", password="geheim123", full_name="Anna Muster")
+        app_client.post("/api/auth/login", json={"email": "anna@example.com", "password": "geheim123"})
+        status = app_client.get("/api/auth/status").json()
+        assert status["user"]["full_name"] == "Anna Muster"
+        assert "password_hash" not in status["user"]
+
+    def test_legacy_password_only_login_still_works(self, app_client, db_session):
+        """Regressionsschutz: der alte Zwei-Passwoerter-Weg (kein email-Feld
+        im Payload) darf durch die Einfuehrung echter Accounts NICHT brechen."""
+        import os
+
+        response = app_client.post("/api/auth/login", json={"password": os.environ["SHARED_PASSWORD"]})
+        assert response.status_code == 200
+        assert response.json()["is_main"] is False
+        assert response.json()["user"] is None

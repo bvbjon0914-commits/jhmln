@@ -40,6 +40,7 @@ from app.models import (  # noqa: E402,F401
     AktenzeichenSequence, RequestSequence, RequestItemReference,
     InboundEmail, InboundEmailAttachment,
     AuthorityContactChannel, JurisdictionStagingEntry,
+    User,
 )
 
 target_metadata = Base.metadata

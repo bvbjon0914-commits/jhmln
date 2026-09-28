@@ -10,12 +10,14 @@ import os
 import re
 import zipfile
 from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.auth import get_current_user
 from app.config import GENERATED_DIR, TEMPLATES_DIR
 from app.database import get_db_session
 from app.models.aktenzeichen import RequestItemReference, RequestSequence
@@ -23,6 +25,7 @@ from app.models.authority import Authority
 from app.models.building import Building
 from app.models.request import Request, RequestItem
 from app.models.request_type import RequestType
+from app.models.user import User
 from app.services import DocumentGenerationService, DocumentGenerationError, next_year_number
 
 router = APIRouter()
@@ -34,7 +37,11 @@ class DocumentGenerationPayload(BaseModel):
 
 
 @router.post("/documents/generate", tags=["Documents"])
-def generate_documents(payload: DocumentGenerationPayload, db: Session = Depends(get_db_session)):
+def generate_documents(
+    payload: DocumentGenerationPayload,
+    db: Session = Depends(get_db_session),
+    current_user: Optional[User] = Depends(get_current_user),
+):
     """
     Generiert für jedes bestätigte RequestItem ein eigenes DOCX-Dokument.
 
@@ -108,7 +115,7 @@ def generate_documents(payload: DocumentGenerationPayload, db: Session = Depends
                 f"VNV-{request_sequence.year}-{request_sequence.sequence_number:04d}-"
                 f"{request_type.code}-{candidate_position}"
             )
-            doc = generator.generate_document(building, authority, request_type, aktenzeichen)
+            doc = generator.generate_document(building, authority, request_type, aktenzeichen, sender=current_user)
             item_position = candidate_position
             item.document_path = doc.filepath
             item.document_status = "GENERATED"

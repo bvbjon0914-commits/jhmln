@@ -17,6 +17,7 @@ from .aktenzeichen import AktenzeichenSequence, RequestSequence, RequestItemRefe
 from .inbound_email import InboundEmail, InboundEmailAttachment
 from .authority_contact_channel import AuthorityContactChannel, ChannelType
 from .jurisdiction_staging import JurisdictionStagingEntry, StagingStatus, ConflictType
+from .user import User
 
 __all__ = [
     "Building",
@@ -45,5 +46,6 @@ __all__ = [
     "JurisdictionStagingEntry",
     "StagingStatus",
     "ConflictType",
+    "User",
     "STANDARD_REQUEST_TYPES",
 ]

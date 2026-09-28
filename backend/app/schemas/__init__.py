@@ -312,3 +312,50 @@ class RequestResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ========== User Schemas ==========
+
+class UserBase(BaseModel):
+    """Basis-Schema für Nutzer-Accounts"""
+    email: EmailStr
+    full_name: str
+    phone: str
+    function: str
+    street: str
+    house_number: str
+    postal_code: str
+    city: str
+    is_main: bool = False
+    active: bool = True
+
+
+class UserCreate(UserBase):
+    """Schema zum Anlegen eines Nutzer-Accounts"""
+    password: str
+
+
+class UserUpdate(BaseModel):
+    """Schema zum Aktualisieren eines Nutzer-Accounts"""
+    email: Optional[EmailStr] = None
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    function: Optional[str] = None
+    street: Optional[str] = None
+    house_number: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
+    is_main: Optional[bool] = None
+    active: Optional[bool] = None
+    password: Optional[str] = None
+
+
+class UserResponse(UserBase):
+    """Antwort-Schema für Nutzer-Accounts - enthält NIEMALS password_hash"""
+    user_id: str
+    created_at: datetime
+    updated_at: datetime
+    last_login_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True

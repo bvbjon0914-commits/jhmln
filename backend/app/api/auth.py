@@ -2,6 +2,9 @@
 API Routes: Auth (Login-Gate)
 """
 
+from datetime import datetime
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -9,8 +12,16 @@ from sqlalchemy.orm import Session
 from app.config import COOKIE_SECURE, LOGIN_RATE_LIMIT_WINDOW_SECONDS
 from app.database import get_db_session
 from app.models.settings import AppSettings
+from app.models.user import User
 from app.services import rate_limiter
-from app.services.auth import COOKIE_NAME, check_api_key, check_password, create_token, verify_token
+from app.services.auth import (
+    COOKIE_NAME,
+    check_api_key,
+    check_password,
+    check_user_credentials,
+    create_token,
+    verify_token,
+)
 
 API_KEY_HEADER = "X-API-Key"
 
@@ -28,6 +39,7 @@ def _client_key(request: Request) -> str:
 
 class LoginPayload(BaseModel):
     password: str
+    email: Optional[str] = None
 
 
 class LoginRequiredPayload(BaseModel):
@@ -82,21 +94,45 @@ def get_is_main(request: Request) -> bool:
     return bool(session and session.get("is_main"))
 
 
+def get_current_user(request: Request, db: Session = Depends(get_db_session)) -> Optional[User]:
+    """
+    FastAPI-Dependency: liefert das volle Profil des eingeloggten
+    Nutzer-Accounts, oder None (Login per API-Key, per Legacy-Passwort ohne
+    User-Zeile, oder gar nicht eingeloggt). Sperrt NICHT - Routen, die
+    zwingend einen echten User brauchen, muessen selbst pruefen.
+    """
+    session = _current_session(request)
+    if not session or not session.get("user_id"):
+        return None
+    return db.query(User).filter(User.user_id == session["user_id"]).first()
+
+
 @router.get("/auth/status", tags=["Auth"])
 def auth_status(request: Request, db: Session = Depends(get_db_session)):
     """Öffentlich: sagt dem Frontend, ob ein Login-Screen gezeigt werden muss."""
     settings = AppSettings.get_or_create(db)
     session = _current_session(request)
+    user = None
+    if session and session.get("user_id"):
+        user = db.query(User).filter(User.user_id == session["user_id"]).first()
     return {
         "login_required": settings.login_required,
         "logged_in": session is not None,
         "is_main": bool(session and session.get("is_main")),
+        "user": user.to_dict() if user else None,
     }
 
 
 @router.post("/auth/login", tags=["Auth"])
-def login(payload: LoginPayload, request: Request, response: Response):
-    """Öffentlich: prüft das Passwort und setzt bei Erfolg das Session-Cookie."""
+def login(payload: LoginPayload, request: Request, response: Response, db: Session = Depends(get_db_session)):
+    """
+    Öffentlich: prüft die Anmeldedaten und setzt bei Erfolg das Session-Cookie.
+
+    Zwei Wege: mit `email` wird gegen die `users`-Tabelle geprueft
+    (check_user_credentials); ohne `email` greift unveraendert der alte
+    Zwei-Passwoerter-Weg (check_password) - bewusst als dauerhafter
+    Fallback erhalten, siehe app/services/auth.py Modul-Docstring.
+    """
     client_key = _client_key(request)
     if rate_limiter.is_blocked(client_key):
         raise HTTPException(
@@ -105,14 +141,25 @@ def login(payload: LoginPayload, request: Request, response: Response):
             headers={"Retry-After": str(LOGIN_RATE_LIMIT_WINDOW_SECONDS)},
         )
 
-    kind = check_password(payload.password)
-    if kind is None:
-        rate_limiter.record_failure(client_key)
-        raise HTTPException(status_code=401, detail="Falsches Passwort.")
+    user: Optional[User] = None
+    if payload.email:
+        user = check_user_credentials(db, payload.email, payload.password)
+        if user is None:
+            rate_limiter.record_failure(client_key)
+            raise HTTPException(status_code=401, detail="E-Mail oder Passwort falsch.")
+        is_main = user.is_main
+    else:
+        kind = check_password(payload.password)
+        if kind is None:
+            rate_limiter.record_failure(client_key)
+            raise HTTPException(status_code=401, detail="Falsches Passwort.")
+        is_main = kind == "main"
 
     rate_limiter.record_success(client_key)
-    is_main = kind == "main"
-    token = create_token(is_main)
+    if user is not None:
+        user.last_login_at = datetime.utcnow()
+        db.commit()
+    token = create_token(is_main, user_id=user.user_id if user else None)
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
@@ -121,7 +168,7 @@ def login(payload: LoginPayload, request: Request, response: Response):
         secure=COOKIE_SECURE,
         max_age=60 * 60 * 24 * 30,
     )
-    return {"is_main": is_main}
+    return {"is_main": is_main, "user": user.to_dict() if user else None}
 
 
 @router.post("/auth/logout", tags=["Auth"])

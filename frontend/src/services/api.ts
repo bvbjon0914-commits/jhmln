@@ -18,6 +18,7 @@ import type { AuthStatus } from "../types/auth";
 import type { DataQualitySummary } from "../types/dataQuality";
 import type { Case, CaseListItem, CaseDetail } from "../types/case";
 import type { InboundEmailEntry, AktenzeichenLookupResult } from "../types/mailbox";
+import type { User, UserCreateInput, UserUpdateInput } from "../types/user";
 
 const client = axios.create({
   baseURL: "/api",
@@ -460,8 +461,11 @@ export const api = {
     return data;
   },
 
-  async login(password: string): Promise<{ is_main: boolean }> {
-    const { data } = await client.post<{ is_main: boolean }>("/auth/login", { password });
+  async login(email: string, password: string): Promise<{ is_main: boolean; user: User | null }> {
+    const { data } = await client.post<{ is_main: boolean; user: User | null }>("/auth/login", {
+      email,
+      password,
+    });
     return data;
   },
 
@@ -475,6 +479,32 @@ export const api = {
       { enabled }
     );
     return data;
+  },
+
+  // ========== Verwaltung: Nutzer ==========
+
+  async listUsersPaged(params: { active_only?: boolean } = {}): Promise<Paged<User>> {
+    const { data, headers } = await client.get<User[]>("/users", { params });
+    return paged(data, headers);
+  },
+
+  async getUser(userId: string): Promise<User> {
+    const { data } = await client.get<User>(`/users/${userId}`);
+    return data;
+  },
+
+  async createUser(payload: UserCreateInput): Promise<User> {
+    const { data } = await client.post<User>("/users", payload);
+    return data;
+  },
+
+  async updateUser(userId: string, patch: UserUpdateInput): Promise<User> {
+    const { data } = await client.put<User>(`/users/${userId}`, patch);
+    return data;
+  },
+
+  async deleteUser(userId: string): Promise<void> {
+    await client.delete(`/users/${userId}`);
   },
 
   // ========== Postfach (Phase 6: eingehende Antworten) ==========

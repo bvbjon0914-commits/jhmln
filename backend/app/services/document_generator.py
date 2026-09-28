@@ -16,6 +16,7 @@ from docxtpl import DocxTemplate
 from app.models.authority import Authority
 from app.models.building import Building
 from app.models.request_type import RequestType
+from app.models.user import User
 
 
 @dataclass
@@ -72,9 +73,19 @@ class DocumentGenerationService:
         return f"{object_id}_{request_code}_{city}_{today}_{az}.docx"
 
     def build_context(
-        self, building: Building, authority: Authority, request_type: RequestType, aktenzeichen: str
+        self, building: Building, authority: Authority, request_type: RequestType, aktenzeichen: str,
+        sender: Optional[User] = None,
     ) -> dict:
-        """Stellt den Platzhalter-Kontext für die Vorlage zusammen."""
+        """
+        Stellt den Platzhalter-Kontext für die Vorlage zusammen.
+
+        sender: der eingeloggte Nutzer-Account, dessen persönliche Daten
+        (Name, Telefon, E-Mail, Funktion, Adresse) automatisch in Kopf- und
+        Signaturzeile einfließen. None bleibt erlaubt (z.B. Legacy-Login
+        ohne User-Zeile) - die sender_*-Platzhalter werden dann leer
+        gerendert statt eine Exception zu werfen, konsistent mit dem
+        bestehenden "authority.email or \"\""-Muster für fehlende Felder.
+        """
         return {
             # Behördendaten
             "authority_name": authority.authority_name or "",
@@ -100,6 +111,16 @@ class DocumentGenerationService:
             "current_date": date.today().strftime("%d.%m.%Y"),
             "request_type_name": request_type.name or "",
             "aktenzeichen": aktenzeichen or "",
+
+            # Absenderdaten (persönliches Profil des eingeloggten Nutzers)
+            "sender_name": sender.full_name if sender else "",
+            "sender_phone": sender.phone if sender else "",
+            "sender_email": sender.email if sender else "",
+            "sender_function": sender.function if sender else "",
+            "sender_street": sender.street if sender else "",
+            "sender_house_number": sender.house_number if sender else "",
+            "sender_postal_code": sender.postal_code if sender else "",
+            "sender_city": sender.city if sender else "",
         }
 
     def generate_document(
@@ -108,6 +129,7 @@ class DocumentGenerationService:
         authority: Authority,
         request_type: RequestType,
         aktenzeichen: str,
+        sender: Optional[User] = None,
     ) -> GeneratedDocument:
         """
         Generiert ein einzelnes DOCX-Dokument.
@@ -127,7 +149,7 @@ class DocumentGenerationService:
 
         try:
             doc = DocxTemplate(str(template_path))
-            context = self.build_context(building, authority, request_type, aktenzeichen)
+            context = self.build_context(building, authority, request_type, aktenzeichen, sender=sender)
             doc.render(context)
         except Exception as exc:
             raise DocumentGenerationError(f"Fehler beim Rendern der Vorlage: {exc}") from exc

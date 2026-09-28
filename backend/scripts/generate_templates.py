@@ -301,15 +301,29 @@ def build_template(code: str, texts: dict) -> str:
     section.bottom_margin = Cm(2)
 
     # --- Absenderblock (Civeloq) -----------------------------------
+    # Personendaten (Name, Adresse, Telefon, E-Mail) kommen automatisch aus
+    # dem eingeloggten Nutzer-Account (siehe app/services/document_generator.py
+    # build_context) - nur der Firmenname "Civeloq" bleibt statisch.
     p = doc.add_paragraph()
     run = p.add_run("Civeloq")
     run.bold = True
 
     p = doc.add_paragraph()
-    _gray_small(p, "[Straße Hausnummer] · [PLZ Ort] · Tel. [Telefon] · [E-Mail-Adresse]")
+    p.add_run("{{ sender_name }}")
 
     p = doc.add_paragraph()
-    _gray_small(p, "Civeloq · [Straße Hausnummer] · [PLZ Ort]", size=7.5)
+    _gray_small(
+        p,
+        "{{ sender_street }} {{ sender_house_number }} · {{ sender_postal_code }} {{ sender_city }} · "
+        "Tel. {{ sender_phone }} · {{ sender_email }}",
+    )
+
+    p = doc.add_paragraph()
+    _gray_small(
+        p,
+        "Civeloq · {{ sender_street }} {{ sender_house_number }} · {{ sender_postal_code }} {{ sender_city }}",
+        size=7.5,
+    )
     _set_bottom_border(p)
 
     doc.add_paragraph()
@@ -418,8 +432,8 @@ def build_template(code: str, texts: dict) -> str:
 
     doc.add_paragraph("Mit freundlichen Grüßen")
     doc.add_paragraph()
-    doc.add_paragraph("[Name]")
-    doc.add_paragraph("[Funktion / Firma]")
+    doc.add_paragraph("{{ sender_name }}")
+    doc.add_paragraph("{{ sender_function }}")
     doc.add_paragraph()
 
     anlagen_p = doc.add_paragraph()
