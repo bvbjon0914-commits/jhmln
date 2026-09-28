@@ -1667,3 +1667,45 @@ eine bezirkliche Aufspaltung der Erschliessungsbeitrags-Erhebung,
 anders als bei Bauaufsicht/Bodendenkmalschutz). **Damit ist die
 bundesweite ERSCHLIESSUNG-Abdeckung vollstaendig: 10749 von 10749
 Gemeinden (100 %).**
+
+## 23. Merge einer parallelen Session + eine echte, kleine DENKMALSCHUTZ-Luecke
+
+Eine parallel arbeitende Session (eigener Branch
+`claude/youthful-wozniak-d0a66f`) hatte unabhaengig an Saarlouis-
+Bauakten/-Baulasten, 9 BW-Kataster-AGS-Ambiguitaeten sowie einer
+alternativen, deutlich praeziseren ERSCHLIESSUNG-Recherche fuer
+Stadtstaaten (12 einzeln recherchierte Berliner Bezirksaemter statt
+einer generischen Sammelzeile) und Teilen von Hessen/NRW/Saarland
+gearbeitet. Gemerged (Commit 9ca366b): der einzige echte Dateikonflikt
+(`seed_erschliessung_stadtstaaten.py`, beide Branches hatten
+unabhaengig Berlin/Bremen/Hamburg ergaenzt) wurde zugunsten der
+praeziseren Peer-Version aufgeloest, danach per
+`reconcile_erschliessung_stadtstaaten.py` auch die bereits angewendete
+eigene DB nachgezogen (die 4 generischen Regeln liefen per `valid_to`
+aus, die 15 praeziseren Regeln wurden freigegeben - Standard-
+Staging-Mechanismus, auch ueber einen bewussten
+CONTRADICTS_VERIFIED-Konflikt hinweg). Die inhaltliche Ueberschneidung
+bei Hessen/NRW/Saarland (eigene vollstaendige aber generische
+"§127 BauGB"-Abdeckung vs. Peer-Version mit praeziserer aber nur
+teilweiser Einzelrecherche) wurde bewusst NICHT selbst aufgeloest,
+sondern als eigene Aufgabe vorgemerkt (spawn_task, siehe
+Session-Memory) - ein sorgfaeltiger Pro-Gemeinde-Abgleich braucht mehr
+Zeit, als im Vorbeigehen sinnvoll waere.
+
+Bei derselben Gelegenheit wurde die DENKMALSCHUTZ-Abdeckung bundesweit
+mit der (aus Kapitel 21 gelernten) korrekten Zwei-Ebenen-Methodik neu
+geprueft: 15 von 16 Laendern vollstaendig abgedeckt (Berlin strukturell
+offen wie ueberall sonst; Saarland ueber eine STATE-Level-Regel
+abgedeckt; Nordrhein-Westfalen zunaechst faelschlich als "31 Kreise
+fehlen" markiert, aber bei Nachpruefung stellte sich heraus, dass NRW
+DENKMALSCHUTZ grundsaetzlich auf GEMEINDE-Ebene organisiert - jede der
+396 Gemeinden ist ihre eigene untere Denkmalbehoerde, der Kreis ist nur
+Aufsichts-/Beratungsinstanz fuer kleinere Gemeinden - und alle 374
+betroffenen Gemeinden bereits korrekt einzeln abgedeckt waren, wieder
+kein echter Fund). Die einzige echte Luecke: **Neustadt an der
+Weinstrasse** (kreisfreie Stadt, Rheinland-Pfalz) hatte ueberhaupt
+keine DENKMALSCHUTZ-Regel. Gefixt mit
+`seed_denkmalschutz_neustadt_weinstrasse.py` (1 Regel, Quelle: die
+amtliche, aktuelle Liste der unteren Denkmalschutzbehoerden der
+Generaldirektion Kulturelles Erbe Rheinland-Pfalz, gdke.rlp.de, per
+Live-Browser-Abruf verifiziert).
