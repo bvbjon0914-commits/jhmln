@@ -1604,7 +1604,7 @@ als echter Rechercheauftrag an Agenten weitergegeben wird - sonst
 droht wie hier erheblicher Rechercheaufwand fuer nicht-existente
 Luecken.
 
-## 22. Erschließungsbeiträge "Phase 2": eigenständige Gemeinden bundesweit (7300 → 10745 von 10749)
+## 22. Erschließungsbeiträge "Phase 2": eigenständige Gemeinden bundesweit (7300 → 10749 von 10749, 100 %)
 
 Bei derselben Gelegenheit fiel eine viel groessere, echte Luecke auf:
 eine bundesweite ags-basierte Abdeckungspruefung fuer ERSCHLIESSUNG
@@ -1653,6 +1653,17 @@ Bremen/Hamburg wurden parallel von einer anderen Sitzung importiert):
 NEW=erwartete Zahl / andere=0** (kein einziger unerwarteter Konflikt
 ueber alle 13 Laender hinweg - starkes Signal, dass die Analyse und
 die Ausfuehrung korrekt waren). Bundesweite ERSCHLIESSUNG-Abdeckung
-damit von 7300 auf 10745 von 10749 Gemeinden gestiegen (99,96 %); die
-verbleibenden 4 sind vermutlich Sonderfaelle (geteilte/aufgeloeste
-Gemeinden im Anschriftenverzeichnis) und noch nicht einzeln identifiziert.
+damit von 7300 auf 10745 von 10749 Gemeinden gestiegen (99,96 %).
+
+Die letzten 4 fehlenden Gemeinden waren die 3 Stadtstaaten (Berlin,
+Hamburg sowie die beiden bremischen Stadtgemeinden Bremen und
+Bremerhaven) - keine "Sonderfaelle" im Sinne von Datenfehlern, sondern
+schlicht ausserhalb des "eigenstaendige Flaechenland-Gemeinde"-Musters
+der 13 vorherigen Skripte. Nachtraeglich mit
+`seed_erschliessung_stadtstaaten.py` ergaenzt (4 Regeln, dieselbe
+Rechtsgrundlage § 127 Abs. 1 BauGB, zentrale Senats-/Stadtverwaltungs-
+adresse aus dem amtlichen Anschriftenverzeichnis - keine Hinweise auf
+eine bezirkliche Aufspaltung der Erschliessungsbeitrags-Erhebung,
+anders als bei Bauaufsicht/Bodendenkmalschutz). **Damit ist die
+bundesweite ERSCHLIESSUNG-Abdeckung vollstaendig: 10749 von 10749
+Gemeinden (100 %).**
