@@ -1508,3 +1508,41 @@ verbleibenden 6 "einfachen" Laender (Niedersachsen, Rheinland-Pfalz,
 Sachsen-Anhalt, Brandenburg, Schleswig-Holstein, Mecklenburg-
 Vorpommern) laeuft bereits eine weitere Recherche-Welle nach demselben
 Muster.
+
+### 20.4 Abschluss der Welle: alle 6 verbleibenden Länder
+
+Die 6 verbleibenden Länder wurden nach demselben Muster fertiggestellt
+(je Kreis-Regel + benannte Ausnahmeliste, jede Rechtsgrundlage per
+Live-Browser-Abruf direkt gegen das amtliche Landesrecht-Portal
+wort-fuer-wort verifiziert):
+
+| Land | Kreis-Norm | Ausnahmen | Neue Regeln |
+|---|---|---|---|
+| Niedersachsen | § 57 Abs. 1 / § 81 Abs. 4 NBauO | 7 grosse selbstaendige Staedte (§ 14 Abs. 5 NKomVG) | 104 |
+| Mecklenburg-Vorpommern | § 57 Abs. 1 / § 83 Abs. 4 LBauO M-V | 4 grosse kreisangehoerige Staedte (§ 7 Abs. 2 KV M-V) | 4 (Rest bereits durch die frühere "Struktur-Korrektur 2026-09-26" VERIFIED) |
+| Schleswig-Holstein | § 57 Abs. 1 / § 83 Abs. 4 LBO SH | 18 beliehene Staedte (§ 1 BauAufsÜV SH vom 3.6.2022) | 14 (Rest bereits durch dieselbe frühere Struktur-Korrektur VERIFIED) |
+| Sachsen-Anhalt | § 56 Abs. 1 / § 82 Abs. 4 BauO LSA | 5 Bestandsschutz-Staedte (§ 87 Abs. 3 BauO LSA, Koethen/Naumburg/Stendal/Weissenfels/Zeitz) | 22 |
+| Brandenburg | § 57 Abs. 1 / § 84 Abs. 4 BbgBO | 2 tatsaechlich beliehene Grosse kreisangehoerige Staedte (Eberswalde, Schwedt/Oder - NICHT Bernau/Falkensee/Oranienburg, die zwar den Status tragen, denen die Aufgabe aber laut amtlicher MIL-Liste nicht uebertragen wurde) | 18 |
+| Rheinland-Pfalz | § 58 Abs. 1 Nr. 3 / § 86 Abs. 3 LBauO | 8 grosse kreisangehoerige Staedte (§ 6 GemO + 3 einzelne Landesverordnungen von 1960/1969/1972/1975) | 36 |
+
+Bemerkenswert: fuer MV und SH war der grösste Teil der Kreis-Ebene
+bereits durch eine fruehere, in dieser Sitzung erst nachtraeglich
+entdeckte Kampagne ("Struktur-Korrektur 2026-09-26, bundesweite
+Ausweitung des RLP/SH-Kreisebenen-Fixes") als VERIFIED angelegt worden
+- die Konfliktpruefung erkannte dies korrekt und liess nur echte
+Luecken (v. a. kreisfreie Staedte) neu durch, was fuer beide Laender
+die tatsaechlich neu angelegte Regelzahl deutlich unter die urspruenglich
+grob geschaetzte Zahl drueckte.
+
+**Endstand (ags-basierte COUNTY-Abdeckung, bundesweit 401 Kreise):**
+BAUAKTEN 399/401 (nur Hamburg und Berlin bewusst offen, beide
+strukturell durch Bezirksverwaltung blockiert - identisches Muster wie
+bei Bodendenkmalschutz/Kataster). BAULASTEN 295/401 (die Luecke
+entspricht im Kern den 96 bayerischen Kreisen, in denen es gar kein
+Baulastenverzeichnis gibt, plus Berlin plus einem kleinen Rest in
+Baden-Württemberg, wo die Verzeichnisfuehrung nach § 72 Abs. 3 LBO BW
+der Gemeinde statt dem Kreis obliegt und daher bewusst nicht ueber
+diese Kreis-Ebene-Kampagne abgedeckt wurde). Damit ist die
+Bauakten-/Baulastenauskunft-Welle fachlich abgeschlossen; alle
+verbleibenden Luecken sind dokumentierte, bewusste Ausnahmen und keine
+stillen Fehlstellen.
