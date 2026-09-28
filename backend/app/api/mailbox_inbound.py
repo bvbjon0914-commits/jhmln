@@ -26,6 +26,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.auth import require_main
@@ -76,6 +77,28 @@ async def receive_inbound_email(request: Request, db: Session = Depends(get_db_s
     if not _verify_mailgun_signature(timestamp, token, signature):
         raise HTTPException(status_code=403, detail="Ungültige Mailgun-Signatur")
 
+    # Idempotenz gegen doppelte Webhook-Zustellung (Auditbericht, Befund
+    # "Idempotenz"): "timestamp"/"token" dienen nur der Signaturprüfung und
+    # können sich bei einem erneuten Zustellversuch DERSELBEN E-Mail ändern -
+    # als Dedupe-Schlüssel dient stattdessen der Message-Id-Header der
+    # ursprünglichen E-Mail, den Mailgun als eigenes Feld mitliefert und der
+    # über wiederholte Zustellversuche stabil bleibt. ANNAHME (nicht gegen
+    # eine echte Mailgun-Zustellung verifiziert, siehe Auditbericht und
+    # InboundEmail.message_id-Kommentar): Feldname exakt "Message-Id"; beide
+    # gängigen Schreibweisen werden vorsichtshalber geprüft. Fehlt das Feld
+    # ganz, kann nicht dedupliziert werden - die E-Mail wird dann wie bisher
+    # ohne Idempotenzschutz verarbeitet, statt den Webhook abzulehnen.
+    message_id = str(form.get("Message-Id") or form.get("message-id") or "").strip() or None
+    if message_id:
+        existing = db.query(InboundEmail).filter(InboundEmail.message_id == message_id).first()
+        if existing:
+            return {
+                "id": existing.id,
+                "matched": existing.auto_matched,
+                "matched_request_item_id": existing.matched_request_item_id,
+                "duplicate_delivery": True,
+            }
+
     from_address = str(form.get("sender") or form.get("from") or "")
     subject = str(form.get("subject") or "")
     body_text = str(form.get("body-plain") or "")
@@ -115,9 +138,28 @@ async def receive_inbound_email(request: Request, db: Session = Depends(get_db_s
         body_text=body_text,
         matched_request_item_id=matched_item_id,
         auto_matched=auto_matched,
+        message_id=message_id,
     )
     db.add(inbound)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        # Seltene Race: zwei praktisch gleichzeitige Zustellungen derselben
+        # E-Mail haben den obigen Duplikat-Check beide vor dem jeweils
+        # anderen INSERT passiert (klassisches TOCTOU-Fenster). Der Unique-
+        # Index auf message_id verhindert trotzdem zuverlässig eine zweite
+        # Zeile - hier wird das nur noch in eine saubere, idempotente
+        # Antwort statt eines 500-Fehlers übersetzt.
+        db.rollback()
+        existing = db.query(InboundEmail).filter(InboundEmail.message_id == message_id).first()
+        if existing:
+            return {
+                "id": existing.id,
+                "matched": existing.auto_matched,
+                "matched_request_item_id": existing.matched_request_item_id,
+                "duplicate_delivery": True,
+            }
+        raise
 
     for a in attachments:
         db.add(

@@ -24,3 +24,12 @@ services:
         sync: false # z.B. eine Subdomain von vonovia.de, DNS muss auf Mailgun zeigen
       - key: MAILGUN_FROM_ADDRESS
         sync: false # optional, Default wird aus MAILGUN_DOMAIN abgeleitet
+      # ALLOWED_ORIGINS: hier i.d.R. NICHT nötig - Frontend und Backend laufen
+      # in Produktion im selben Dienst (siehe SERVE_FRONTEND in main.py), das
+      # ist same-origin und braucht kein CORS. Nur setzen, falls das Frontend
+      # je separat gehostet wird (kommagetrennte Liste vollständiger Origins,
+      # z.B. "https://civeloq.example.com"). Ohne Angabe gilt ein enger
+      # Default nur für lokale Entwicklung (Vite-Dev-Server-Ports).
+      # COOKIE_SECURE: Default "true" (Cookie nur über HTTPS) - auf Render
+      # nicht ändern; nur für lokale HTTP-Entwicklung in backend/.env auf
+      # "false" setzen, siehe app/config.py.

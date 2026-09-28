@@ -16,12 +16,13 @@ from datetime import datetime
 from typing import List, Optional
 
 import pandas as pd
-from sqlalchemy import or_
+from sqlalchemy import or_, update, func, bindparam
 from sqlalchemy.orm import Session
 
 from app.models.authority import Authority
 from app.models.building import Building
 from app.models.jurisdiction import Jurisdiction
+from app.services.address_normalizer import AddressNormalizer
 
 AGS_SPLIT_RE = re.compile(r"[,;/\s]+")
 
@@ -146,12 +147,43 @@ class ImportService:
                 return s["name"]
         return sheets[0]["name"]
 
-    def import_buildings(self, df: pd.DataFrame, mapping: dict) -> ImportSummary:
+    @staticmethod
+    def _address_key(street: str, house_number: str, postal_code: Optional[str], city: str) -> tuple:
+        """
+        Normalisierter Adress-Schlüssel für die Dublettenprüfung beim
+        Gebäude-Import ohne internal_reference. Nutzt dieselbe Normalisierung
+        wie die Matching-Engine (AddressNormalizer), damit z.B. "Musterstr. 12"
+        und "Musterstraße 12" als dieselbe Adresse erkannt werden statt als
+        vermeintlich unterschiedliche Gebäude.
+        """
+        normalized = AddressNormalizer.normalize(
+            street=street or "", house_number=house_number or "", city=city or "", postal_code=postal_code,
+        )
+        return (normalized.street, normalized.house_number, normalized.postal_code, normalized.city)
+
+    def import_buildings(self, df: pd.DataFrame, mapping: dict, source_system: Optional[str] = None) -> ImportSummary:
         """
         Importiert Gebäude.
 
         mapping: {"db_field": "csv_column", ...}
         Pflichtfelder: street, house_number, city (PLZ optional)
+        source_system: optionale Kennzeichnung, aus welchem externen System
+        dieser Import stammt (z.B. "SAP") - wird nur auf neu angelegten
+        Gebäuden gesetzt, siehe Building.source_system.
+
+        Dedublizierung zweistufig (Auditbericht-Folgebericht, Priorität 3,
+        Befund "wiederholbare Importe ohne Dubletten"):
+        1. internal_reference, wenn vorhanden (wie bisher) - der verlässliche
+           Schlüssel, sofern das Quellsystem einen mitliefert.
+        2. Fällt internal_reference weg (Feld fehlt in der Datei oder ist für
+           diese Zeile leer), zusätzlich die normalisierte Adresse
+           (Straße+Hausnummer+PLZ+Ort) gegen den Bestand - verhindert, dass
+           ein wiederholter Import derselben Datei ohne stabile Referenz bei
+           jedem Lauf stumpf neue Duplikate anlegt. Bewusst KEIN automatisches
+           Update der bestehenden Zeile (das wäre Raten, welche der beiden
+           Versionen aktuell ist) - die Zeile wird als DUPLICATE geführt,
+           damit ein Mensch entscheidet, genau wie bei der bestehenden
+           Duplikat-Erkennung im Datenqualitätsmodul.
         """
         required_fields = ["street", "house_number", "city"]
         details: List[ImportRowResult] = []
@@ -159,6 +191,12 @@ class ImportService:
 
         existing_refs = {
             b.internal_reference for b in self.db.query(Building.internal_reference).all() if b.internal_reference
+        }
+        existing_addresses = {
+            self._address_key(b.street, b.house_number, b.postal_code, b.city)
+            for b in self.db.query(
+                Building.street, Building.house_number, Building.postal_code, Building.city
+            ).all()
         }
 
         for idx, row in df.iterrows():
@@ -170,27 +208,43 @@ class ImportService:
                     continue
 
                 internal_reference = row.get(mapping.get("internal_reference", ""), "").strip() or None
+                street = row[mapping["street"]].strip()
+                house_number = row[mapping["house_number"]].strip()
+                postal_code = row.get(mapping.get("postal_code", ""), "").strip() or None
+                city = row[mapping["city"]].strip()
 
                 if internal_reference and internal_reference in existing_refs:
                     details.append(ImportRowResult(idx, "DUPLICATE", f"Referenz '{internal_reference}' existiert bereits"))
                     duplicates += 1
                     continue
 
+                address_key = self._address_key(street, house_number, postal_code, city)
+                if not internal_reference and address_key in existing_addresses:
+                    details.append(ImportRowResult(
+                        idx, "DUPLICATE",
+                        f"Adresse '{street} {house_number}, {postal_code or ''} {city}' existiert bereits "
+                        "(keine interne Referenz zur eindeutigen Unterscheidung angegeben)",
+                    ))
+                    duplicates += 1
+                    continue
+
                 building = Building(
                     building_id=str(uuid.uuid4()),
-                    street=row[mapping["street"]].strip(),
-                    house_number=row[mapping["house_number"]].strip(),
-                    postal_code=row.get(mapping.get("postal_code", ""), "").strip() or None,
-                    city=row[mapping["city"]].strip(),
+                    street=street,
+                    house_number=house_number,
+                    postal_code=postal_code,
+                    city=city,
                     district=row.get(mapping.get("district", ""), "").strip() or None,
                     state=row.get(mapping.get("state", ""), "").strip() or None,
                     ags=row.get(mapping.get("ags", ""), "").strip() or None,
                     property_name=row.get(mapping.get("property_name", ""), "").strip() or None,
                     internal_reference=internal_reference,
+                    source_system=source_system,
                 )
                 self.db.add(building)
                 if internal_reference:
                     existing_refs.add(internal_reference)
+                existing_addresses.add(address_key)
 
                 details.append(ImportRowResult(idx, "IMPORTED", "OK"))
                 imported += 1
@@ -457,8 +511,14 @@ class ImportService:
                 authorities_by_id[a.authority_id] = a
 
         # ---------- Pass 3: Lücken-Updates im Speicher berechnen ----------
+        # WICHTIG: "filled_fields" hier ist nur eine Prognose für die
+        # Nutzer-Rückmeldung, basierend auf dem Pass-2-Schnappschuss. Ob ein
+        # Feld beim tatsächlichen Schreiben (Pass 5) wirklich noch leer ist,
+        # prüft die UPDATE-Anweisung selbst am aktuellen Datenbankstand -
+        # siehe Kommentar dort (Race Condition zwischen parallelem manuellem
+        # Bearbeiten und diesem Import, siehe Auditbericht).
         now = datetime.utcnow()
-        update_mappings: List[dict] = []
+        update_params: List[dict] = []
         for idx, existing_id, name, city, row in duplicate_candidates:
             existing = authorities_by_id.get(existing_id)
             if existing is None:
@@ -467,19 +527,19 @@ class ImportService:
                 continue
 
             filled_fields = []
-            patch = {"authority_id": existing_id}
+            row_values = {}
             for field_name in self._FILLABLE_AUTHORITY_FIELDS:
-                if getattr(existing, field_name):
-                    continue
-                new_value = row.get(mapping.get(field_name, ""), "").strip()
-                if new_value:
-                    patch[field_name] = new_value
+                new_value = row.get(mapping.get(field_name, ""), "").strip() or None
+                row_values[field_name] = new_value
+                if new_value and not getattr(existing, field_name):
                     filled_fields.append(field_name)
 
             if filled_fields:
-                patch["updated_at"] = now
-                update_mappings.append(patch)
-                details.append(ImportRowResult(idx, "UPDATED", f"Ergänzt: {', '.join(filled_fields)}"))
+                update_params.append({"authority_id": existing_id, **row_values})
+                details.append(ImportRowResult(
+                    idx, "UPDATED",
+                    f"Ergänzt, sofern beim Schreiben noch leer: {', '.join(filled_fields)}",
+                ))
                 updated += 1
             else:
                 details.append(ImportRowResult(idx, "DUPLICATE", f"'{name}' in '{city}' hatte keine Lücken zu füllen"))
@@ -509,9 +569,45 @@ class ImportService:
             imported += 1
 
         # ---------- Pass 5: in Batches schreiben (wenige Sammel-Anfragen statt vieler Einzelnen) ----------
-        for i in range(0, len(update_mappings), self._IMPORT_BATCH_SIZE):
-            self.db.bulk_update_mappings(Authority, update_mappings[i:i + self._IMPORT_BATCH_SIZE])
-            self.db.commit()
+        # Bewusst KEIN bulk_update_mappings für die Lücken-Updates: das würde
+        # den in Pass 3 im Speicher berechneten Wert blind schreiben, selbst
+        # wenn das Feld zwischen dem Einlesen (Pass 2) und dem tatsächlichen
+        # Schreiben (hier) durch eine parallele manuelle Bearbeitung bereits
+        # gefüllt wurde - eine reale, im Auditbericht dokumentierte Race
+        # Condition. Stattdessen prüft die UPDATE-Anweisung selbst den zum
+        # Schreibzeitpunkt AKTUELLEN Spaltenwert per COALESCE(NULLIF(...)):
+        # nur wenn die Spalte JETZT noch leer ist, wird der Importwert
+        # gesetzt; eine zwischenzeitliche, ggf. bessere manuelle Eingabe
+        # bleibt unangetastet. Alle Zeilen eines Batches teilen sich dieselbe
+        # Anweisungsform (ein "executemany"), das bleibt so schnell wie zuvor.
+        if update_params:
+            authority_table = Authority.__table__
+            set_values = {
+                field_name: func.coalesce(func.nullif(authority_table.c[field_name], ""), bindparam(field_name))
+                for field_name in self._FILLABLE_AUTHORITY_FIELDS
+            }
+            set_values["updated_at"] = now
+            # Core-Table-Update (nicht update(Authority) auf der ORM-Klasse):
+            # ein ORM-Bulk-Update mit zusätzlicher WHERE-Bedingung verlangt in
+            # SQLAlchemy 2.0 eine explizite synchronize_session-Strategie und
+            # würde versuchen, geladene ORM-Objekte im Session-Identity-Map
+            # abzugleichen - hier unnötig, da wir (wie zuvor bei
+            # bulk_update_mappings) bewusst ohne ORM-Identity-Map-Refresh
+            # schreiben.
+            stmt = (
+                update(authority_table)
+                .where(authority_table.c.authority_id == bindparam("target_id"))
+                .values(**set_values)
+            )
+
+            for i in range(0, len(update_params), self._IMPORT_BATCH_SIZE):
+                batch = update_params[i:i + self._IMPORT_BATCH_SIZE]
+                exec_params = [
+                    {**{f: p.get(f) for f in self._FILLABLE_AUTHORITY_FIELDS}, "target_id": p["authority_id"]}
+                    for p in batch
+                ]
+                self.db.execute(stmt, exec_params)
+                self.db.commit()
 
         for i in range(0, len(insert_mappings), self._IMPORT_BATCH_SIZE):
             self.db.bulk_insert_mappings(Authority, insert_mappings[i:i + self._IMPORT_BATCH_SIZE])

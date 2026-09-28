@@ -28,6 +28,30 @@ from app.services.geocoding import geocode_address
 router = APIRouter()
 
 
+def _geocode_and_cache_building(building: Building) -> bool:
+    """
+    Versucht, ein Gebäude über seine Adresse zu geocodieren und das Ergebnis
+    auf dem Gebäude zu cachen (building.latitude/longitude). Committet nicht
+    selbst - das bleibt Sache des Aufrufers. Gibt True bei Erfolg zurück,
+    False wenn keine Koordinaten ermittelt werden konnten (es wird nicht
+    geraten, siehe geocode_address).
+    """
+    address_parts = [
+        f"{building.street} {building.house_number}",
+        building.postal_code,
+        building.city,
+        "Deutschland",
+    ]
+    query = ", ".join(p for p in address_parts if p)
+
+    coords = geocode_address(query)
+    if not coords:
+        return False
+
+    building.latitude, building.longitude = coords
+    return True
+
+
 def _serialize(u: AdministrativeUnit) -> dict:
     return {
         "ags": u.ags,
@@ -130,21 +154,11 @@ def geocode_building(building_id: str, db: Session = Depends(get_db_session)):
     if building.latitude is not None and building.longitude is not None:
         return {"latitude": building.latitude, "longitude": building.longitude, "cached": True}
 
-    address_parts = [
-        f"{building.street} {building.house_number}",
-        building.postal_code,
-        building.city,
-        "Deutschland",
-    ]
-    query = ", ".join(p for p in address_parts if p)
-
-    coords = geocode_address(query)
-    if not coords:
+    if not _geocode_and_cache_building(building):
         raise HTTPException(status_code=404, detail="Adresse konnte nicht geocodiert werden.")
 
-    building.latitude, building.longitude = coords
     db.commit()
-    return {"latitude": coords[0], "longitude": coords[1], "cached": False}
+    return {"latitude": building.latitude, "longitude": building.longitude, "cached": False}
 
 
 @router.get("/geo/authority-location/{authority_id}", tags=["Geo"])

@@ -1,0 +1,456 @@
+"""
+Tests für JurisdictionStagingService (Auftrag Priorität 4: sicherer
+Aktualisierungsprozess - Konflikterkennung, Freigabe/Ablehnung, Historie).
+"""
+from datetime import date
+
+import pytest
+
+from app.models.jurisdiction import Jurisdiction
+from app.models.jurisdiction_staging import ConflictType, JurisdictionStagingEntry, StagingStatus
+from app.services.jurisdiction_staging import JurisdictionStagingService
+
+from tests.conftest import days_ago, make_authority, make_jurisdiction, make_request_type
+
+
+def test_new_entry_without_existing_rule_has_no_conflict(db_session):
+    rt = make_request_type(db_session, code="GRUNDBUCH")
+    authority = make_authority(db_session)
+    service = JurisdictionStagingService(db_session)
+
+    entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id,
+        ags="05911000", proposed_authority_id=authority.authority_id,
+        source="Testquelle",
+    )
+    db_session.commit()
+
+    assert entry.conflict_type == ConflictType.NEW
+    assert entry.conflicts_with_jurisdiction_id is None
+    assert entry.status == StagingStatus.PENDING
+
+
+def test_exact_duplicate_is_detected(db_session):
+    rt = make_request_type(db_session, code="GRUNDBUCH")
+    authority = make_authority(db_session)
+    make_jurisdiction(db_session, request_type_id=rt.request_type_id, authority_id=authority.authority_id, ags="05911000")
+
+    service = JurisdictionStagingService(db_session)
+    entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id,
+        ags="05911000", proposed_authority_id=authority.authority_id,
+    )
+    db_session.commit()
+
+    assert entry.conflict_type == ConflictType.DUPLICATE_EXACT
+
+
+def test_contradicts_verified_rule_is_detected(db_session):
+    rt = make_request_type(db_session, code="GRUNDBUCH")
+    old_authority = make_authority(db_session, name="Alte Behörde")
+    new_authority = make_authority(db_session, name="Neue Behörde")
+    old_rule = make_jurisdiction(
+        db_session, request_type_id=rt.request_type_id, authority_id=old_authority.authority_id,
+        ags="05911000", verification_status="VERIFIED", last_verified_at=days_ago(10), verified_by="Prüfer A",
+    )
+
+    service = JurisdictionStagingService(db_session)
+    entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id,
+        ags="05911000", proposed_authority_id=new_authority.authority_id,
+    )
+    db_session.commit()
+
+    assert entry.conflict_type == ConflictType.CONTRADICTS_VERIFIED
+    assert entry.conflicts_with_jurisdiction_id == old_rule.jurisdiction_id
+
+
+def test_state_level_rule_does_not_conflict_with_other_states_state_level_rule(db_session):
+    """
+    Regressionstest für einen echten Bug: eine reine STATE-Ebene-Regel hat
+    ags/municipality/district/postal_code/street/house_number IMMER alle
+    None - ohne `state` als zusätzliches Vergleichsfeld hätte JEDE neue
+    STATE-Regel fälschlich mit der STATE-Regel JEDES ANDEREN Bundeslands
+    kollidiert (gefunden beim Versuch, eine fehlende Rheinland-Pfalz-Regel
+    zu ergänzen, die fälschlich als Konflikt mit einer bereits bestehenden,
+    völlig unabhängigen Schleswig-Holstein-Regel gemeldet wurde).
+    """
+    rt = make_request_type(db_session, code="KAMPFMITTEL")
+    sh_authority = make_authority(db_session, name="LKA Schleswig-Holstein")
+    rlp_authority = make_authority(db_session, name="ADD Rheinland-Pfalz")
+    make_jurisdiction(
+        db_session, request_type_id=rt.request_type_id, authority_id=sh_authority.authority_id,
+        state="Schleswig-Holstein", matching_level="STATE",
+        verification_status="VERIFIED", last_verified_at=days_ago(10), verified_by="Prüfer A",
+    )
+
+    service = JurisdictionStagingService(db_session)
+    entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id,
+        state="Rheinland-Pfalz", matching_level="STATE",
+        proposed_authority_id=rlp_authority.authority_id,
+    )
+    db_session.commit()
+
+    assert entry.conflict_type == ConflictType.NEW
+    assert entry.conflicts_with_jurisdiction_id is None
+
+
+def test_geo_scoped_rule_with_null_state_on_existing_row_is_still_detected_as_duplicate(db_session):
+    """
+    Regressionstest für einen echten Bug: eine bestehende, geografisch
+    verortete Regel (ags gesetzt) aus einem älteren Massenimport hatte
+    `state` oft nicht gesetzt (NULL). Ein strikter `state`-Abgleich in
+    `_find_matching_existing` hätte eine neue Regel mit demselben AGS aber
+    explizit gesetztem `state` NICHT als Duplikat erkannt (NULL == 'Bayern'
+    ist in SQL nie wahr) - gefunden beim Ergänzen von BAUAKTEN für Bayern:
+    80 von 106 neuen Regeln landeten unbemerkt als zweite aktive Regel für
+    denselben AGS neben einer bereits bestehenden `state=NULL`-Altregel,
+    ohne dass ein Konflikt gemeldet wurde. Der AGS ist bundesweit eindeutig
+    und identifiziert die Geografie bereits vollständig, `state` darf daher
+    bei geografisch verorteten Regeln kein hartes Vergleichsfeld sein.
+    """
+    rt = make_request_type(db_session, code="BAUAKTEN")
+    old_authority = make_authority(db_session, name="Altregel ohne state")
+    new_authority = make_authority(db_session, name="Neue Regel mit state")
+    old_rule = make_jurisdiction(
+        db_session, request_type_id=rt.request_type_id, authority_id=old_authority.authority_id,
+        ags="09162000", state=None, verification_status="VERIFIED",
+        last_verified_at=days_ago(10), verified_by="Prüfer A",
+    )
+
+    service = JurisdictionStagingService(db_session)
+    entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id,
+        ags="09162000", state="Bayern", proposed_authority_id=new_authority.authority_id,
+    )
+    db_session.commit()
+
+    assert entry.conflict_type == ConflictType.CONTRADICTS_VERIFIED
+    assert entry.conflicts_with_jurisdiction_id == old_rule.jurisdiction_id
+
+
+def test_ags_scoped_rule_with_populated_municipality_on_existing_row_is_still_detected_as_duplicate(db_session):
+    """
+    Regressionstest für einen zweiten, mit dem obigen `state`-Bug eng
+    verwandten Fund: eine bestehende Altregel hatte zusätzlich zum AGS auch
+    das Textfeld `municipality` befüllt (z. B. "Burghausen"), während eine
+    neue Regel für denselben AGS `municipality` nicht setzt. Ein exakter
+    Textabgleich auf `municipality` hätte das als "kein Duplikat"
+    durchgehen lassen (gefunden bei 8 von 10 Ausnahme-Gemeinden beim
+    Ergänzen von BAUAKTEN Bayern) - `municipality` ist nur ein redundantes
+    Anzeigefeld, `ags` allein bestimmt die Gemeinde-Geografie bereits
+    eindeutig und muss daher als alleiniger Schlüssel ausreichen.
+    """
+    rt = make_request_type(db_session, code="BAUAKTEN")
+    old_authority = make_authority(db_session, name="Altregel mit municipality-Text")
+    new_authority = make_authority(db_session, name="Neue Regel ohne municipality-Text")
+    old_rule = make_jurisdiction(
+        db_session, request_type_id=rt.request_type_id, authority_id=old_authority.authority_id,
+        ags="09171112", municipality="Burghausen", verification_status="VERIFIED",
+        last_verified_at=days_ago(10), verified_by="Prüfer A",
+    )
+
+    service = JurisdictionStagingService(db_session)
+    entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id,
+        ags="09171112", proposed_authority_id=new_authority.authority_id,
+    )
+    db_session.commit()
+
+    assert entry.conflict_type == ConflictType.CONTRADICTS_VERIFIED
+    assert entry.conflicts_with_jurisdiction_id == old_rule.jurisdiction_id
+
+
+def test_contradicts_unverified_rule_is_detected(db_session):
+    rt = make_request_type(db_session, code="GRUNDBUCH")
+    old_authority = make_authority(db_session, name="Alte Behörde")
+    new_authority = make_authority(db_session, name="Neue Behörde")
+    make_jurisdiction(db_session, request_type_id=rt.request_type_id, authority_id=old_authority.authority_id, ags="05911000")
+
+    service = JurisdictionStagingService(db_session)
+    entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id,
+        ags="05911000", proposed_authority_id=new_authority.authority_id,
+    )
+    db_session.commit()
+
+    assert entry.conflict_type == ConflictType.CONTRADICTS_UNVERIFIED
+
+
+def test_stage_entry_requires_authority_reference(db_session):
+    rt = make_request_type(db_session, code="GRUNDBUCH")
+    service = JurisdictionStagingService(db_session)
+
+    with pytest.raises(ValueError):
+        service.stage_entry(batch_id="batch-1", request_type_id=rt.request_type_id, ags="05911000")
+
+
+def test_approve_new_entry_creates_verified_jurisdiction(db_session):
+    rt = make_request_type(db_session, code="GRUNDBUCH")
+    authority = make_authority(db_session)
+    service = JurisdictionStagingService(db_session)
+
+    entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id,
+        ags="05911000", matching_level="MUNICIPALITY",
+        proposed_authority_id=authority.authority_id,
+        source="BKG VG250", source_url="https://gdz.bkg.bund.de/...", source_license="DL-DE-BY-2.0",
+    )
+    db_session.commit()
+
+    new_rule = service.approve_entry(entry.id, reviewer="Testperson", review_notes="ok")
+    db_session.commit()
+
+    assert new_rule.verification_status == "VERIFIED"
+    assert new_rule.verified_by == "Testperson"
+    assert new_rule.authority_id == authority.authority_id
+    assert new_rule.source == "BKG VG250"
+
+    db_session.refresh(entry)
+    assert entry.status == StagingStatus.APPROVED
+    assert entry.resulting_jurisdiction_id == new_rule.jurisdiction_id
+    assert entry.reviewed_by == "Testperson"
+
+
+def test_approve_contradicting_entry_expires_old_rule_without_deleting_it(db_session):
+    rt = make_request_type(db_session, code="GRUNDBUCH")
+    old_authority = make_authority(db_session, name="Alte Behörde")
+    new_authority = make_authority(db_session, name="Neue Behörde")
+    old_rule = make_jurisdiction(
+        db_session, request_type_id=rt.request_type_id, authority_id=old_authority.authority_id, ags="05911000",
+    )
+    old_jurisdiction_id = old_rule.jurisdiction_id
+
+    service = JurisdictionStagingService(db_session)
+    entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id, ags="05911000",
+        proposed_authority_id=new_authority.authority_id,
+        valid_from=date(2026, 6, 1),
+    )
+    db_session.commit()
+    assert entry.conflict_type == ConflictType.CONTRADICTS_UNVERIFIED
+
+    new_rule = service.approve_entry(entry.id, reviewer="Testperson")
+    db_session.commit()
+
+    # Alte Regel bleibt als Zeile bestehen (Historie), ist aber jetzt abgelaufen.
+    refreshed_old = db_session.query(Jurisdiction).filter(
+        Jurisdiction.jurisdiction_id == old_jurisdiction_id
+    ).first()
+    assert refreshed_old is not None
+    assert refreshed_old.valid_to == date(2026, 5, 31)
+    assert refreshed_old.active is True  # nicht gelöscht/deaktiviert, nur zeitlich ausgelaufen
+
+    # Neue Regel gilt ab dem angegebenen Datum.
+    assert new_rule.valid_from == date(2026, 6, 1)
+    assert new_rule.authority_id == new_authority.authority_id
+
+    # Keine Überlappung: die beiden Gültigkeitszeiträume berühren sich nicht.
+    assert refreshed_old.valid_to < new_rule.valid_from
+
+
+def test_approve_exact_duplicate_is_rejected_with_error(db_session):
+    rt = make_request_type(db_session, code="GRUNDBUCH")
+    authority = make_authority(db_session)
+    make_jurisdiction(db_session, request_type_id=rt.request_type_id, authority_id=authority.authority_id, ags="05911000")
+
+    service = JurisdictionStagingService(db_session)
+    entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id, ags="05911000",
+        proposed_authority_id=authority.authority_id,
+    )
+    db_session.commit()
+
+    with pytest.raises(ValueError):
+        service.approve_entry(entry.id, reviewer="Testperson")
+
+
+def test_approve_without_resolved_authority_is_rejected_with_error(db_session):
+    rt = make_request_type(db_session, code="GRUNDBUCH")
+    service = JurisdictionStagingService(db_session)
+
+    entry = JurisdictionStagingEntry(
+        batch_id="batch-1", request_type_id=rt.request_type_id, ags="05911000",
+        proposed_authority_name="Noch zu recherchierende Behörde",
+        status=StagingStatus.PENDING, conflict_type=ConflictType.NEW,
+    )
+    db_session.add(entry)
+    db_session.commit()
+
+    with pytest.raises(ValueError):
+        service.approve_entry(entry.id, reviewer="Testperson")
+
+
+def test_cannot_approve_or_reject_twice(db_session):
+    rt = make_request_type(db_session, code="GRUNDBUCH")
+    authority = make_authority(db_session)
+    service = JurisdictionStagingService(db_session)
+
+    entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id, ags="05911000",
+        proposed_authority_id=authority.authority_id,
+    )
+    db_session.commit()
+
+    service.approve_entry(entry.id, reviewer="Testperson")
+    db_session.commit()
+
+    with pytest.raises(ValueError):
+        service.approve_entry(entry.id, reviewer="Testperson")
+    with pytest.raises(ValueError):
+        service.reject_entry(entry.id, reviewer="Testperson", reason="zu spät")
+
+
+def test_reject_entry_records_reviewer_and_reason(db_session):
+    rt = make_request_type(db_session, code="GRUNDBUCH")
+    authority = make_authority(db_session)
+    service = JurisdictionStagingService(db_session)
+
+    entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id, ags="05911000",
+        proposed_authority_id=authority.authority_id,
+    )
+    db_session.commit()
+
+    rejected = service.reject_entry(entry.id, reviewer="Testperson", reason="Quelle nicht verlässlich")
+    db_session.commit()
+
+    assert rejected.status == StagingStatus.REJECTED
+    assert rejected.reviewed_by == "Testperson"
+    assert rejected.review_notes == "Quelle nicht verlässlich"
+
+
+def test_pending_conflicts_excludes_conflict_free_new_entries(db_session):
+    rt = make_request_type(db_session, code="GRUNDBUCH")
+    authority = make_authority(db_session)
+    other_authority = make_authority(db_session, name="Andere Behörde")
+    make_jurisdiction(db_session, request_type_id=rt.request_type_id, authority_id=authority.authority_id, ags="05911000")
+
+    service = JurisdictionStagingService(db_session)
+    new_entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id, ags="09162000",
+        proposed_authority_id=authority.authority_id,
+    )
+    conflict_entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id, ags="05911000",
+        proposed_authority_id=other_authority.authority_id,
+    )
+    db_session.commit()
+
+    pending = service.pending_conflicts(batch_id="batch-1")
+    pending_ids = {e.id for e in pending}
+    assert conflict_entry.id in pending_ids
+    assert new_entry.id not in pending_ids
+
+
+def test_batch_summary_counts_by_status_and_conflict_type(db_session):
+    rt = make_request_type(db_session, code="GRUNDBUCH")
+    authority = make_authority(db_session)
+    service = JurisdictionStagingService(db_session)
+
+    e1 = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id, ags="05911000",
+        proposed_authority_id=authority.authority_id,
+    )
+    service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id, ags="05913000",
+        proposed_authority_id=authority.authority_id,
+    )
+    db_session.commit()
+    service.approve_entry(e1.id, reviewer="Testperson")
+    db_session.commit()
+
+    summary = service.batch_summary("batch-1")
+    assert summary["total"] == 2
+    assert summary["by_status"]["APPROVED"] == 1
+    assert summary["by_status"]["PENDING"] == 1
+    assert summary["by_conflict_type"]["NEW"] == 2
+
+
+def test_verify_existing_rule_sets_verification_fields_without_touching_scope(db_session):
+    rt = make_request_type(db_session, code="KAMPFMITTEL")
+    authority = make_authority(db_session, name="LKA Testland")
+    rule = make_jurisdiction(
+        db_session, request_type_id=rt.request_type_id, authority_id=authority.authority_id,
+        state="Testland", matching_level="STATE", priority=60,
+    )
+    service = JurisdictionStagingService(db_session)
+
+    verified = service.verify_existing_rule(
+        rule.jurisdiction_id, reviewer="Testperson", source_url="https://example.gov/kmrd",
+        source="Amtliche Seite", source_license="Amtliche Auskunft",
+        notes="Unabhängig recherchiert und bestätigt.",
+    )
+    db_session.commit()
+
+    assert verified.jurisdiction_id == rule.jurisdiction_id
+    assert verified.verification_status == "VERIFIED"
+    assert verified.verified_by == "Testperson"
+    assert verified.source_url == "https://example.gov/kmrd"
+    assert verified.last_verified_at is not None
+    # Geltungsbereich und Behörde bleiben unveraendert.
+    assert verified.state == "Testland"
+    assert verified.matching_level == "STATE"
+    assert verified.authority_id == authority.authority_id
+
+
+def test_verify_existing_rule_refuses_to_overwrite_already_verified_rule(db_session):
+    rt = make_request_type(db_session, code="KAMPFMITTEL")
+    authority = make_authority(db_session, name="LKA Testland")
+    rule = make_jurisdiction(
+        db_session, request_type_id=rt.request_type_id, authority_id=authority.authority_id,
+        state="Testland", matching_level="STATE",
+        verification_status="VERIFIED", last_verified_at=days_ago(5), verified_by="Andere Person",
+    )
+    service = JurisdictionStagingService(db_session)
+
+    with pytest.raises(ValueError):
+        service.verify_existing_rule(
+            rule.jurisdiction_id, reviewer="Testperson", source_url="https://example.gov/andere-quelle",
+        )
+
+
+def test_verify_existing_rule_refuses_unknown_or_inactive_rule(db_session):
+    rt = make_request_type(db_session, code="KAMPFMITTEL")
+    authority = make_authority(db_session, name="LKA Testland")
+    inactive_rule = make_jurisdiction(
+        db_session, request_type_id=rt.request_type_id, authority_id=authority.authority_id,
+        state="Testland", matching_level="STATE", active=False,
+    )
+    service = JurisdictionStagingService(db_session)
+
+    with pytest.raises(ValueError):
+        service.verify_existing_rule("does-not-exist", reviewer="Testperson", source_url="https://example.gov")
+    with pytest.raises(ValueError):
+        service.verify_existing_rule(inactive_rule.jurisdiction_id, reviewer="Testperson", source_url="https://example.gov")
+
+
+def test_approve_entry_with_weaker_evidence_does_not_get_marked_verified(db_session):
+    """
+    Auftrag: "technisch abgedeckt" (benannte Organisation + Geltungsbereich +
+    Kontaktweg) und "fachlich verifiziert" sind getrennte Kennzahlen. Eine
+    Regel mit nur struktureller/indirekter Beleglage darf nicht denselben
+    VERIFIED-Status bekommen wie eine mit wörtlich bestätigter Zuständigkeit.
+    """
+    rt = make_request_type(db_session, code="ERSCHLIESSUNG")
+    authority = make_authority(db_session, name="Verbandsgemeindeverwaltung Test")
+    service = JurisdictionStagingService(db_session)
+
+    entry = service.stage_entry(
+        batch_id="batch-1", request_type_id=rt.request_type_id, ags="07999001",
+        proposed_authority_id=authority.authority_id,
+    )
+    db_session.commit()
+
+    rule = service.approve_entry(
+        entry.id, reviewer="Testperson",
+        review_notes="Quelle bestätigt nur die eng verwandte Ausbaubeiträge-Zuständigkeit, nicht wörtlich Erschließung.",
+        resulting_verification_status="AUTO_IMPORTED",
+    )
+    db_session.commit()
+
+    assert rule.verification_status == "AUTO_IMPORTED"
+    assert not rule.is_professionally_verified()
+    assert "Ausbaubeiträge" in rule.notes
+    assert "Staging-Batch batch-1" in rule.notes

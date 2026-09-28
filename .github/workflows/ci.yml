@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend (Tests, Lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Abhängigkeiten installieren
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: flake8 (blockierend)
+        working-directory: backend
+        run: python -m flake8 app
+
+      - name: mypy (informativ, blockiert die Pipeline nicht)
+        working-directory: backend
+        run: python -m mypy app --ignore-missing-imports || true
+        # Der bestehende Code nutzt SQLAlchemy im klassischen Column()-Stil
+        # ohne Mapped[]-Typannotationen; das erzeugt ~100 größtenteils
+        # falsch-positive mypy-Meldungen (Spaltentyp vs. Laufzeitwert). Eine
+        # echte Umstellung auf SQLAlchemy-2.0-Typed-Declarative-Mappings wäre
+        # ein eigenes, größeres Vorhaben (kein Teil dieser Härtung, siehe
+        # Auditbericht-Folgebericht) - deshalb hier bewusst informativ statt
+        # blockierend, damit echte künftige Regressionen trotzdem auffallen,
+        # ohne die Pipeline durch bekanntes Rauschen dauerhaft rot zu machen.
+
+      - name: Tests (pytest)
+        working-directory: backend
+        run: python -m pytest tests/ -v
+        env:
+          MAILGUN_DRY_RUN: "true"
+
+      - name: Migrationsverfahren gegen frische Datenbank prüfen
+        working-directory: backend
+        run: |
+          python -m alembic upgrade head
+          python -m alembic downgrade -1
+          python -m alembic upgrade head
+        env:
+          DATABASE_URL: "sqlite:///./ci_migration_check.db"
+
+  frontend:
+    name: Frontend (Typecheck, Build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Abhängigkeiten installieren
+        working-directory: frontend
+        run: npm ci
+
+      - name: Typecheck + Build
+        working-directory: frontend
+        run: npm run build
+        # frontend/package.json definiert kein separates "test"-Skript und es
+        # existieren keine Frontend-Tests (siehe Auditbericht) - "build"
+        # schließt "tsc -b" (Typecheck) mit ein und ist damit die einzige
+        # heute vorhandene, ehrliche automatisierte Prüfung für das Frontend.
+        # Kein Lint-Skript vorhanden (kein ESLint konfiguriert, siehe
+        # Auditbericht) - hier keines vorgetäuscht.

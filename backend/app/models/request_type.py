@@ -10,10 +10,10 @@ from app.database.base import Base
 class RequestType(Base):
     """
     Definiert die verschiedenen Auskunftsarten (Grundbuch, Bauakten, etc.).
-    
+
     Primary Key: request_type_id (z.B. "GRUNDBUCH", "BAUAKTEN")
     """
-    
+
     __tablename__ = "request_types"
 
     # Primary Key

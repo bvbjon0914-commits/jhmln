@@ -38,6 +38,7 @@ async def import_buildings(
     file: UploadFile = File(...),
     mapping: str = Form(..., description="JSON: {db_field: csv_column}"),
     sheet: str = Form(None, description="Bei mehrblättrigen Excel-Dateien: das zu lesende Arbeitsblatt"),
+    source_system: str = Form(None, description="Herkunftssystem dieser Datei, z.B. 'SAP' (optional, nur Dokumentation)"),
     db: Session = Depends(get_db_session),
 ):
     """Importiert Gebäude aus einer CSV/Excel-Datei."""
@@ -50,7 +51,7 @@ async def import_buildings(
     except (ValueError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    summary = service.import_buildings(df, mapping_dict)
+    summary = service.import_buildings(df, mapping_dict, source_system=source_system or None)
     return summary.to_dict()
 
 

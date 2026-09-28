@@ -15,6 +15,8 @@ from .request_item_progress import RequestItemProgress
 from .data_source import DataSource, DataSourceRouting
 from .aktenzeichen import AktenzeichenSequence, RequestSequence, RequestItemReference
 from .inbound_email import InboundEmail, InboundEmailAttachment
+from .authority_contact_channel import AuthorityContactChannel, ChannelType
+from .jurisdiction_staging import JurisdictionStagingEntry, StagingStatus, ConflictType
 
 __all__ = [
     "Building",
@@ -38,5 +40,10 @@ __all__ = [
     "RequestItemReference",
     "InboundEmail",
     "InboundEmailAttachment",
+    "AuthorityContactChannel",
+    "ChannelType",
+    "JurisdictionStagingEntry",
+    "StagingStatus",
+    "ConflictType",
     "STANDARD_REQUEST_TYPES",
 ]

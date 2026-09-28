@@ -69,6 +69,43 @@ def init_db():
     """
     Initialisiert die Datenbank.
     Erstellt alle Tabellen basierend auf den ORM-Modellen.
+
+    Seit Einführung von Alembic (backend/alembic/) ist dies bewusst NUR noch
+    ein Sicherheitsnetz für eine komplett leere Datenbank (z.B. beim allerersten
+    lokalen Start) - create_all() erstellt fehlende Tabellen, ändert aber NIE
+    eine bereits existierende Tabelle (keine neue Spalte, keine geänderte
+    Constraint). Echte Schemaänderungen ab jetzt IMMER über eine Alembic-
+    Migration (`alembic revision --autogenerate` + `alembic upgrade head`),
+    nie durch bloßes Ändern eines Modells.
+
+    WICHTIG - einmaliger manueller Schritt vor Produktivnutzung von Alembic:
+    Die produktive Datenbank wurde bisher ausschließlich über dieses
+    create_all() verwaltet und hat deshalb noch KEINE alembic_version-Tabelle.
+
+    KORREKTES Verfahren (zwei Schritte, NICHT `alembic stamp head`!):
+
+      1. `alembic stamp ab0d36228547` (exakt die Baseline-Revision, die den
+         Schemastand von create_all() zum Zeitpunkt ihrer Erstellung
+         abbildet) - markiert die DB als "hat die Baseline bereits", ohne
+         DDL auszuführen.
+      2. `alembic upgrade head` - führt jetzt ALLE seither hinzugekommenen
+         echten Migrationen (neue Spalten/Tabellen) tatsächlich als DDL aus.
+
+      `alembic stamp head` (ohne Revision, also der aktuell neueste Stand)
+      wäre hier ein Fehler: "head" bewegt sich mit jeder neuen Migration
+      weiter, während die Produktivdatenbank nur dem BASELINE-Schema
+      entspricht. Ein Stamp direkt auf head würde Alembic fälschlich
+      glauben lassen, alle seit der Baseline hinzugekommenen Spalten (z.B.
+      InboundEmail.message_id, Building.source_system) existierten bereits
+      - ihre DDL würde NIE ausgeführt, und die Anwendung schlägt beim
+      ersten Zugriff auf eine dieser tatsächlich fehlenden Spalten fehl.
+      Bei jeder neuen Migration muss Schritt 1 weiterhin exakt
+      `ab0d36228547` referenzieren, nicht "head".
+
+    Siehe tests/test_migrations.py::TestExistingDatabaseAdoption für das
+    getestete Verfahren an einer Kopie. Erfordert Zugriff auf die Neon-
+    Produktivdatenbank und wurde hier bewusst NICHT automatisiert oder
+    ausgeführt.
     """
     from app.models import (
         Building, RequestType, Authority, Jurisdiction, Request, RequestItem,
@@ -77,6 +114,7 @@ def init_db():
         DataSource, DataSourceRouting,
         AktenzeichenSequence, RequestSequence, RequestItemReference,
         InboundEmail, InboundEmailAttachment,
+        AuthorityContactChannel, JurisdictionStagingEntry,
     )
 
     # Metadaten aller Models
@@ -100,6 +138,8 @@ def init_db():
     RequestItemReference.metadata.create_all(bind=engine)
     InboundEmail.metadata.create_all(bind=engine)
     InboundEmailAttachment.metadata.create_all(bind=engine)
+    AuthorityContactChannel.metadata.create_all(bind=engine)
+    JurisdictionStagingEntry.metadata.create_all(bind=engine)
 
     print("✓ Datenbank initialisiert")
 
@@ -115,8 +155,11 @@ def drop_all_tables():
         DataSource, DataSourceRouting,
         AktenzeichenSequence, RequestSequence, RequestItemReference,
         InboundEmail, InboundEmailAttachment,
+        AuthorityContactChannel, JurisdictionStagingEntry,
     )
 
+    JurisdictionStagingEntry.metadata.drop_all(bind=engine)
+    AuthorityContactChannel.metadata.drop_all(bind=engine)
     InboundEmailAttachment.metadata.drop_all(bind=engine)
     InboundEmail.metadata.drop_all(bind=engine)
     DataSourceRouting.metadata.drop_all(bind=engine)

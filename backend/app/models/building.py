@@ -10,10 +10,10 @@ from app.database.base import Base
 class Building(Base):
     """
     Repräsentiert ein Gebäude mit Adressdaten und Metainformationen.
-    
+
     Primary Key: building_id (interne eindeutige ID)
     """
-    
+
     __tablename__ = "buildings"
 
     # Primary Key
@@ -24,24 +24,33 @@ class Building(Base):
     house_number = Column(String(20), nullable=False)
     postal_code = Column(String(10), nullable=True, index=True)
     city = Column(String(100), nullable=False, index=True)
-    
+
     # Geografische Identifikatoren
     district = Column(String(100), nullable=True)  # Stadtteil / Bezirk
     state = Column(String(50), nullable=True)      # Bundesland
-    ags = Column(String(12), unique=False, nullable=True, index=True)  # Amtlicher Gemeindeschlüssel (mehrere Gebäude teilen sich eine Gemeinde)
-    
+    # Amtlicher Gemeindeschlüssel (mehrere Gebäude teilen sich eine Gemeinde)
+    ags = Column(String(12), unique=False, nullable=True, index=True)
+
     # Koordinaten (für zukünftige Geocoding-Integration)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
-    
+
     # Metadaten des Gebäudes
     property_name = Column(String(255), nullable=True)  # Name des Objekts
     internal_reference = Column(String(100), unique=True, nullable=True, index=True)  # Interne Referenz
-    
+
+    # Aus welchem externen System internal_reference stammt (z.B. "SAP",
+    # "ERP-X", "Excel-Import"). Ohne dieses Feld war nicht unterscheidbar, ob
+    # zwei unterschiedliche Systeme zufällig denselben Referenzwert vergeben
+    # (Auditbericht-Folgebericht, Priorität 3, Befund "stabile externe
+    # Referenzen") - rein informativ, erzwingt keine Eindeutigkeit über
+    # Systemgrenzen hinweg.
+    source_system = Column(String(100), nullable=True, index=True)
+
     # Audit-Felder
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    
+
     # Notizen / Zusatzinfo
     notes = Column(Text, nullable=True)
 
@@ -79,6 +88,7 @@ class Building(Base):
             "longitude": self.longitude,
             "property_name": self.property_name,
             "internal_reference": self.internal_reference,
+            "source_system": self.source_system,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "notes": self.notes,

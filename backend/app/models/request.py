@@ -13,10 +13,10 @@ class Request(Base):
     """
     Repräsentiert eine komplette Anfrage für ein Gebäude.
     Dient als Audit-Trail und ermöglicht Historiensuche.
-    
+
     Primary Key: request_id
     """
-    
+
     __tablename__ = "requests"
 
     # Primary Key
@@ -88,10 +88,10 @@ class RequestItem(Base):
     """
     Repräsentiert eine einzelne Auskunftsanfrage für eine Behörde.
     Speichert Matching-Details, Dokumentpfad und Änderungshistorie.
-    
+
     Primary Key: request_item_id
     """
-    
+
     __tablename__ = "request_items"
 
     # Primary Key

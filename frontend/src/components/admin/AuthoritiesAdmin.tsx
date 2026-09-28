@@ -1,16 +1,31 @@
 import { useEffect, useRef, useState } from "react";
-import { Search, Pencil, Trash2, Check, X, Loader2, Ban, CheckCircle2 } from "lucide-react";
+import { Search, Pencil, Trash2, Check, X, Loader2, Ban, CheckCircle2, ListTree } from "lucide-react";
 import { api } from "../../services/api";
 import { useToast, errorMessage } from "../common/Toast";
 import { Pagination } from "../common/Pagination";
+import { FilterChip } from "../common/FilterChip";
+import { GERMAN_STATES } from "../../types/germanStates";
 import type { Authority, AuthorityUpdateInput } from "../../types/authority";
+import type { AdminFilterRequest } from "../../types/adminFilter";
 
 const LIMIT = 25;
 
-export function AuthoritiesAdmin() {
+export function AuthoritiesAdmin({
+  initialFilter,
+  onShowJurisdictions,
+}: {
+  initialFilter?: AdminFilterRequest | null;
+  onShowJurisdictions?: (authorityId: string) => void;
+} = {}) {
   const { showToast } = useToast();
   const [search, setSearch] = useState("");
   const [showInactive, setShowInactive] = useState(false);
+  const [stateFilter, setStateFilter] = useState("");
+  const [withoutEmailOnly, setWithoutEmailOnly] = useState(false);
+  const [withoutJurisdictionOnly, setWithoutJurisdictionOnly] = useState(false);
+  const [withoutAddressOnly, setWithoutAddressOnly] = useState(false);
+  const [duplicateOnly, setDuplicateOnly] = useState(false);
+  const [unverifiedOnly, setUnverifiedOnly] = useState(false);
   const [offset, setOffset] = useState(0);
   const [authorities, setAuthorities] = useState<Authority[]>([]);
   const [total, setTotal] = useState(0);
@@ -20,12 +35,27 @@ export function AuthoritiesAdmin() {
   const [saving, setSaving] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => {
+    if (initialFilter?.key === "without_email") setWithoutEmailOnly(true);
+    else if (initialFilter?.key === "without_jurisdiction") setWithoutJurisdictionOnly(true);
+    else if (initialFilter?.key === "without_address") setWithoutAddressOnly(true);
+    else if (initialFilter?.key === "duplicate") setDuplicateOnly(true);
+    else if (initialFilter?.key === "unverified") setUnverifiedOnly(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const load = () => {
     setLoading(true);
     api
       .listAuthoritiesPaged({
         search: search || undefined,
         active_only: !showInactive,
+        state: stateFilter || undefined,
+        has_email: withoutEmailOnly ? false : undefined,
+        without_jurisdiction_only: withoutJurisdictionOnly || undefined,
+        without_address_only: withoutAddressOnly || undefined,
+        duplicate_only: duplicateOnly || undefined,
+        unverified_only: unverifiedOnly || undefined,
         limit: LIMIT,
         offset,
       })
@@ -44,7 +74,17 @@ export function AuthoritiesAdmin() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, showInactive, offset]);
+  }, [
+    search,
+    showInactive,
+    stateFilter,
+    withoutEmailOnly,
+    withoutJurisdictionOnly,
+    withoutAddressOnly,
+    duplicateOnly,
+    unverifiedOnly,
+    offset,
+  ]);
 
   const startEdit = (a: Authority) => {
     setEditingId(a.authority_id);
@@ -112,6 +152,21 @@ export function AuthoritiesAdmin() {
             className="w-full rounded-lg border border-line bg-surface py-2.5 pl-9 pr-4 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
           />
         </div>
+        <select
+          value={stateFilter}
+          onChange={(e) => {
+            setStateFilter(e.target.value);
+            setOffset(0);
+          }}
+          className="rounded-lg border border-line bg-surface px-3 py-2.5 text-sm focus:border-brand focus:outline-none"
+        >
+          <option value="">Alle Bundesländer</option>
+          {GERMAN_STATES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
         <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-ink-soft">
           <input
             type="checkbox"
@@ -123,6 +178,54 @@ export function AuthoritiesAdmin() {
           />
           auch inaktive anzeigen
         </label>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        <FilterChip
+          active={withoutEmailOnly}
+          onClick={() => {
+            setWithoutEmailOnly((v) => !v);
+            setOffset(0);
+          }}
+        >
+          Ohne E-Mail
+        </FilterChip>
+        <FilterChip
+          active={withoutJurisdictionOnly}
+          onClick={() => {
+            setWithoutJurisdictionOnly((v) => !v);
+            setOffset(0);
+          }}
+        >
+          Ohne Zuständigkeit
+        </FilterChip>
+        <FilterChip
+          active={withoutAddressOnly}
+          onClick={() => {
+            setWithoutAddressOnly((v) => !v);
+            setOffset(0);
+          }}
+        >
+          Ohne Adresse
+        </FilterChip>
+        <FilterChip
+          active={duplicateOnly}
+          onClick={() => {
+            setDuplicateOnly((v) => !v);
+            setOffset(0);
+          }}
+        >
+          Duplikate
+        </FilterChip>
+        <FilterChip
+          active={unverifiedOnly}
+          onClick={() => {
+            setUnverifiedOnly((v) => !v);
+            setOffset(0);
+          }}
+        >
+          Nicht verifiziert
+        </FilterChip>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-line bg-surface shadow-sm">
@@ -255,6 +358,16 @@ export function AuthoritiesAdmin() {
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center justify-end gap-1">
+                          {onShowJurisdictions && (
+                            <button
+                              onClick={() => onShowJurisdictions(a.authority_id)}
+                              className="rounded p-1.5 text-ink-faint hover:bg-brand-light/50 hover:text-brand"
+                              aria-label="Zuständigkeiten anzeigen"
+                              title="Zuständigkeiten anzeigen"
+                            >
+                              <ListTree size={14} />
+                            </button>
+                          )}
                           <button
                             onClick={() => toggleActive(a)}
                             className="rounded p-1.5 text-ink-faint hover:bg-brand-light/50 hover:text-brand"

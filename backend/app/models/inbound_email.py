@@ -24,6 +24,21 @@ class InboundEmail(Base):
     subject = Column(String(500), nullable=True)
     body_text = Column(Text, nullable=True)
 
+    # Message-Id-Header der ursprünglichen E-Mail (von Mailgun als Feld
+    # "Message-Id" im Inbound-Webhook mitgeliefert) - im Gegensatz zu den für
+    # die Signaturprüfung genutzten Feldern "timestamp"/"token" (die sich pro
+    # Zustellversuch ändern können) bleibt dieser Wert über wiederholte
+    # Zustellversuche DERSELBEN E-Mail stabil, da er aus der E-Mail selbst
+    # stammt statt aus Mailguns Zustellmechanismus. Dient als Idempotenz-
+    # Schlüssel gegen doppelte Verarbeitung bei einem erneuten Webhook-Aufruf
+    # (z.B. Mailgun-Retry nach einem Timeout). Nullable, da ältere/synthetische
+    # Zeilen und E-Mails ohne dieses Feld weiterhin protokolliert werden
+    # sollen - ein NULL blockiert keine künftige Zuordnung, mehrere NULLs
+    # verletzen den Unique-Index nicht (SQL-Standardverhalten). ANNAHME, nicht
+    # gegen eine echte Mailgun-Zustellung verifiziert (siehe Auditbericht) -
+    # vor Produktivnutzung mit einer echten Testzustellung gegenprüfen.
+    message_id = Column(String(998), nullable=True, unique=True, index=True)
+
     # Nur gesetzt, wenn die Antwort eindeutig einem RequestItem zugeordnet
     # werden konnte (automatisch oder manuell) - solange NULL, wartet die
     # E-Mail in der Zuordnungs-Warteschlange.

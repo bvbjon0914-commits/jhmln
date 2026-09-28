@@ -10,6 +10,9 @@ import {
   AlertTriangle,
   ShieldQuestion,
   Unlink,
+  LocateOff,
+  AlertOctagon,
+  Scan,
 } from "lucide-react";
 import { api } from "../../services/api";
 import { Button } from "../common/Button";
@@ -21,7 +24,10 @@ import type {
   AuthorityRef,
   BuildingRef,
   JurisdictionRef,
+  CoverageGapRef,
+  FuzzyDuplicatePairRef,
 } from "../../types/dataQuality";
+import type { Tab } from "./AdminPage";
 
 function GroupCard<T extends { }>({
   icon,
@@ -30,6 +36,7 @@ function GroupCard<T extends { }>({
   group,
   itemKey,
   renderItem,
+  onNavigate,
 }: {
   icon: React.ReactNode;
   title: string;
@@ -37,6 +44,7 @@ function GroupCard<T extends { }>({
   group: { count: number; items: T[] };
   itemKey: (item: T) => string;
   renderItem: (item: T) => React.ReactNode;
+  onNavigate?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -47,15 +55,25 @@ function GroupCard<T extends { }>({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="font-display text-sm font-semibold text-ink">{title}</h3>
-            <span
-              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                group.count === 0
-                  ? "bg-status-matchedBg text-status-matched"
-                  : "bg-status-reviewBg text-status-review"
-              }`}
-            >
-              {group.count}
-            </span>
+            {group.count > 0 && onNavigate ? (
+              <button
+                onClick={onNavigate}
+                title="In der Verwaltung anzeigen"
+                className="rounded-full bg-status-reviewBg px-2 py-0.5 text-xs font-medium text-status-review hover:underline"
+              >
+                {group.count}
+              </button>
+            ) : (
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                  group.count === 0
+                    ? "bg-status-matchedBg text-status-matched"
+                    : "bg-status-reviewBg text-status-review"
+                }`}
+              >
+                {group.count}
+              </span>
+            )}
           </div>
           <p className="mt-0.5 text-xs text-ink-faint">{description}</p>
           {group.count > 0 && (
@@ -121,7 +139,37 @@ function renderJurisdictionRow(j: JurisdictionRef) {
   );
 }
 
-export function DataQualityAdmin() {
+function renderCoverageGapRow(g: CoverageGapRef) {
+  return (
+    <>
+      <span className="text-ink">
+        {g.municipality || g.ags || "—"} · {g.request_type_name}
+      </span>
+      <span className="shrink-0 text-xs text-ink-faint">
+        {g.building_count} Gebäude betroffen
+      </span>
+    </>
+  );
+}
+
+function renderFuzzyDuplicateRow(p: FuzzyDuplicatePairRef) {
+  return (
+    <>
+      <span className="text-ink">
+        {p.authority_name_a} <span className="text-ink-faint">↔</span> {p.authority_name_b}
+      </span>
+      <span className="shrink-0 text-xs text-ink-faint">
+        {Math.round(p.similarity * 100)} % ähnlich{p.city ? ` · ${p.city}` : ""}
+      </span>
+    </>
+  );
+}
+
+export function DataQualityAdmin({
+  onNavigate,
+}: {
+  onNavigate?: (tab: Tab, filterKey: string, value?: string) => void;
+} = {}) {
   const { showToast } = useToast();
   const { isMain } = useAuth();
   const [summary, setSummary] = useState<DataQualitySummary | null>(null);
@@ -131,6 +179,7 @@ export function DataQualityAdmin() {
   const [deletingBuildings, setDeletingBuildings] = useState(false);
   const [mergingJurisdictions, setMergingJurisdictions] = useState(false);
   const [mergingBuildings, setMergingBuildings] = useState(false);
+  const [geocodingBuildings, setGeocodingBuildings] = useState(false);
 
   const load = () => {
     api
@@ -269,6 +318,24 @@ export function DataQualityAdmin() {
     }
   };
 
+  const handleGeocodeMissingBuildings = async () => {
+    setGeocodingBuildings(true);
+    try {
+      const result = await api.geocodeMissingBuildings();
+      showToast(
+        "success",
+        `${result.geocoded} Gebäude erfolgreich geocodiert.${
+          result.failed > 0 ? ` ${result.failed} Adresse(n) blieben ohne Treffer.` : ""
+        }${result.remaining > 0 ? ` ${result.remaining} insgesamt noch offen (erneut ausführen).` : ""}`
+      );
+      load();
+    } catch (error) {
+      showToast("error", errorMessage(error, "Geokodierung fehlgeschlagen."));
+    } finally {
+      setGeocodingBuildings(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-10 text-sm text-ink-faint">
@@ -309,6 +376,7 @@ export function DataQualityAdmin() {
           group={summary.authorities_without_email}
           itemKey={(a) => a.authority_id}
           renderItem={renderAuthorityRow}
+          onNavigate={onNavigate ? () => onNavigate("authorities", "without_email") : undefined}
         />
         <GroupCard
           icon={<Link2Off size={16} />}
@@ -317,6 +385,7 @@ export function DataQualityAdmin() {
           group={summary.authorities_without_jurisdiction}
           itemKey={(a) => a.authority_id}
           renderItem={renderAuthorityRow}
+          onNavigate={onNavigate ? () => onNavigate("authorities", "without_jurisdiction") : undefined}
         />
         <GroupCard
           icon={<MapPinOff size={16} />}
@@ -325,6 +394,7 @@ export function DataQualityAdmin() {
           group={summary.authorities_without_address}
           itemKey={(a) => a.authority_id}
           renderItem={renderAuthorityRow}
+          onNavigate={onNavigate ? () => onNavigate("authorities", "without_address") : undefined}
         />
         <GroupCard
           icon={<Copy size={16} />}
@@ -333,6 +403,7 @@ export function DataQualityAdmin() {
           group={summary.duplicate_authorities}
           itemKey={(a) => a.authority_id}
           renderItem={renderAuthorityRow}
+          onNavigate={onNavigate ? () => onNavigate("authorities", "duplicate") : undefined}
         />
         <GroupCard
           icon={<AlertTriangle size={16} />}
@@ -341,14 +412,16 @@ export function DataQualityAdmin() {
           group={summary.buildings_review_required}
           itemKey={(b) => b.building_id}
           renderItem={renderBuildingRow}
+          onNavigate={onNavigate ? () => onNavigate("buildings", "review_required") : undefined}
         />
         <GroupCard
           icon={<ShieldQuestion size={16} />}
           title="Nicht verifizierte Behörden"
-          description="Diese Behörden wurden noch nie als aktuell/korrekt bestätigt."
+          description="Diese Behörden wurden noch nie oder vor mehr als 12 Monaten als aktuell/korrekt bestätigt."
           group={summary.authorities_unverified}
           itemKey={(a) => a.authority_id}
           renderItem={renderAuthorityRow}
+          onNavigate={onNavigate ? () => onNavigate("authorities", "unverified") : undefined}
         />
         <GroupCard
           icon={<Unlink size={16} />}
@@ -357,6 +430,7 @@ export function DataQualityAdmin() {
           group={summary.jurisdictions_orphaned}
           itemKey={(j) => j.jurisdiction_id}
           renderItem={renderJurisdictionRow}
+          onNavigate={onNavigate ? () => onNavigate("jurisdictions", "orphaned") : undefined}
         />
         <GroupCard
           icon={<Copy size={16} />}
@@ -365,6 +439,7 @@ export function DataQualityAdmin() {
           group={summary.duplicate_jurisdictions}
           itemKey={(j) => j.jurisdiction_id}
           renderItem={renderJurisdictionRow}
+          onNavigate={onNavigate ? () => onNavigate("jurisdictions", "duplicate") : undefined}
         />
         <GroupCard
           icon={<Copy size={16} />}
@@ -373,6 +448,34 @@ export function DataQualityAdmin() {
           group={summary.duplicate_buildings}
           itemKey={(b) => b.building_id}
           renderItem={renderBuildingRow}
+          onNavigate={onNavigate ? () => onNavigate("buildings", "duplicate") : undefined}
+        />
+        <GroupCard
+          icon={<LocateOff size={16} />}
+          title="Gebäude ohne Kartenkoordinaten"
+          description="Diese Gebäude konnten noch nicht oder nicht erfolgreich geocodiert werden."
+          group={summary.buildings_without_coordinates}
+          itemKey={(b) => b.building_id}
+          renderItem={renderBuildingRow}
+          onNavigate={onNavigate ? () => onNavigate("buildings", "missing_coordinates") : undefined}
+        />
+        <GroupCard
+          icon={<AlertOctagon size={16} />}
+          title="Abdeckungslücken"
+          description="Gemeinde + Auskunftsart-Kombinationen ohne Zuständigkeitsregel - eine echte Anfrage würde hier heute mit „Kein Treffer“ enden."
+          group={summary.coverage_gaps}
+          itemKey={(g) => `${g.ags}-${g.request_type_name}`}
+          renderItem={renderCoverageGapRow}
+          onNavigate={onNavigate ? () => onNavigate("jurisdictions", "coverage_gap") : undefined}
+        />
+        <GroupCard
+          icon={<Scan size={16} />}
+          title="Mögliche Duplikate (ähnlich)"
+          description="Namenspaare mit sehr ähnlicher Schreibweise (Tippfehler, Umlaut-Varianten) in derselben Stadt - von der exakten Duplikat-Erkennung nicht erfasst."
+          group={summary.fuzzy_duplicate_authorities}
+          itemKey={(p) => `${p.authority_id_a}-${p.authority_id_b}`}
+          renderItem={renderFuzzyDuplicateRow}
+          onNavigate={onNavigate ? () => onNavigate("authorities", "fuzzy_duplicate") : undefined}
         />
       </div>
 
@@ -435,6 +538,25 @@ export function DataQualityAdmin() {
             <Button variant="secondary" onClick={handleMergeDuplicateBuildings} disabled={mergingBuildings}>
               {mergingBuildings ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />}
               Zusammenführen
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isMain && summary.buildings_without_coordinates.count > 0 && (
+        <div className="rounded-lg border border-line bg-surface p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="font-display text-sm font-semibold text-ink">Fehlende Kartenkoordinaten nachholen</h3>
+              <p className="mt-0.5 text-xs text-ink-faint">
+                {summary.buildings_without_coordinates.count} Gebäude haben noch keine Kartenkoordinaten. Ein
+                Durchlauf versucht bis zu 20 davon erneut zu geocodieren (Nominatim-Limit) – bei mehr offenen
+                Fällen einfach erneut ausführen.
+              </p>
+            </div>
+            <Button variant="secondary" onClick={handleGeocodeMissingBuildings} disabled={geocodingBuildings}>
+              {geocodingBuildings ? <Loader2 size={14} className="animate-spin" /> : <LocateOff size={14} />}
+              Geokodieren
             </Button>
           </div>
         </div>

@@ -7,7 +7,9 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
+from app.api.data_quality import _duplicate_jurisdiction_ids
 from app.database import get_db_session
+from app.models.authority import Authority
 from app.models.jurisdiction import Jurisdiction
 from app.schemas import JurisdictionResponse, JurisdictionUpdate
 
@@ -20,6 +22,11 @@ def list_jurisdictions(
     request_type_id: Optional[str] = Query(None),
     authority_id: Optional[str] = Query(None),
     ags: Optional[str] = Query(None, description="Exakter oder präfix-basierter AGS-Filter"),
+    state: Optional[str] = Query(None, description="Exakter Bundesland-Filter"),
+    municipality: Optional[str] = Query(None, description="Präfix-Filter auf die Gemeinde"),
+    district: Optional[str] = Query(None, description="Präfix-Filter auf den Stadtteil/Bezirk"),
+    duplicate_only: bool = Query(False, description="Nur als Duplikat erkannte Regeln"),
+    orphaned_only: bool = Query(False, description="Nur Regeln, die auf eine deaktivierte Behörde zeigen"),
     active_only: bool = True,
     limit: int = Query(50, le=200),
     offset: int = 0,
@@ -36,6 +43,18 @@ def list_jurisdictions(
         query = query.filter(Jurisdiction.authority_id == authority_id)
     if ags:
         query = query.filter(Jurisdiction.ags.ilike(f"{ags}%"))
+    if state:
+        query = query.filter(Jurisdiction.state == state)
+    if municipality:
+        query = query.filter(Jurisdiction.municipality.ilike(f"{municipality}%"))
+    if district:
+        query = query.filter(Jurisdiction.district.ilike(f"{district}%"))
+    if duplicate_only:
+        dup_ids = _duplicate_jurisdiction_ids(db)
+        query = query.filter(Jurisdiction.jurisdiction_id.in_(dup_ids)) if dup_ids else query.filter(False)
+    if orphaned_only:
+        inactive_authority_ids = db.query(Authority.authority_id).filter(Authority.active.is_(False))
+        query = query.filter(Jurisdiction.authority_id.in_(inactive_authority_ids))
 
     response.headers["X-Total-Count"] = str(query.order_by(None).count())
     return (

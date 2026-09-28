@@ -11,10 +11,20 @@ from typing import Optional
 
 
 # Häufige Straßenabkürzungen -> vollständige Form
+#
+# Für "str"/"pl" mit optionalem Punkt gibt es je zwei Einträge statt eines
+# gemeinsamen `\.?`-Patterns: ein `\b` unmittelbar nach einem verbrauchten
+# Punkt schlägt fehl, wenn danach kein Wortzeichen mehr folgt (Satzende oder
+# ein Leerzeichen ist selbst kein Wortzeichen) - das Muster würde dann ohne
+# den Punkt matchen und ihn stehen lassen ("Musterstr." -> "Musterstraße.").
+# Das Punkt-Muster steht daher zuerst und verbraucht den Punkt über einen
+# Negativ-Lookahead statt über `\b`.
 STREET_ABBREVIATIONS = {
-    r"\bstr\.?\b": "straße",
+    r"\bstr\.(?!\w)": "straße",
+    r"\bstr\b": "straße",
     r"\bstrasse\b": "straße",
-    r"\bpl\.?\b": "platz",
+    r"\bpl\.(?!\w)": "platz",
+    r"\bpl\b": "platz",
     r"\ballee\b": "allee",
     r"\bweg\b": "weg",
 }
@@ -85,9 +95,19 @@ class AddressNormalizer:
         for pattern, replacement in STREET_ABBREVIATIONS.items():
             normalized_lower = re.sub(pattern, replacement, normalized_lower, flags=re.IGNORECASE)
 
-        # Zusammengeschriebene Straßennamen mit "straße" am Ende sauber behandeln
-        # z.B. "musterstr" (ohne Punkt) -> "musterstraße"
+        # Zusammengeschriebene Straßennamen mit "straße" am Ende sauber behandeln.
+        # Zuerst die Variante MIT Punkt ("musterstr." -> "musterstraße"), damit
+        # der Punkt beim Ersetzen mit verbraucht wird - sonst bliebe er stehen,
+        # weil die anschließende punktlose Regel den Punkt nicht kennt.
+        normalized_lower = re.sub(r"(\w)str\.(?!\w)", r"\1straße", normalized_lower)
+        # Dann die Variante ohne Punkt, z.B. "musterstr" -> "musterstraße"
         normalized_lower = re.sub(r"(\w)str\b(?!aße)", r"\1straße", normalized_lower)
+        # z.B. "musterstrasse" (durchgeschrieben, ß als "ss" statt Sonderzeichen
+        # eingegeben - u.a. ohne ß-Taste üblich) -> "musterstraße". Die obige
+        # STREET_ABBREVIATIONS-Regel für "strasse" greift hier nicht, da sie
+        # ein eigenständiges Wort voraussetzt (\bstrasse\b), "strasse" hier
+        # aber direkt an "muster" angehängt ist.
+        normalized_lower = re.sub(r"(\w)strasse\b", r"\1straße", normalized_lower)
 
         return AddressNormalizer._title_case_german(normalized_lower)
 

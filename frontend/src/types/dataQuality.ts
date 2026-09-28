@@ -25,6 +25,37 @@ export interface DataQualityGroup {
   items: AuthorityRef[];
 }
 
+export interface BuildingGroup {
+  count: number;
+  items: BuildingRef[];
+}
+
+export interface CoverageGapRef {
+  ags: string | null;
+  municipality: string | null;
+  request_type_name: string;
+  building_count: number;
+}
+
+export interface CoverageGapGroup {
+  count: number;
+  items: CoverageGapRef[];
+}
+
+export interface FuzzyDuplicatePairRef {
+  authority_id_a: string;
+  authority_name_a: string;
+  authority_id_b: string;
+  authority_name_b: string;
+  city: string | null;
+  similarity: number;
+}
+
+export interface FuzzyDuplicateGroup {
+  count: number;
+  items: FuzzyDuplicatePairRef[];
+}
+
 export interface DuplicateAuthorityGroup extends DataQualityGroup {
   needs_review_count: number;
 }
@@ -61,4 +92,7 @@ export interface DataQualitySummary {
   jurisdictions_orphaned: JurisdictionGroup;
   duplicate_jurisdictions: DuplicateJurisdictionsGroup;
   duplicate_buildings: DuplicateBuildingsGroup;
+  buildings_without_coordinates: BuildingGroup;
+  coverage_gaps: CoverageGapGroup;
+  fuzzy_duplicate_authorities: FuzzyDuplicateGroup;
 }

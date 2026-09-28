@@ -10,10 +10,10 @@ from app.database.base import Base
 class Authority(Base):
     """
     Repräsentiert eine öffentliche Behörde / Amt.
-    
+
     Primary Key: authority_id (eindeutige ID der Behörde)
     """
-    
+
     __tablename__ = "authorities"
 
     # Primary Key
@@ -75,12 +75,12 @@ class Authority(Base):
             parts.append(f"{self.street} {self.house_number}")
         elif self.street:
             parts.append(self.street)
-        
+
         if self.postal_code:
             parts.append(self.postal_code)
         if self.city:
             parts.append(self.city)
-        
+
         return ", ".join(parts) if parts else "Adresse nicht angegeben"
 
     def contact_info(self) -> dict:

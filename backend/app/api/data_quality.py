@@ -8,8 +8,8 @@ Matching als NO_MATCH/"keine E-Mail" aufzufallen.
 """
 
 import io
-from datetime import datetime
-from typing import List
+from datetime import datetime, timedelta
+from typing import List, Optional
 
 import pandas as pd
 from fastapi import APIRouter, Depends
@@ -18,6 +18,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.api.auth import require_main
+from app.api.geo import _geocode_and_cache_building
 from app.database import get_db_session
 from app.models.authority import Authority
 from app.models.authority_location import AuthorityLocation
@@ -27,10 +28,16 @@ from app.models.jurisdiction import Jurisdiction
 from app.models.request import Request, RequestItem
 from app.models.request_item_progress import RequestItemProgress
 from app.models.request_type import RequestType
+from app.services import JurisdictionMatchingService, MatchingStatus
 
 router = APIRouter()
 
 MAX_ITEMS = 200
+
+# Ab diesem Alter gilt eine Verifizierung als abgelaufen und die Behörde
+# taucht wieder unter "nicht verifiziert" auf - last_verified_at soll ein
+# Datenstand bestätigen, keine einmalige Momentaufnahme für immer sein.
+_VERIFICATION_STALE_DAYS = 365
 
 # Felder, die beim Zusammenführen von Duplikaten von der zu löschenden
 # Zeile auf die verbleibende übertragen werden, sofern dort noch leer.
@@ -40,6 +47,61 @@ _MERGE_FIELDS = (
 )
 
 _BUILDING_MERGE_FIELDS = ("property_name", "district", "state", "ags", "notes", "internal_reference")
+
+# Maximale absolute Levenshtein-Distanz, ab der ein Behörden-Namenspaar als
+# möglicher Tippfehler-Duplikat gilt. Bewusst ein ABSOLUTER Wert statt eines
+# Ähnlichkeits-Prozentsatzes: ein echter Tippfehler ist immer eine kleine
+# feste Anzahl Zeichenänderungen (typischerweise 1-2), unabhängig davon, wie
+# lang der Name ist. Ein Ähnlichkeits-Prozentsatz würde dagegen bei langen
+# Namen, die sich nur in einem ganzen Wort unterscheiden (z.B.
+# "Kreisverwaltung X" vs. "Stadtverwaltung X" - zwei tatsächlich
+# UNTERSCHIEDLICHE, real existierende Behörden, keine Duplikate), fälschlich
+# einen hohen Wert ergeben, weil das eine abweichende Wort nur einen kleinen
+# Anteil der Gesamtlänge ausmacht. Nur ein Hinweis, nie automatisch
+# zusammengeführt - siehe _fuzzy_duplicate_authority_pairs.
+_FUZZY_MAX_EDIT_DISTANCE = 2
+# Kürzere normalisierte Namen als das werden ausgeklammert, damit kurze,
+# generische Namensfragmente nicht zufällig als "ähnlich" durchrutschen.
+_FUZZY_MIN_NAME_LENGTH = 8
+
+_UMLAUT_FOLD = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
+
+
+def _normalize_for_similarity(value: Optional[str]) -> str:
+    """Falzt Umlaute/ß aus und vereinheitlicht Whitespace, damit reine
+    Schreibvarianten (z.B. 'Köln' vs 'Koeln', doppelte Leerzeichen) nicht
+    schon als Tippfehler gewertet werden."""
+    if not value:
+        return ""
+    return " ".join(value.strip().lower().translate(_UMLAUT_FOLD).split())
+
+
+def _levenshtein(a: str, b: str) -> int:
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    previous_row = list(range(len(b) + 1))
+    for i, char_a in enumerate(a, start=1):
+        current_row = [i] + [0] * len(b)
+        for j, char_b in enumerate(b, start=1):
+            current_row[j] = min(
+                current_row[j - 1] + 1,  # Einfügen
+                previous_row[j] + 1,  # Löschen
+                previous_row[j - 1] + (0 if char_a == char_b else 1),  # Ersetzen
+            )
+        previous_row = current_row
+    return previous_row[-1]
+
+
+def _name_similarity(a: str, b: str) -> float:
+    """1.0 = identisch, 0.0 = maximal unterschiedlich (normierte Levenshtein-Distanz)."""
+    if not a and not b:
+        return 1.0
+    return 1 - _levenshtein(a, b) / max(len(a), len(b))
+
 
 # Geografische Felder, die den fachlichen Geltungsbereich einer Zuständig-
 # keitsregel ausmachen. Zwei Regeln mit identischem authority_id+request_
@@ -185,6 +247,78 @@ def _find_duplicate_authority_groups(db: Session):
     return resolvable, needs_review
 
 
+def _duplicate_authority_ids(db: Session) -> set:
+    """authority_id aller Behörden, die in einer erkannten Duplikat-Gruppe stecken (auflösbar oder nicht)."""
+    resolvable, needs_review = _find_duplicate_authority_groups(db)
+    ids = set()
+    for group in resolvable:
+        ids.add(group["keep"].authority_id)
+        ids.update(a.authority_id for a in group["remove"])
+    ids.update(a.authority_id for a in needs_review)
+    return ids
+
+
+def _fuzzy_duplicate_authority_pairs(db: Session) -> List[dict]:
+    """
+    Findet Behörden-Paare mit sehr ähnlichem Namen (Tippfehler, abweichende
+    Umlaut-Schreibweise, doppelte Leerzeichen) innerhalb derselben Stadt, die
+    von der exakten Duplikat-Erkennung (_find_duplicate_authority_groups -
+    erkennt nur identische normalisierte Namen) übersehen werden.
+
+    Um die Anzahl der Vergleiche gering zu halten, wird nur innerhalb
+    derselben Stadt verglichen (Duplikate teilen sich fast immer den Ort;
+    das reduziert eine sonst quadratische Prüfung über alle ~4700 aktiven
+    Behörden auf kleine Gruppen pro Stadt).
+
+    Rein informativ, NIE automatisch zusammengeführt: anders als bei exakt
+    identischen Namen ist bei bloßer Ähnlichkeit nicht sicher, ob es
+    tatsächlich dieselbe Behörde ist oder zwei unterschiedliche mit
+    ähnlichem Namen (z.B. verschiedene Fachbereiche) - das muss ein Mensch
+    entscheiden.
+    """
+    active = db.query(Authority).filter(Authority.active.is_(True)).all()
+    already_flagged = _duplicate_authority_ids(db)
+
+    by_city: dict = {}
+    for a in active:
+        normalized = _normalize_for_similarity(a.authority_name)
+        if len(normalized) < _FUZZY_MIN_NAME_LENGTH:
+            continue
+        by_city.setdefault((a.city or "").strip().lower(), []).append((a, normalized))
+
+    pairs = []
+    for group in by_city.values():
+        if len(group) < 2:
+            continue
+        for i in range(len(group)):
+            a, name_a = group[i]
+            for j in range(i + 1, len(group)):
+                b, name_b = group[j]
+                if a.authority_id in already_flagged and b.authority_id in already_flagged:
+                    continue
+                if name_a == name_b:
+                    continue  # bereits über die exakte Erkennung abgedeckt
+                # Günstiger Vorabtest: die Levenshtein-Distanz kann nie kleiner
+                # sein als der Längenunterschied - ist der allein schon zu groß,
+                # lohnt sich die teure Berechnung nicht.
+                if abs(len(name_a) - len(name_b)) > _FUZZY_MAX_EDIT_DISTANCE:
+                    continue
+                distance = _levenshtein(name_a, name_b)
+                if distance <= _FUZZY_MAX_EDIT_DISTANCE:
+                    pairs.append(
+                        {
+                            "authority_id_a": a.authority_id,
+                            "authority_name_a": a.authority_name,
+                            "authority_id_b": b.authority_id,
+                            "authority_name_b": b.authority_name,
+                            "city": a.city,
+                            "similarity": round(_name_similarity(name_a, name_b), 2),
+                        }
+                    )
+
+    return sorted(pairs, key=lambda p: -p["similarity"])
+
+
 def _buildings_with_review_required(db: Session) -> List[Building]:
     """
     Gebäude, deren zuletzt durchgeführtes Matching (neuester Request) für
@@ -229,6 +363,108 @@ def _buildings_with_review_required(db: Session) -> List[Building]:
     )
 
 
+def _buildings_without_coordinates(db: Session) -> List[Building]:
+    """
+    Gebäude ohne gecachte Kartenkoordinaten - entweder nie geocodiert
+    (z.B. noch nie im Wizard/der Kartenansicht geöffnet) oder die
+    Geokodierung ist fehlgeschlagen (siehe geocode_address: es wird nicht
+    geraten, ein Fehlschlag bleibt dauerhaft NULL statt eines Platzhalters).
+    """
+    return (
+        db.query(Building)
+        .filter(or_(Building.latitude.is_(None), Building.longitude.is_(None)))
+        .order_by(Building.city, Building.street)
+        .all()
+    )
+
+
+def _coverage_gaps(db: Session) -> List[dict]:
+    """
+    Prüft für jedes aktive Gebäude mit AGS und jede aktive Auskunftsart über
+    die echte Matching-Engine (JurisdictionMatchingService - dieselbe Logik
+    wie beim tatsächlichen Matching, kein eigenes Regelwerk), ob aktuell eine
+    Zuständigkeit gefunden würde. Ergebnis sind Lücken, die eine ECHTE
+    Anfrage heute als NO_MATCH beenden würden - bevor das jemandem im
+    laufenden Betrieb passiert.
+
+    Gebäude ohne AGS werden ausgeklammert: ihr Fehlschlag läge an fehlenden
+    Gebäudedaten, nicht an einer fehlenden Zuständigkeitsregel - das ist ein
+    eigenes, bereits vorhandenes Datenproblem ("Ohne AGS"-Filter), keine
+    Abdeckungslücke.
+
+    Treffer werden nach (AGS, Auskunftsart) gruppiert, damit eine Lücke, die
+    mehrere Gebäude derselben Gemeinde betrifft, nicht pro Gebäude einzeln
+    auftaucht. Rein informativ - eine fehlende Regel kann nicht automatisch
+    erfunden werden, das erfordert echtes Wissen über die zuständige Behörde.
+    """
+    buildings = db.query(Building).filter(Building.ags.isnot(None), Building.ags != "").all()
+    request_types = db.query(RequestType).filter(RequestType.active.is_(True)).all()
+    if not buildings or not request_types:
+        return []
+
+    matcher = JurisdictionMatchingService(db)
+    gaps: dict = {}
+
+    # Ergebnis-Cache je (Auskunftsart, alle für das Matching relevanten
+    # Rohfelder): zwei Gebäude mit identischen Werten in genau diesen Feldern
+    # durchlaufen zwangsläufig dieselben sieben Matching-Stufen und landen
+    # beim selben Ergebnis (JurisdictionMatchingService.match_authority ist
+    # eine reine Funktion dieser Felder plus des DB-Standes) - der zweite
+    # Aufruf braucht dann keine erneute Matching-Engine-Ausführung.
+    #
+    # Ohne diesen Cache: bis zu 2.000 Gebäude x 11 Auskunftsarten x 7 Stufen
+    # sind in einer Messung mit synthetischen Daten (siehe
+    # scripts/benchmark_matching_scale.py) ~74.700 SQL-Abfragen und rund zwei
+    # Minuten allein lokal ohne Netzwerklatenz - für eine einzelne, synchrone
+    # HTTP-Anfrage (die Datenqualitäts-Übersicht) unrealistisch, insbesondere
+    # gegen eine entfernte Datenbank (Neon) mit echter Netzwerklatenz pro
+    # Abfrage. Der Cache ersetzt keinen Bulk-Endpunkt/Hintergrundjob (siehe
+    # Auditbericht-Folgebericht), reduziert die tatsächliche Last aber genau
+    # für den in der Praxis häufigsten Fall: viele Gebäude teilen sich eine
+    # Gemeinde und damit i.d.R. auch dieselbe Zuständigkeit.
+    result_cache: dict = {}
+
+    for building in buildings:
+        for request_type in request_types:
+            cache_key = (
+                request_type.request_type_id, building.ags, building.street,
+                building.house_number, building.district, building.postal_code,
+                building.state,
+            )
+            if cache_key in result_cache:
+                status = result_cache[cache_key]
+            else:
+                status = matcher.match_authority(building, request_type.request_type_id).matching_status
+                result_cache[cache_key] = status
+
+            if status != MatchingStatus.NO_MATCH:
+                continue
+            key = (building.ags, request_type.request_type_id)
+            entry = gaps.setdefault(
+                key,
+                {
+                    "ags": building.ags,
+                    "municipality": building.city,
+                    "request_type_name": request_type.name,
+                    "building_ids": set(),
+                },
+            )
+            entry["building_ids"].add(building.building_id)
+
+    return sorted(
+        (
+            {
+                "ags": g["ags"],
+                "municipality": g["municipality"],
+                "request_type_name": g["request_type_name"],
+                "building_count": len(g["building_ids"]),
+            }
+            for g in gaps.values()
+        ),
+        key=lambda g: (g["municipality"] or "", g["request_type_name"]),
+    )
+
+
 def _building_has_real_progress(db: Session, building_id: str) -> bool:
     """
     True, wenn für dieses Gebäude schon einmal ein Schreiben tatsächlich als
@@ -255,11 +491,15 @@ def _building_has_real_progress(db: Session, building_id: str) -> bool:
 
 
 def _authorities_unverified(db: Session) -> List[Authority]:
-    """Aktive Behörden, die noch nie verifiziert wurden (last_verified_at leer)."""
+    """
+    Aktive Behörden, die noch nie oder vor mehr als _VERIFICATION_STALE_DAYS
+    Tagen zuletzt als aktuell/korrekt bestätigt wurden.
+    """
+    cutoff = datetime.utcnow() - timedelta(days=_VERIFICATION_STALE_DAYS)
     return (
         db.query(Authority)
         .filter(Authority.active.is_(True))
-        .filter(Authority.last_verified_at.is_(None))
+        .filter(or_(Authority.last_verified_at.is_(None), Authority.last_verified_at < cutoff))
         .order_by(Authority.authority_name)
         .all()
     )
@@ -328,6 +568,17 @@ def _find_duplicate_jurisdiction_groups(db: Session):
     return resolvable, needs_review
 
 
+def _duplicate_jurisdiction_ids(db: Session) -> set:
+    """jurisdiction_id aller Regeln, die in einer erkannten Duplikat-Gruppe stecken (auflösbar oder nicht)."""
+    resolvable, needs_review = _find_duplicate_jurisdiction_groups(db)
+    ids = set()
+    for group in resolvable:
+        ids.add(group["keep"].jurisdiction_id)
+        ids.update(j.jurisdiction_id for j in group["remove"])
+    ids.update(j.jurisdiction_id for j in needs_review)
+    return ids
+
+
 def _find_duplicate_building_groups(db: Session):
     """
     Findet Gebäude mit identischer normalisierter Adresse (Straße, Haus-
@@ -384,6 +635,17 @@ def _find_duplicate_building_groups(db: Session):
     return resolvable, needs_review
 
 
+def _duplicate_building_ids(db: Session) -> set:
+    """building_id aller Gebäude, die in einer erkannten Duplikat-Gruppe stecken (auflösbar oder nicht)."""
+    resolvable, needs_review = _find_duplicate_building_groups(db)
+    ids = set()
+    for group in resolvable:
+        ids.add(group["keep"].building_id)
+        ids.update(b.building_id for b in group["remove"])
+    ids.update(b.building_id for b in needs_review)
+    return ids
+
+
 @router.get("/data-quality/summary", tags=["DataQuality"])
 def data_quality_summary(db: Session = Depends(get_db_session)):
     total_authorities = db.query(Authority).filter(Authority.active.is_(True)).count()
@@ -401,6 +663,9 @@ def data_quality_summary(db: Session = Depends(get_db_session)):
     dup_jurisdiction_items = [dup for g in dup_jurisdiction_groups for dup in g["remove"]]
     dup_building_groups, dup_building_needs_review = _find_duplicate_building_groups(db)
     dup_building_items = [dup for g in dup_building_groups for dup in g["remove"]]
+    without_coordinates = _buildings_without_coordinates(db)
+    coverage_gaps = _coverage_gaps(db)
+    fuzzy_duplicate_authorities = _fuzzy_duplicate_authority_pairs(db)
 
     return {
         "total_authorities": total_authorities,
@@ -443,6 +708,18 @@ def data_quality_summary(db: Session = Depends(get_db_session)):
             "count": len(dup_building_items),
             "items": [_serialize_building(b) for b in dup_building_items[:MAX_ITEMS]],
             "needs_review_count": len(dup_building_needs_review),
+        },
+        "buildings_without_coordinates": {
+            "count": len(without_coordinates),
+            "items": [_serialize_building(b) for b in without_coordinates[:MAX_ITEMS]],
+        },
+        "coverage_gaps": {
+            "count": len(coverage_gaps),
+            "items": coverage_gaps[:MAX_ITEMS],
+        },
+        "fuzzy_duplicate_authorities": {
+            "count": len(fuzzy_duplicate_authorities),
+            "items": fuzzy_duplicate_authorities[:MAX_ITEMS],
         },
     }
 
@@ -593,6 +870,30 @@ def clear_bad_geocoding(db: Session = Depends(get_db_session), _: None = Depends
     return {"deleted": deleted}
 
 
+# Nominatim erlaubt max. 1 Anfrage/Sekunde (siehe geocoding.py) - ein
+# größerer Batch würde den synchronen Request zu lange blocken/timeouten.
+# Bei mehr offenen Gebäuden als das Limit einfach erneut aufrufen.
+_GEOCODE_BATCH_LIMIT = 20
+
+
+@router.post("/data-quality/geocode-missing-buildings", tags=["DataQuality"])
+def geocode_missing_buildings(db: Session = Depends(get_db_session), _: None = Depends(require_main)):
+    """
+    Nur Haupt-Account: versucht für bis zu _GEOCODE_BATCH_LIMIT Gebäude ohne
+    Kartenkoordinaten erneut eine Geokodierung über Nominatim. Es wird
+    nirgends geraten - schlägt eine Adresse fehl, bleibt sie ohne Koordinaten
+    und taucht beim nächsten Aufruf wieder auf.
+    """
+    missing = _buildings_without_coordinates(db)[:_GEOCODE_BATCH_LIMIT]
+    geocoded = 0
+    for building in missing:
+        if _geocode_and_cache_building(building):
+            geocoded += 1
+    db.commit()
+    remaining = len(_buildings_without_coordinates(db))
+    return {"geocoded": geocoded, "failed": len(missing) - geocoded, "remaining": remaining}
+
+
 @router.get("/data-quality/export-xlsx", tags=["DataQuality"])
 def export_data_quality_xlsx(db: Session = Depends(get_db_session)):
     """
@@ -687,6 +988,40 @@ def export_data_quality_xlsx(db: Session = Depends(get_db_session)):
         (
             "Gebäude Prüfung nötig",
             pd.DataFrame(building_rows(_buildings_with_review_required(db)), columns=building_columns),
+        ),
+        (
+            "Ohne Kartenkoordinaten",
+            pd.DataFrame(building_rows(_buildings_without_coordinates(db)), columns=building_columns),
+        ),
+        (
+            "Abdeckungslücken",
+            pd.DataFrame(
+                [
+                    {
+                        "AGS": g["ags"],
+                        "Gemeinde": g["municipality"],
+                        "Auskunftsart": g["request_type_name"],
+                        "Betroffene Gebäude": g["building_count"],
+                    }
+                    for g in _coverage_gaps(db)
+                ],
+                columns=["AGS", "Gemeinde", "Auskunftsart", "Betroffene Gebäude"],
+            ),
+        ),
+        (
+            "Mögliche Duplikate (ähnlich)",
+            pd.DataFrame(
+                [
+                    {
+                        "Behörde A": p["authority_name_a"],
+                        "Behörde B": p["authority_name_b"],
+                        "Ort": p["city"],
+                        "Ähnlichkeit": p["similarity"],
+                    }
+                    for p in _fuzzy_duplicate_authority_pairs(db)
+                ],
+                columns=["Behörde A", "Behörde B", "Ort", "Ähnlichkeit"],
+            ),
         ),
     ]
 
