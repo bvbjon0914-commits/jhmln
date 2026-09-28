@@ -1759,3 +1759,12 @@ Qualitätsverbesserung (benannte Fachbehörde statt pauschaler
 „Gemeindeverwaltung", ehrliche `verification_status`-Differenzierung
 bei NRW/Saarland), keine Abdeckungsänderung. `flake8 app/` und die
 volle Testsuite blieben grün.
+
+*Nachtrag:* der Code dieser Abgleichs-Session lag zunaechst auf einem
+separaten Branch (`claude/silly-noyce-994922`) und wurde per
+`git merge` in `civeloq/authority-data-quality` nachgezogen (Commit
+afb0558, ein Konflikt in diesem Dokument durch Beibehaltung beider
+Kapitel geloest). Ein Dry-Run des Abgleichsskripts gegen die
+Haupt-Checkout-DB ergab fuer alle 124 Eintraege `DUPLICATE_EXACT` -
+die DB-Aenderung war bereits vorher direkt uebernommen worden, keine
+weitere Anwendung noetig.
