@@ -1508,3 +1508,162 @@ verbleibenden 6 "einfachen" Laender (Niedersachsen, Rheinland-Pfalz,
 Sachsen-Anhalt, Brandenburg, Schleswig-Holstein, Mecklenburg-
 Vorpommern) laeuft bereits eine weitere Recherche-Welle nach demselben
 Muster.
+
+### 20.4 Abschluss der Welle: alle 6 verbleibenden Länder
+
+Die 6 verbleibenden Länder wurden nach demselben Muster fertiggestellt
+(je Kreis-Regel + benannte Ausnahmeliste, jede Rechtsgrundlage per
+Live-Browser-Abruf direkt gegen das amtliche Landesrecht-Portal
+wort-fuer-wort verifiziert):
+
+| Land | Kreis-Norm | Ausnahmen | Neue Regeln |
+|---|---|---|---|
+| Niedersachsen | § 57 Abs. 1 / § 81 Abs. 4 NBauO | 7 grosse selbstaendige Staedte (§ 14 Abs. 5 NKomVG) | 104 |
+| Mecklenburg-Vorpommern | § 57 Abs. 1 / § 83 Abs. 4 LBauO M-V | 4 grosse kreisangehoerige Staedte (§ 7 Abs. 2 KV M-V) | 4 (Rest bereits durch die frühere "Struktur-Korrektur 2026-09-26" VERIFIED) |
+| Schleswig-Holstein | § 57 Abs. 1 / § 83 Abs. 4 LBO SH | 18 beliehene Staedte (§ 1 BauAufsÜV SH vom 3.6.2022) | 14 (Rest bereits durch dieselbe frühere Struktur-Korrektur VERIFIED) |
+| Sachsen-Anhalt | § 56 Abs. 1 / § 82 Abs. 4 BauO LSA | 5 Bestandsschutz-Staedte (§ 87 Abs. 3 BauO LSA, Koethen/Naumburg/Stendal/Weissenfels/Zeitz) | 22 |
+| Brandenburg | § 57 Abs. 1 / § 84 Abs. 4 BbgBO | 2 tatsaechlich beliehene Grosse kreisangehoerige Staedte (Eberswalde, Schwedt/Oder - NICHT Bernau/Falkensee/Oranienburg, die zwar den Status tragen, denen die Aufgabe aber laut amtlicher MIL-Liste nicht uebertragen wurde) | 18 |
+| Rheinland-Pfalz | § 58 Abs. 1 Nr. 3 / § 86 Abs. 3 LBauO | 8 grosse kreisangehoerige Staedte (§ 6 GemO + 3 einzelne Landesverordnungen von 1960/1969/1972/1975) | 36 |
+
+Bemerkenswert: fuer MV und SH war der grösste Teil der Kreis-Ebene
+bereits durch eine fruehere, in dieser Sitzung erst nachtraeglich
+entdeckte Kampagne ("Struktur-Korrektur 2026-09-26, bundesweite
+Ausweitung des RLP/SH-Kreisebenen-Fixes") als VERIFIED angelegt worden
+- die Konfliktpruefung erkannte dies korrekt und liess nur echte
+Luecken (v. a. kreisfreie Staedte) neu durch, was fuer beide Laender
+die tatsaechlich neu angelegte Regelzahl deutlich unter die urspruenglich
+grob geschaetzte Zahl drueckte.
+
+**Endstand (ags-basierte COUNTY-Abdeckung, bundesweit 401 Kreise):**
+BAUAKTEN 399/401 (nur Hamburg und Berlin bewusst offen, beide
+strukturell durch Bezirksverwaltung blockiert - identisches Muster wie
+bei Bodendenkmalschutz/Kataster). BAULASTEN 295/401 (die Luecke
+entspricht im Kern den 96 bayerischen Kreisen, in denen es gar kein
+Baulastenverzeichnis gibt, plus Berlin plus einem kleinen Rest in
+Baden-Württemberg, wo die Verzeichnisfuehrung nach § 72 Abs. 3 LBO BW
+der Gemeinde statt dem Kreis obliegt und daher bewusst nicht ueber
+diese Kreis-Ebene-Kampagne abgedeckt wurde). Damit ist die
+Bauakten-/Baulastenauskunft-Welle fachlich abgeschlossen; alle
+verbleibenden Luecken sind dokumentierte, bewusste Ausnahmen und keine
+stillen Fehlstellen.
+
+## 21. Nachtrag: falscher Alarm bei 12 kreisfreien Staedten (Messfehler in der Luecken-Query) - und ein echter Fund
+
+Im Anschluss an Kapitel 20 wurde eine bundesweite ags-basierte
+Luecken-Analyse ueber ALLE Auskunftsarten hinweg gefahren, um das
+naechste sinnvolle Ziel zu finden. Eine erste Abfrage (COUNTY-Level
+distinct ags) zeigte scheinbare Luecken bei KATASTER (9 kreisfreie
+Staedte) und, in einem zweiten Schritt, bei DENKMALSCHUTZ,
+BODENDENKMALSCHUTZ, ALTLASTEN, HOCHWASSERSCHUTZ und WASSERSCHUTZ fuer
+insgesamt 12 kreisfreie Staedte (Darmstadt, Hanau, Kassel, Heilbronn,
+Karlsruhe, Freiburg im Breisgau, Rostock, Leipzig, Oldenburg,
+Osnabrueck, Muelheim an der Ruhr, Solingen). Drei parallele
+Recherche-Agenten wurden losgeschickt und lieferten sauber belegte,
+amtlich verifizierte Rechtsgrundlagen fuer alle 5 betroffenen
+Bundeslaender.
+
+**Der Fund war jedoch grossteils ein Messfehler:** die Lueckenanalyse
+verglich fuer kreisfreie Staedte durchgaengig nur die 5-stellige
+`ags_kreis` gegen `matching_level='COUNTY'` - und uebersah dabei
+systematisch bereits bestehende `MUNICIPALITY`-Level-Regeln, die auf
+die 8-stellige AGS (ags_kreis + "000") verweisen und wegen ihrer
+hoeheren Prioritaet die fehlende COUNTY-Regel ohnehin korrekt
+ersetzen. Ein Hinweis einer parallel arbeitenden Session (die
+unabhaengig an BW-Kataster-AGS-Dubletten arbeitete) zeigte, dass
+Heilbronn und Karlsruhe laengst korrekt abgedeckt waren - das war der
+Ausloeser fuer eine Nachpruefung. Nach Korrektur der Abfrage (beide
+AGS-Formen + beide Matching-Level pruefen, plus STATE-Level-Regeln mit
+`ags IS NULL` separat beruecksichtigen) loesten sich KATASTER,
+DENKMALSCHUTZ und BODENDENKMALSCHUTZ vollstaendig in Luft auf - alle
+12 Staedte waren fuer diese drei Auskunftsarten bereits abgedeckt.
+
+**Einziger echter Fund:** Kassel (als einzige der drei hessischen
+kreisfreien Staedte) fehlten tatsaechlich ALTLASTEN, HOCHWASSERSCHUTZ
+und WASSERSCHUTZ - eine isolierte historische Import-Luecke. Gefixt
+mit `seed_altlasten_wasser_kassel.py` (3 neue Regeln, § 15 Abs. 3
+HAltBodSchG / § 64 Abs. 3 HWG, gegen rv.hessenrecht.hessen.de
+verifiziert).
+
+**Zweiter, groesserer und noch offener Fund (unabhaengig vom
+Messfehler, ueber eine gesonderte Pruefung bestaetigt):**
+Nordrhein-Westfalen hat aktuell **ueberhaupt keine KAMPFMITTEL-
+Abdeckung** - weder eine STATE-Level-Regel (anders als 13 der uebrigen
+15 Laender) noch auch nur eine einzige COUNTY-Regel fuer irgendeinen
+der ca. 53 Kreise/kreisfreien Staedte. Das ist keine Verwechslung,
+sondern ein echter, substanzieller Fund, der aber eine eigene
+Rechercheentscheidung braucht (vermutlich Bezirksregierungs-Ebene statt
+Kreis-Ebene) und daher bewusst NICHT in dieser Sitzung bearbeitet,
+sondern als eigene Aufgabe fuer eine kuenftige Sitzung vorgemerkt
+wurde.
+
+**Lehre fuer kuenftige Luecken-Analysen dieser Art:** bei kreisfreien
+Staedten immer sowohl die 5-stellige `ags_kreis` (COUNTY) als auch die
+8-stellige AGS (MUNICIPALITY) pruefen, sowie STATE-Level-Regeln (mit
+`ags IS NULL`) separat gegenchecken, bevor eine vermeintliche Luecke
+als echter Rechercheauftrag an Agenten weitergegeben wird - sonst
+droht wie hier erheblicher Rechercheaufwand fuer nicht-existente
+Luecken.
+
+## 22. Erschließungsbeiträge "Phase 2": eigenständige Gemeinden bundesweit (7300 → 10749 von 10749, 100 %)
+
+Bei derselben Gelegenheit fiel eine viel groessere, echte Luecke auf:
+eine bundesweite ags-basierte Abdeckungspruefung fuer ERSCHLIESSUNG
+zeigte nur 7300 von 10749 Gemeinden abgedeckt. Grund: die urspruengliche
+Erschliessungsbeitraege-Kampagne (Kapitel 12/19) erfasste durchgaengig
+nur Gemeinden, die einer Verbandsgemeinde/einem Amt/einer Verwaltungs-
+gemeinschaft-aequivalenten Struktur angehoeren, ueber deren amtliche
+Anschriftenliste (Satzart 50). Eigenstaendige ("amtsfreie") Gemeinden -
+inklusive aller kreisfreien Staedte - blieben dabei durchgaengig
+aussen vor; im BW-Skript sogar ausdruecklich so dokumentiert ("~190
+eigenstaendige Gemeinden ... braeuchten Einzelrecherche").
+
+Diese "Einzelrecherche" erwies sich als unnoetig: die Zustaendigkeits-
+frage ist BUNDESRECHT und damit fuer alle 16 Laender identisch - § 127
+Abs. 1 BauGB: "Die Gemeinden erheben zur Deckung ihres anderweitig
+nicht gedeckten Aufwands fuer Erschliessungsanlagen einen
+Erschliessungsbeitrag." (Wortlaut gegen gesetze-im-internet.de,
+Bundesministerium der Justiz, verifiziert - Fundort ueber die korrekte
+Ordner-URL `bbaug` statt der nahliegenden aber falschen Vermutung
+`baugb` per Websuche ermittelt.) Jede eigenstaendige Gemeinde ist damit
+schlicht ihre eigene Erschliessungsbehoerde - keine landesspezifische
+Ausnahmeliste noetig, keine Agenten-Rechercheswelle wie bei Bauakten/
+Baulasten, da die Adressdaten bereits im amtlichen Anschriften-
+verzeichnis (Satzart 60) fuer jede Gemeinde vorliegen.
+
+Umgesetzt fuer alle 13 Laender mit tatsaechlicher Restluecke (Berlin/
+Bremen/Hamburg wurden parallel von einer anderen Sitzung importiert):
+
+| Land | neue Regeln |
+|---|---|
+| Bayern | 1074 |
+| Hessen | 421 |
+| Rheinland-Pfalz | 301 |
+| Niedersachsen | 291 |
+| Sachsen | 239 |
+| Nordrhein-Westfalen | 396 |
+| Brandenburg | 141 |
+| Baden-Württemberg | 190 |
+| Thüringen | 110 |
+| Sachsen-Anhalt | 104 |
+| Schleswig-Holstein | 86 |
+| Saarland | 52 |
+| Mecklenburg-Vorpommern | 40 |
+
+**3445 neue Regeln, alle mit identischem Konfliktergebnis
+NEW=erwartete Zahl / andere=0** (kein einziger unerwarteter Konflikt
+ueber alle 13 Laender hinweg - starkes Signal, dass die Analyse und
+die Ausfuehrung korrekt waren). Bundesweite ERSCHLIESSUNG-Abdeckung
+damit von 7300 auf 10745 von 10749 Gemeinden gestiegen (99,96 %).
+
+Die letzten 4 fehlenden Gemeinden waren die 3 Stadtstaaten (Berlin,
+Hamburg sowie die beiden bremischen Stadtgemeinden Bremen und
+Bremerhaven) - keine "Sonderfaelle" im Sinne von Datenfehlern, sondern
+schlicht ausserhalb des "eigenstaendige Flaechenland-Gemeinde"-Musters
+der 13 vorherigen Skripte. Nachtraeglich mit
+`seed_erschliessung_stadtstaaten.py` ergaenzt (4 Regeln, dieselbe
+Rechtsgrundlage § 127 Abs. 1 BauGB, zentrale Senats-/Stadtverwaltungs-
+adresse aus dem amtlichen Anschriftenverzeichnis - keine Hinweise auf
+eine bezirkliche Aufspaltung der Erschliessungsbeitrags-Erhebung,
+anders als bei Bauaufsicht/Bodendenkmalschutz). **Damit ist die
+bundesweite ERSCHLIESSUNG-Abdeckung vollstaendig: 10749 von 10749
+Gemeinden (100 %).**
