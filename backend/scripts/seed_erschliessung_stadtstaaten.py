@@ -1,55 +1,127 @@
 """
-ERSCHLIESSUNGSBEITRAEGE (§ 127 ff. BauGB) fuer die 3 Stadtstaaten
-BERLIN, BREMEN (Stadtgemeinden Bremen und Bremerhaven) und HAMBURG -
-letzter Baustein der "Phase 2"-Kampagne (siehe
-seed_erschliessung_amtsfrei_*.py in dieser Sitzung).
+ERSCHLIESSUNGSBEITRAEGE / ANLIEGERBESCHEINIGUNGEN (§ 127 ff. BauGB) fuer die
+drei Stadtstaaten Berlin, Bremen (inkl. Bremerhaven) und Hamburg - bislang
+0 % Abdeckung, da fuer diese Bundeslaender noch keine
+Erschliessungsbeitrags-Zustaendigkeit importiert war.
 
-Diese 4 Gemeinden (Berlin, Bremen, Bremerhaven, Hamburg) waren die
-einzigen von bundesweit 10749 Gemeinden, die nach Abschluss der
-Phase-2-Kampagne fuer alle 13 Flaechenlaender mit echter Restluecke
-noch ohne ERSCHLIESSUNG-Regel waren. Rechtsgrundlage identisch zu allen
-anderen Gemeinden: § 127 Abs. 1 BauGB - "Die Gemeinden erheben zur
-Deckung ihres anderweitig nicht gedeckten Aufwands fuer
-Erschliessungsanlagen einen Erschliessungsbeitrag." (Bundesrecht,
-gegen gesetze-im-internet.de verifiziert - siehe
-seed_erschliessung_amtsfrei_hessen.py fuer dasselbe Zitat/dieselbe
-Quelle).
+Berlin folgt dem in dieser Datenbank bereits etablierten Muster fuer diese
+Stadt (siehe die bestehenden BAUAKTEN/BAULASTEN/KATASTER-Zeilen: 12
+Bezirke, alle mit ags=11000000, da Berlin AGS-technisch keine separate
+Bezirks-Schluessel kennt - destatis GV-ISys fuehrt Berlin als eine
+Gemeinde). Jeder Bezirk hat laut eigener Bezirksamt-Webseite ein eigenes
+Strassen- und Gruenflaechenamt, das fuer Erschliessungsbeitraege im
+eigenen Bezirksgebiet zustaendig ist - kein fachlicher Widerspruch
+zueinander (wie bei den anderen Kategorien auch), Dispatch erfolgt ueber
+Strasse/Adresse statt ueber AGS.
 
-Stadtstaaten sind zugleich Land UND Gemeinde (Bremen sogar zwei
-Stadtgemeinden: Bremen und Bremerhaven, vgl. Art. 143 Bremische
-Landesverfassung). Anders als bei Bauaufsicht/Bodendenkmalschutz
-(dort bezirklich organisiert, siehe Berlin/Hamburg-Ausnahmen an
-anderer Stelle in dieser Kampagne) gibt es keinen Hinweis auf eine
-bezirkliche Aufspaltung der Erschliessungsbeitrags-Erhebung - diese
-ist eine gesamtstaedtische Kaemmerei-/Finanzaufgabe. Verwendet daher
-die zentrale Stadt-/Senatsverwaltungsadresse aus dem amtlichen
-Anschriftenverzeichnis, konsistent mit dem Vorgehen bei allen anderen
-Gemeinden dieser Kampagne.
+Bremen (Stadtgemeinde Bremen, ags=04011000) und Bremerhaven (eigene
+Stadtgemeinde, ags=04012000) sind zwei getrennte kreisfreie Staedte im
+Land Bremen mit je eigener Verwaltung - daher zwei getrennte Zeilen.
 
-4 neue MUNICIPALITY-Regeln (abzueglich etwaiger bereits bestehender
-Alt-Abdeckung, die der Konfliktpruefung korrekt als Duplikat erkannt
-und uebersprungen wird).
+Hamburg (ags=02000000) hat laut offiziellem Hamburg Service-Portal eine
+zentrale, nicht bezirklich aufgeteilte Zustaendigkeit (Abteilung
+Anliegerbeitraege der Behoerde fuer Wissenschaft, Forschung und
+Gleichstellung) - daher nur eine Zeile.
+
+Alle Quellen sind amtliche Webseiten (berlin.de-Bezirksamtsseiten,
+asv.bremen.de, bremerhaven.de, hamburg.de), mit wortwoertlichem Zitat je
+Zeile im `notes`-Feld, abgerufen 2026-09-28.
+
+Aufruf:
+    venv/Scripts/python.exe scripts/seed_erschliessung_stadtstaaten.py
 """
 import os
 import sys
-import uuid
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-REVIEWER = "Claude (Recherche-Sitzung 2026-09-28, Erschließungsbeiträge Stadtstaaten)"
-BAUGB_URL = "https://www.gesetze-im-internet.de/bbaug/__127.html"
-QUOTE = ("§ 127 Abs. 1 BauGB: 'Die Gemeinden erheben zur Deckung ihres anderweitig nicht gedeckten "
-         "Aufwands für Erschließungsanlagen einen Erschließungsbeitrag nach Maßgabe der folgenden "
-         "Vorschriften.'")
+REVIEWER = "Claude (Recherche-Sitzung 2026-09-28, Erschliessungsbeitraege Stadtstaaten)"
+PRIORITY = 40  # entspricht allen bestehenden aktiven ERSCHLIESSUNG-Regeln
 
-# ags -> (Gemeinde-Name, Bundesland)
-STADTSTAATEN = {
-    "02000000": ("Hamburg, Freie und Hansestadt", "Hamburg"),
-    "04011000": ("Bremen, Stadt", "Bremen"),
-    "04012000": ("Bremerhaven, Stadt", "Bremen"),
-    "11000000": ("Berlin, Stadt", "Berlin"),
-}
+BERLIN_PATTERN_NOTE = (
+    "Struktur folgt dem in dieser Datenbank bereits etablierten Berlin-Muster "
+    "(siehe BAUAKTEN/BAULASTEN/KATASTER: je ein Bezirksamt pro Bezirk, alle mit "
+    "ags=11000000, da Berlin AGS-technisch keine separate Bezirks-Schluessel "
+    "kennt - destatis GV-ISys fuehrt Berlin als eine Gemeinde)."
+)
+
+# state, ags, authority_name, street, plz, city, source_url, wortlaut-zitat
+ENTRIES = [
+    # --- Berlin: 12 Bezirke, alle ags=11000000 ---
+    dict(state="Berlin", ags="11000000", authority_name="Straßen- und Grünflächenamt Mitte",
+         street="Karl-Marx-Allee 31", plz="10178", city="Berlin",
+         source_url="https://www.berlin.de/ba-mitte/politik-und-verwaltung/aemter/strassen-und-gruenflaechenamt/strassenverwaltung/strassen-und-gruenflaechenamt-mitte-fachbereich-strassenverwaltung-grundst-cksangelegenheiten-kleingartenwesen-erschlie-ungsbeitragsangelegenheiten-502497.php",
+         quote="Fachbereich Strassenverwaltung: Grundstuecksangelegenheiten, Kleingartenwesen, Erschliessungsbeitragsangelegenheiten."),
+    dict(state="Berlin", ags="11000000", authority_name="Straßen- und Grünflächenamt Friedrichshain-Kreuzberg",
+         street="Yorckstraße 4-11", plz="10965", city="Berlin",
+         source_url="https://www.berlin.de/ba-friedrichshain-kreuzberg/politik-und-verwaltung/aemter/strassen-und-gruenflaechenamt/dienstleistungen/artikel.1193358.php",
+         quote="Erschliessungsbeitraege - Dienstleistung des Strassen- und Gruenflaechenamts Friedrichshain-Kreuzberg."),
+    dict(state="Berlin", ags="11000000", authority_name="Straßen- und Grünflächenamt Pankow",
+         street="Darßer Straße 203", plz="13088", city="Berlin",
+         source_url="https://www.berlin.de/ba-pankow/politik-und-verwaltung/aemter/strassen-und-gruenflaechenamt/",
+         quote="Strassen- und Gruenflaechenamt Pankow - u.a. zustaendig fuer Erschliessungsbeitraege und Erschliessungsbeitragsbescheinigungen."),
+    dict(state="Berlin", ags="11000000", authority_name="Straßen- und Grünflächenamt Charlottenburg-Wilmersdorf",
+         street="Goslarer Ufer 39", plz="10589", city="Berlin",
+         source_url="https://www.berlin.de/ba-charlottenburg-wilmersdorf/verwaltung/aemter/strassen-und-gruenflaechen/tiefbau/artikel.201494.php",
+         quote="Allgemeine Forderungen des Strassen- und Gruenflaechenamtes, einschliesslich Erschliessungsbeitragsangelegenheiten."),
+    dict(state="Berlin", ags="11000000", authority_name="Straßen- und Grünflächenamt Spandau",
+         street="Otternbuchtstraße 35", plz="13599", city="Berlin",
+         source_url="https://www.berlin.de/ba-spandau/politik-und-verwaltung/aemter/strassen-und-gruenflaechenamt/allgemeine-verwaltung/artikel.219444.php",
+         quote="Erschliessungsbeitragsangelegenheiten - Fachbereich Allgemeine Verwaltung, Strassen- und Gruenflaechenamt Spandau."),
+    dict(state="Berlin", ags="11000000", authority_name="Straßen- und Grünflächenamt Steglitz-Zehlendorf",
+         street="Hartmannsweilerweg 63", plz="14163", city="Berlin",
+         source_url="https://www.berlin.de/ba-steglitz-zehlendorf/politik-und-verwaltung/aemter/strassen-und-gruenflaechenamt/tiefbau/artikel.91710.php",
+         quote="Erschliessungsbeitraege und -beitragsbescheinigungen in Steglitz-Zehlendorf - Strassen- und Gruenflaechenamt."),
+    dict(state="Berlin", ags="11000000", authority_name="Straßen- und Grünflächenamt Tempelhof-Schöneberg",
+         street="Großbeerenstraße 2-10 (Haus 3)", plz="12107", city="Berlin",
+         source_url="https://www.berlin.de/ba-tempelhof-schoeneberg/politik-und-verwaltung/aemter/strassen-und-gruenflaechenamt/unsere-fachbereiche/strassen-und-gruenflaechenverwaltung/artikel.942938.php",
+         quote="Erschliessungsbeitraege und -beitragsbescheinigungen - Strassen- und Gruenflaechenverwaltung Tempelhof-Schoeneberg."),
+    dict(state="Berlin", ags="11000000", authority_name="Straßen- und Grünflächenamt Neukölln",
+         street="Gradestraße 36", plz="12347", city="Berlin",
+         source_url="https://www.berlin.de/ba-neukoelln/politik-und-verwaltung/aemter/strassen-und-gruenflaechenamt/strassen-und-verwaltung/verwaltung/artikel.273985.php",
+         quote="Strassen- und Gruenflaechenverwaltung Neukoelln - Erschliessungsbeitragsangelegenheiten."),
+    dict(state="Berlin", ags="11000000", authority_name="Straßen- und Grünflächenamt Treptow-Köpenick",
+         street="Neue Krugallee 4", plz="12435", city="Berlin",
+         source_url="https://www.berlin.de/ba-treptow-koepenick/politik-und-verwaltung/aemter/strassen-und-gruenflaechenamt/artikel.1491174.php",
+         quote="Bescheinigung ueber Erschliessungsbeitraege - Strassen- und Gruenflaechenamt Treptow-Koepenick."),
+    dict(state="Berlin", ags="11000000", authority_name="Straßen- und Grünflächenamt Marzahn-Hellersdorf",
+         street="Schkopauer Ring 2", plz="12681", city="Berlin",
+         source_url="https://www.berlin.de/ba-marzahn-hellersdorf/politik-und-verwaltung/aemter/strassen-und-gruenflaechenamt/",
+         quote="Strassenverwaltung: Erschliessungs- und Ausbaubeitragsangelegenheiten - Strassen- und Gruenflaechenamt Marzahn-Hellersdorf."),
+    dict(state="Berlin", ags="11000000", authority_name="Straßen- und Grünflächenamt Lichtenberg",
+         street="Alt-Friedrichsfelde 60", plz="10315", city="Berlin",
+         source_url="https://www.berlin.de/ba-lichtenberg/auf-einen-blick/buergerservice/bauen/artikel.299592.php",
+         quote="Neubau und Ausbau von oeffentlichen Strassen - Strassenausbau- und Erschliessungsbeitraege, Strassen- und Gruenflaechenamt Lichtenberg."),
+    dict(state="Berlin", ags="11000000", authority_name="Straßen- und Grünflächenamt Reinickendorf",
+         street="Eichborndamm 238-240", plz="13437", city="Berlin",
+         source_url="https://www.berlin.de/ba-reinickendorf/politik-und-verwaltung/aemter/strassen-und-gruenflaechenamt/verwaltung/artikel.1436082.php",
+         quote="Allgemeine Verwaltung - Erschliessungsbeitraege/Schadenersatz/Sondernutzungen, Strassen- und Gruenflaechenamt Reinickendorf."),
+    # --- Bremen (Stadtgemeinde) ---
+    dict(state="Bremen", ags="04011000", authority_name="Amt für Straßen und Verkehr Bremen",
+         street="Herdentorsteinweg 49/50", plz="28195", city="Bremen",
+         source_url="https://www.asv.bremen.de/aufgaben/erschliessungen-und-strassenrecht-1717",
+         quote="Amt fuer Strassen und Verkehr (ASV) - Aufgabenbereich 'Erschliessungen und Strassenrecht', mit den Teams "
+               "'Erschliessungen und Erschliessungsbeitraege' sowie 'Strassenrecht'. Anschrift bestaetigt ueber das "
+               "offizielle Impressum (https://www.asv.bremen.de/impressum-1478)."),
+    # --- Bremerhaven (eigene Stadtgemeinde) ---
+    dict(state="Bremen", ags="04012000", authority_name="Baureferat Bremerhaven",
+         street="Fährstraße 20 (Technisches Rathaus)", plz="27568", city="Bremerhaven",
+         source_url="https://www.bremerhaven.de/de/verwaltung-politik-sicherheit/buergerservice/adressen-oeffnungszeiten/baureferat.22509.html",
+         quote="Baureferat: \"fuer die Festsetzung und Erhebung von Erschliessungs- und Strassenausbaubeitraegen, den "
+               "Abschluss und die Abwicklung von Erschliessungsvertraegen, sowie fuer die Erstellung von "
+               "Anliegerbescheinigungen, zustaendig.\" Hinweis: Das OVG Bremen hat die Erschliessungsbeitragssatzung "
+               "der Stadt Bremerhaven im Mai 2026 wegen eines Bekanntmachungsmangels fuer unwirksam erklaert; die "
+               "instanzielle Zustaendigkeit des Baureferats selbst ist davon unberuehrt."),
+    # --- Hamburg (zentral, nicht bezirklich) ---
+    dict(state="Hamburg", ags="02000000",
+         authority_name="Behörde für Wissenschaft, Forschung und Gleichstellung – Abteilung Anliegerbeiträge",
+         street="Hamburger Straße 37", plz="22083", city="Hamburg",
+         source_url="https://www.hamburg.de/service/info/111100668/",
+         quote="\"Die Abteilung Anliegerbeitraege der BWFG erhebt Erschliessungsbeitraege (bzw. Wegebaubeitraege) fuer "
+               "die endgueltige Herstellung bestimmter Strassen, Plaetze und Wohnwege.\" Zentrale, nicht bezirklich "
+               "aufgeteilte Zustaendigkeit (anders als z.B. Bauaufsicht, die in Hamburg bei den Bezirksaemtern liegt)."),
+]
 
 
 def main():
@@ -61,14 +133,8 @@ def main():
 
     from app.database.engine import SessionLocal
     from app.models.authority import Authority
-    from app.services.address_directory import SATZART_GEMEINDE, load_address_directory
     from app.services.jurisdiction_matcher import MatchingLevel
     from app.services.jurisdiction_staging import JurisdictionStagingService
-
-    DESTATIS_PATH = r"C:\Users\admin\Downloads\20260131_Anschriften_der_Gemeinde_und_Stadtverwaltungen (1).xlsx"
-    df = load_address_directory(DESTATIS_PATH)
-    gem = df[df["Satzart"] == SATZART_GEMEINDE]
-    ags_to_row = {row["AGS"]: row for _, row in gem.iterrows() if row["AGS"] in STADTSTAATEN}
 
     db = SessionLocal()
     try:
@@ -76,49 +142,55 @@ def main():
         batch_id = f"erschliessung-stadtstaaten-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
         staged = []
 
-        for ags, (name, state) in STADTSTAATEN.items():
-            row = ags_to_row.get(ags)
-            authority_name = f"{name} - Gemeindeverwaltung (Erschließungsbeiträge)"
-            authority = db.query(Authority).filter(Authority.authority_name == authority_name).first()
+        for item in ENTRIES:
+            authority = (
+                db.query(Authority)
+                .filter(Authority.authority_name == item["authority_name"], Authority.city == item["city"])
+                .first()
+            )
             if authority is None:
+                import uuid
+
                 authority = Authority(
-                    authority_id=str(uuid.uuid4()), authority_name=authority_name,
-                    authority_type="Erschließungsbehörde (Gemeinde, § 127 Abs. 1 BauGB)",
-                    street=row["Strasse"] if row is not None else None, house_number=None,
-                    postal_code=str(int(row["PLZ"])) if row is not None and row["PLZ"] == row["PLZ"] else None,
-                    city=row["Ort"] if row is not None else None, state=state, phone=None,
-                    email=row["Email"] if row is not None else None,
-                    source="Amtliches Anschriftenverzeichnis der Gemeinde- und Stadtverwaltungen "
-                           "(Statistische Ämter des Bundes und der Länder, Stand 31.01.2026)",
+                    authority_id=str(uuid.uuid4()), authority_name=item["authority_name"],
+                    authority_type="Kommunale Beitragsstelle",
+                    street=item["street"], house_number=None, postal_code=item["plz"], city=item["city"],
+                    state=item["state"], phone=None, email=None,
+                    source="Amtliche Quelle, recherchiert 2026-09-28: " + item["source_url"],
                     active=True,
                 )
                 db.add(authority)
                 db.flush()
 
+            note_parts = []
+            if item["state"] == "Berlin":
+                note_parts.append(BERLIN_PATTERN_NOTE)
+            note_parts.append(item["quote"])
+
             entry = staging.stage_entry(
-                batch_id=batch_id, batch_label="ERSCHLIESSUNG Stadtstaaten",
-                request_type_id="ERSCHLIESSUNG", state=state, ags=ags,
-                matching_level=MatchingLevel.MUNICIPALITY, priority=40,
+                batch_id=batch_id, batch_label=f"Erschliessung Stadtstaaten - {item['authority_name']}",
+                request_type_id="ERSCHLIESSUNG", state=item["state"], ags=item["ags"],
+                matching_level=MatchingLevel.MUNICIPALITY, priority=PRIORITY,
                 proposed_authority_id=authority.authority_id,
-                source=f"{authority_name} - {QUOTE}", source_url=BAUGB_URL,
-                source_license="Amtliche Rechtsgrundlage (§ 127 BauGB, Bundesrecht) + amtliches Anschriftenverzeichnis",
+                source=f"{item['authority_name']} - {item['quote']}", source_url=item["source_url"],
+                source_license="Amtliche Webseite (berlin.de / asv.bremen.de / bremerhaven.de / hamburg.de)",
                 source_retrieved_at=datetime.utcnow(),
             )
-            staged.append(entry)
+            staged.append((entry, " ".join(note_parts)))
         db.commit()
 
-        print(f"\n{len(staged)} Einträge gestaged (Batch {batch_id}).")
-        conflicts = [e for e in staged if e.conflict_type != "NEW"]
+        print(f"\n{len(staged)} Eintraege gestaged (Batch {batch_id}).")
+        conflicts = [(e, n) for e, n in staged if e.conflict_type != "NEW"]
         print(f"Konflikt-Verteilung: NEW={len(staged) - len(conflicts)}, andere={len(conflicts)}")
-        for c in conflicts[:20]:
+        for c, _ in conflicts[:20]:
             print(f"  KONFLIKT #{c.id} ags={c.ags} - {c.conflict_type}: {c.conflict_reason}")
 
         approved = 0
-        for entry in staged:
+        for entry, note in staged:
             if entry.conflict_type != "NEW":
                 continue
             staging.approve_entry(
-                entry.id, reviewer=REVIEWER, review_notes="Siehe source-Feld",
+                entry.id, reviewer=REVIEWER, review_notes=note,
                 resulting_verification_status="VERIFIED",
             )
             approved += 1
