@@ -138,10 +138,14 @@ def main(dry_run: bool = True):
     print(f"Ziel-Datenbank: {database_url}")
     print(f"Modus: {'DRY-RUN (keine Aenderungen werden gespeichert)' if dry_run else 'APPLY'}")
 
+    from sqlalchemy import text
     from app.database.engine import SessionLocal
     from app.models.jurisdiction import Jurisdiction
 
     db = SessionLocal()
+    # Ziel-DB wird gerade parallel von anderen Sessions beschrieben - statt beim
+    # ersten Lock-Konflikt sofort zu scheitern, bis zu 30s auf die Sperre warten.
+    db.execute(text("PRAGMA busy_timeout=30000"))
     try:
         # Gleiche Konvention wie JurisdictionStagingService.approve_entry() beim
         # Ablösen einer widersprochenen Regel (siehe jurisdiction_staging.py) und
