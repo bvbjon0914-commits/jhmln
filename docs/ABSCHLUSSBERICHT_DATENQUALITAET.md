@@ -2004,3 +2004,84 @@ bezirklich blockiert"-Rest ist damit aufgeloest; die einzige
 verbleibende bewusst offene Luecke bundesweit ist Hamburg
 HOCHWASSERSCHUTZ (siehe Kapitel 26, aus geografischen Gruenden bewusst
 nicht modelliert).
+
+## 29. Praxistest der Matching-Engine deckt echte MULTIPLE_MATCHES-Faelle auf: bundesweiter Bauaufsicht-Duplikate-Fix (144 Regeln)
+
+Nach Abschluss der reinen Abdeckungspruefung (Kapitel 21-28: "existiert
+irgendeine Regel fuer diese AGS?") wurde erstmals die tatsaechliche
+Matching-Engine (`JurisdictionMatchingService.match_authority()`)
+gegen eine repraesentative Stichprobe (ein Gebaeude je Kreis, alle 401
+Kreise x alle 11 Auskunftsarten = 4411 Kombinationen) laufen gelassen,
+um zu pruefen, ob die theoretische Abdeckung auch praktisch zu einem
+eindeutigen Treffer fuehrt. Ergebnis: 4205 MATCHED, 97 NO_MATCH (fast
+alle: Bayern BAULASTEN, wie erwartet aus § keine Baulastenverzeichnis-
+Regelung in Bayern - kein Fehler), aber **109 MULTIPLE_MATCHES** - der
+Matcher konnte fuer diese Kombinationen NICHT eindeutig entscheiden,
+weil zwei gleichrangige, aktive Regeln am selben Ort existierten.
+
+Eine Detailpruefung zeigte: dies sind EXAKT die bereits in Kapitel 20.1
+als "~374 vorbestehende Duplikat-Paare" dokumentierten, aber bisher
+NICHT bearbeiteten Faelle (dort bewusst als "braucht Einzelfallpruefung,
+nicht im Vorbeigehen loesen" zurueckgestellt) - der Praxistest belegt
+zum ersten Mal konkret, dass es sich dabei NICHT um harmlose
+Datenbank-Kosmetik handelt, sondern um echte, live wirksame Fehler:
+eine Buergerin, die in Kassel, Goslar, Aachen, Koblenz, Kleve oder rund
+70 weiteren deutschen Staedten eine Bauakten-/Baulastenauskunft
+anfordert, würde MULTIPLE_MATCHES statt eines eindeutigen Ergebnisses
+erhalten.
+
+**Root Cause (identisch zum bereits geloesten Saarland-Einzelfall,
+Kapitel 20.1):** ein aelterer Bulk-Import ("Bauaemter Datenbank
+Deutschland FINAL 20260831") hatte kreisweite Untere
+Bauaufsichtsbehoerden ("Landkreis X"/"Kreis X"/"Kreisverwaltung X"/
+"StaedteRegion X" usw.) faelschlich auf matching_level=MUNICIPALITY +
+die AGS der jeweiligen Kreisstadt gepinnt, statt auf matching_level=
+COUNTY + die eigene Kreis-AGS. Der neuere amtliche Import (Anschriften-
+verzeichnis Stand 31.01.2026 bzw. die Struktur-Korrektur-Kampagne vom
+26.9.2026) ergaenzte die korrekte COUNTY-Zeile fuer denselben realen
+Kreis, OHNE die alte, falsch gescopte Zeile zu entfernen.
+
+**Fix** (`fix_bauaufsicht_kreisweite_duplikate_bundesweit.py`, eine
+Verallgemeinerung des Saarland-Skripts): fuer jede AGS mit genau 2
+aktiven, aktuell gueltigen MUNICIPALITY-Regeln desselben Auskunftstyps
+(Hamburg mit 7 und Berlin mit 12 Bezirks-Zeilen sind bewusst
+ausgenommen - das sind gewollte Mehrfach-Zeilen, kein Bug) wird
+geprueft, ob genau eine der beiden Zeilen "Kreis-artig" benannt ist
+(Praefix Landkreis/Kreis/Kreisverwaltung/StaedteRegion/uBAB Landkreis/
+Regionalverband, oder die drei saechsischen Ausnahmen Erzgebirgskreis/
+Vogtlandkreis/Burgenlandkreis ohne separates Praefix), und ob fuer
+diese Kreis-Zeile bereits eine korrekt gescopte COUNTY-Regel existiert
+- entweder fuer denselben Kreis (Regelfall) oder, bei kreisfreien
+Staedten mit gleichnamigem Nachbar-Landkreis (z.B. Stadt Oldenburg vs.
+Landkreis Oldenburg, Stadt Kassel vs. Landkreis Kassel, Stadtverwaltung
+Koblenz vs. Kreisverwaltung Mayen-Koblenz), fuer den anderen,
+eigenstaendigen Landkreis unter seiner eigenen AGS (per bundesweiter
+Kernnamen-Suche gefunden). Nur bei eindeutigem Treffer wird die
+Kreis-Zeile als sicher redundant abgeloest (valid_to = Vortag, wie
+immer in dieser Kampagne - keine geloeschten Daten, volle Historie).
+
+Alle 144 vorgeschlagenen Ablösungen (72 BAUAKTEN + 72 BAULASTEN) wurden
+vor der Anwendung vollstaendig als Klartext-Liste ausgegeben und
+manuell durchgesehen (keine automatische Anwendung ohne Review trotz
+mechanischer Erkennung), dann Dry-Run gegen eine DB-Kopie (144/144
+identisch zur finalen Anwendung), Backup, Anwendung auf die echte DB
+(144/144 exakt wie im Dry-Run), `flake8 app/` sowie die volle
+Testsuite (162 passed) blieben gruen. Ein erneuter Matching-Praxistest
+nach der Anwendung bestaetigte: die verbleibenden Duplikate sind
+ausschliesslich Hamburg (02000000) und Berlin (11000000) - beide
+gewollt, kein Bug.
+
+**Wichtige Erkenntnis fuer kuenftige Sitzungen:** eine reine "existiert
+eine Regel"-Abdeckungspruefung (wie in den Kapiteln 21-28) findet
+NICHT automatisch MULTIPLE_MATCHES-Fehler, bei denen zu VIELE statt zu
+wenige Regeln existieren. Ein Praxistest mit der echten Matching-Engine
+gegen eine repraesentative Stichprobe (z.B. ein Gebaeude je Kreis) ist
+eine guenstige (~7 Minuten fuer alle 401 Kreise x 11 Auskunftsarten),
+aber wichtige Ergaenzung zur reinen Abdeckungspruefung und sollte nach
+jeder groesseren Kampagne wiederholt werden. Die verbleibenden
+Duplikat-Kategorien aus Kapitel 20.1 (ALTLASTEN, HOCHWASSERSCHUTZ,
+WASSERSCHUTZ, KATASTER, KAMPFMITTEL, GRUNDBUCH, ERSCHLIESSUNG - je
+kleinere Restmengen) wurden in dieser Sitzung NICHT mit angefasst, da
+sie jeweils eigene, noch unverifizierte Root-Causes haben koennten
+(nicht zwingend derselbe "Landkreis-auf-Kreisstadt-gepinnt"-Bug) - als
+naechster Schritt fuer eine kuenftige Sitzung vorgemerkt.
