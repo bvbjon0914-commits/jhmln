@@ -1892,3 +1892,70 @@ dieser Datenbank ueberdehnen. Zusaetzlich ist die Zustaendigkeit fuer
 Bille, Wandse u. a.) nicht amtlich eindeutig belegt. Bewusst als
 dokumentierte, begruendete Luecke stehengelassen statt zu raten -
 konsistent mit dem Grundsatz, unklare Faelle als OFFEN zu markieren.
+
+## 27. Drei weitere unabhaengige Branches gemerged + BODENDENKMALSCHUTZ bundesweit abgeschlossen
+
+Ein systematischer Rundgang ueber alle lokalen `claude/*`-Branches
+(`git log --all --oneline --grep=<Stichwort>` bzw. ein direkter
+Ahead-Vergleich jedes Branches gegen `civeloq/authority-data-quality`)
+fand zwei weitere, bereits fertiggestellte, aber noch nicht gemergte
+Branches:
+
+- `claude/silly-noyce-994922` (Commit 04f1f4b): die in Kapitel 24
+  beschriebene Hessen/NRW/Saarland-ERSCHLIESSUNG-Reconciliation selbst.
+  Dry-Run gegen die Haupt-Checkout-DB ergab fuer alle 124 Zeilen
+  `DUPLICATE_EXACT` - die DB-Aenderung war bereits vorher direkt in den
+  Haupt-Checkout kopiert worden, nur der Code-Merge fehlte noch
+  (Merge-Commit afb0558, ein Dokumentationskonflikt durch Beibehalten
+  beider Kapitel geloest).
+- `claude/cranky-chandrasekhar-254d26` (Commit 063b73f): der KAMPFMITTEL-
+  NRW-Fix (19 ags=NULL-Zeilen), unabhaengig recherchiert und bereits in
+  Kapitel 21 dieses Berichts (von jener Session direkt geschrieben)
+  dokumentiert. Hier war die DB-Aenderung NOCH NICHT im Haupt-Checkout
+  angekommen - Dry-Run ergab echtes `NEW` fuer alle 19 Zeilen, daher
+  reale Anwendung (Backup -> Anwenden -> flake8 -> Testsuite -> Commit,
+  Merge-Commit d6ac1c7).
+- `claude/modest-lamport-2491da` (3 Commits): die Saarland-Bauaufsicht-
+  AGS-Scope-Fixes (Neunkirchen/Merzig-Wadern/St. Wendel/Saarlouis, siehe
+  Kapitel 20.1) - hier war die DB-Aenderung laut Commit-Nachricht bereits
+  explizit "in die geteilte Haupt-Checkout-DB synchronisiert" worden;
+  Dry-Run bestaetigte dies (alle Zielregeln bereits abgelaufen). Nur
+  Code-Merge noetig (Merge-Commit 9e09990, keine Konflikte).
+
+**Lehre:** nicht jeder Merge ist DB-inert, und nicht jeder ist es nicht
+- vor jedem gemergten Skript einen Dry-Run gegen die aktuelle DB fahren,
+unabhaengig davon, was die Commit-Nachricht behauptet oder was der
+letzte Merge ergeben hat.
+
+Im Zuge dieses Rundgangs wurde auch BODENDENKMALSCHUTZ bundesweit mit
+der korrekten Methodik neu geprueft. Ergebnis: **Saarland hatte
+ueberhaupt keine Regel** (weder STATE- noch Kreis-Ebene) - eine
+Recherche ergab, dass Bodendenkmalschutz dort seit der Neuordnung durch
+das SDschG vom 13.6.2018 zentral beim Landesdenkmalamt liegt (nicht bei
+den 6 Kreisen/dem Regionalverband; das saarlaendische Denkmalrecht kennt
+seither ueberhaupt keine "untere Denkmalschutzbehoerde" auf Kreisebene
+mehr, weder fuer Bau- noch fuer Bodendenkmale). Gefixt mit einer
+einzelnen STATE-Level-Regel (`seed_bodendenkmalschutz_saarland.py`). Die
+bereits bestehende normale DENKMALSCHUTZ-Regel fuer das Saarland war
+zur Kontrolle bereits korrekt als STATE-Level angelegt - keine
+Korrektur noetig.
+
+Zusaetzlich wurden 16 einzelne Kreis-Luecken in ansonsten fast
+vollstaendig abgedeckten Laendern geschlossen (keine neue
+Rechtsgrundlage noetig, nur Amtsermittlung): Bayern (6: Pfaffenhofen
+a.d.Ilm, Straubing-Bogen, Amberg, Neumarkt i.d.OPf., Neustadt
+a.d.Aisch-Bad Windsheim, Dillingen a.d.Donau), Niedersachsen (4: Region
+Hannover, Harburg, Heidekreis, Grafschaft Bentheim) und Nordrhein-
+Westfalen (6: Dueren, Rhein-Erft-Kreis, Borken, Herford, Hoexter,
+Soest). Fuer NRW bestaetigte die Recherche explizit das bereits in
+dieser Datenbank etablierte Muster: der Kreis ist dort NICHT "untere",
+sondern "Obere Denkmalbehoerde" (der Landrat als untere staatliche
+Verwaltungsbehoerde, zustaendig fuer Grabungserlaubnisse nach § 15
+DSchG NRW) - die tatsaechliche untere Denkmalbehoerde liegt bei den
+einzelnen kreisangehoerigen Gemeinden. Die neuen 6 NRW-Regeln folgen
+konsequent demselben "Obere Denkmalbehoerde"-Muster wie die bereits
+bestehenden 47.
+
+**Damit ist BODENDENKMALSCHUTZ bundesweit abgeschlossen: nur noch
+Berlin offen** (strukturell, identisches Muster wie bei allen anderen
+Auskunftsarten in dieser Datenbank).
