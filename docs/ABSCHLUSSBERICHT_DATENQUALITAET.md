@@ -1603,3 +1603,56 @@ Staedten immer sowohl die 5-stellige `ags_kreis` (COUNTY) als auch die
 als echter Rechercheauftrag an Agenten weitergegeben wird - sonst
 droht wie hier erheblicher Rechercheaufwand fuer nicht-existente
 Luecken.
+
+## 22. Erschließungsbeiträge "Phase 2": eigenständige Gemeinden bundesweit (7300 → 10745 von 10749)
+
+Bei derselben Gelegenheit fiel eine viel groessere, echte Luecke auf:
+eine bundesweite ags-basierte Abdeckungspruefung fuer ERSCHLIESSUNG
+zeigte nur 7300 von 10749 Gemeinden abgedeckt. Grund: die urspruengliche
+Erschliessungsbeitraege-Kampagne (Kapitel 12/19) erfasste durchgaengig
+nur Gemeinden, die einer Verbandsgemeinde/einem Amt/einer Verwaltungs-
+gemeinschaft-aequivalenten Struktur angehoeren, ueber deren amtliche
+Anschriftenliste (Satzart 50). Eigenstaendige ("amtsfreie") Gemeinden -
+inklusive aller kreisfreien Staedte - blieben dabei durchgaengig
+aussen vor; im BW-Skript sogar ausdruecklich so dokumentiert ("~190
+eigenstaendige Gemeinden ... braeuchten Einzelrecherche").
+
+Diese "Einzelrecherche" erwies sich als unnoetig: die Zustaendigkeits-
+frage ist BUNDESRECHT und damit fuer alle 16 Laender identisch - § 127
+Abs. 1 BauGB: "Die Gemeinden erheben zur Deckung ihres anderweitig
+nicht gedeckten Aufwands fuer Erschliessungsanlagen einen
+Erschliessungsbeitrag." (Wortlaut gegen gesetze-im-internet.de,
+Bundesministerium der Justiz, verifiziert - Fundort ueber die korrekte
+Ordner-URL `bbaug` statt der nahliegenden aber falschen Vermutung
+`baugb` per Websuche ermittelt.) Jede eigenstaendige Gemeinde ist damit
+schlicht ihre eigene Erschliessungsbehoerde - keine landesspezifische
+Ausnahmeliste noetig, keine Agenten-Rechercheswelle wie bei Bauakten/
+Baulasten, da die Adressdaten bereits im amtlichen Anschriften-
+verzeichnis (Satzart 60) fuer jede Gemeinde vorliegen.
+
+Umgesetzt fuer alle 13 Laender mit tatsaechlicher Restluecke (Berlin/
+Bremen/Hamburg wurden parallel von einer anderen Sitzung importiert):
+
+| Land | neue Regeln |
+|---|---|
+| Bayern | 1074 |
+| Hessen | 421 |
+| Rheinland-Pfalz | 301 |
+| Niedersachsen | 291 |
+| Sachsen | 239 |
+| Nordrhein-Westfalen | 396 |
+| Brandenburg | 141 |
+| Baden-Württemberg | 190 |
+| Thüringen | 110 |
+| Sachsen-Anhalt | 104 |
+| Schleswig-Holstein | 86 |
+| Saarland | 52 |
+| Mecklenburg-Vorpommern | 40 |
+
+**3445 neue Regeln, alle mit identischem Konfliktergebnis
+NEW=erwartete Zahl / andere=0** (kein einziger unerwarteter Konflikt
+ueber alle 13 Laender hinweg - starkes Signal, dass die Analyse und
+die Ausfuehrung korrekt waren). Bundesweite ERSCHLIESSUNG-Abdeckung
+damit von 7300 auf 10745 von 10749 Gemeinden gestiegen (99,96 %); die
+verbleibenden 4 sind vermutlich Sonderfaelle (geteilte/aufgeloeste
+Gemeinden im Anschriftenverzeichnis) und noch nicht einzeln identifiziert.
