@@ -84,7 +84,10 @@ def main(apply_changes: bool) -> None:
 
         print(f"  EXPIRE [{expire_status}] {expire_name} (ags={TARGET_AGS}, jurisdiction_id={expire_id})")
         print(f"  KEEP   [{keep_status}] {keep_name} (ags={TARGET_AGS}, jurisdiction_id={keep_id})")
-        print(f"  because correct replacement already exists: [{repl_status}] {repl_name} (ags={CORRECT_STADT_AGS}, jurisdiction_id={repl_id})")
+        print(
+            f"  because correct replacement already exists: [{repl_status}] {repl_name} "
+            f"(ags={CORRECT_STADT_AGS}, jurisdiction_id={repl_id})"
+        )
 
         if apply_changes:
             cur.execute(
