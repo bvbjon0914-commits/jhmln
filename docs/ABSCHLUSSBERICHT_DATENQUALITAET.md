@@ -1546,3 +1546,80 @@ diese Kreis-Ebene-Kampagne abgedeckt wurde). Damit ist die
 Bauakten-/Baulastenauskunft-Welle fachlich abgeschlossen; alle
 verbleibenden Luecken sind dokumentierte, bewusste Ausnahmen und keine
 stillen Fehlstellen.
+
+## 21. KAMPFMITTEL Nordrhein-Westfalen: vermeintlicher Totalausfall war ein NULL-Feld-Fehlalarm
+
+Auftrag: eine SQL-Abfrage (`WHERE request_type_id='KAMPFMITTEL' AND
+active=1 AND state='Nordrhein-Westfalen'`) hatte fuer NRW ausschliesslich
+`ags=NULL`-Zeilen zurueckgeliefert und war als "NRW hat ueberhaupt keine
+KAMPFMITTEL-Regel, anders als 13 der anderen 15 Bundeslaender" in einer
+frueheren Sitzung (Abschnitt 15.2 / 16) an eine kuenftige Sitzung
+weitergegeben worden.
+
+**Tatsaechlicher Befund nach Pruefung:** die Ausgangsannahme war falsch -
+ein Fehlalarm nach demselben Muster wie in Abschnitt 18
+(AGS-Ebenen-Check-Bug) und beim `state`/`municipality`-NULL-Vergleichsbug
+in `JurisdictionStagingService._find_matching_existing()`, diesmal aber
+umgekehrt: **377 von 396 NRW-Gemeinden hatten bereits eine korrekt
+AGS-gescopte, aktive MUNICIPALITY-Regel** (Quelle "Kampfmittelbehoerden
+FINAL 20260831 - NRW_Ordnungsbehoerden + Gemeinde-Anschriften
+31.01.2026", `state=NULL` statt `'Nordrhein-Westfalen'` gesetzt) - genau
+diese 377 korrekten Zeilen hat die Ausgangsabfrage durch den
+`state='Nordrhein-Westfalen'`-Filter komplett uebersehen. Nur 19
+Gemeinden hatten tatsaechlich eine kaputte Zeile aus demselben
+Importlauf: `state` korrekt gesetzt, aber `ags=NULL` - dadurch fuer den
+AGS-basierten MUNICIPALITY-Matcher nie auffindbar, obwohl Authority-
+Zuordnung und Adresse (aus dem amtlichen Anschriftenverzeichnis, Stand
+31.01.2026) bereits korrekt waren. Verifiziert vor jeder Aenderung per
+Rohdatenabgleich (19 kaputte + 377 korrekte = 396 = Gesamtzahl der
+NRW-Authorities/-Gemeinden, keine Ueberschneidung).
+
+**Rechtsgrundlage der MUNICIPALITY-Modellierung** (unabhaengig direkt an
+der Primaerquelle nachgeprueft, nicht aus der Importdatei-Referenz
+uebernommen): https://recht.nrw.de/mblnrw/2006-s288/ ("Richtlinie fuer
+die Zusammenarbeit zwischen den Bauaufsichtsbehoerden und dem
+staatlichen Kampfmittelbeseitigungsdienst", MBl. NRW. 2006 S. 288) -
+"Kampfmittelbeseitigung ist eine Aufgabe der Gefahrenabwehr und gemaess §
+1 Abs. 1 Ordnungsbehoerdengesetz (OBG) Aufgabe der oertlichen
+Ordnungsbehoerden. Zur Unterstuetzung der oertlichen Ordnungsbehoerden
+unterhaelt das Land NRW einen Kampfmittelbeseitigungsdienst [...], der
+auf Anforderung der oertlichen Ordnungsbehoerde [...] untersucht,
+bewertet und raeumt." Der staatliche KBD ist zudem nur an 2 Standorten
+organisiert (Bezirksregierung Arnsberg fuer die Bezirke
+Arnsberg/Detmold/Muenster, Duesseldorf fuer Duesseldorf/Koeln), nicht 5
+wie bei Bodendenkmalschutz NRW (Abschnitt 17) - und wird laut Primaerquelle
+nur unterstuetzend auf Ersuchen der Gemeinde taetig, ist also selbst
+nicht die zustaendige Stelle fuer eine Buerger-Anfrage. Zusaetzlich
+eigenstaendig ueber die offizielle Seite der Bezirksregierung Arnsberg
+bestaetigt (bra.nrw.de/recht-ordnung/gefahrenabwehr/
+kampfmittelbeseitigungsdienst-westfalen-lippe-kbd-wl): "Der Schutz der
+Bevoelkerung vor den von Kampfmitteln ausgehenden Gefahren obliegt den
+oertlichen Ordnungsbehoerden, also den Staedten und Gemeinden." Eine
+STATE-Ebene-Regel auf eine Bezirksregierung (das Muster der anderen 13
+Bundeslaender) waere fuer NRW daher fachlich falsch; MUNICIPALITY-Ebene
+je Gemeinde ist korrekt - konsistent mit den 377 bereits bestehenden,
+nun endlich vollstaendigen Zeilen.
+
+**Behobene Luecke** (`backend/scripts/seed_kampfmittel_nrw_municipality.py`):
+die 19 Zeilen (Borgentreich, Brüggen, Enger, Erkrath, Gescher, Grefrath,
+Halle (Westfalen), Harsewinkel, Hövelhof, Hückeswagen, Kerpen, Langenfeld
+(Rhld.), Leichlingen (Rhld.), Meschede, Roetgen, Saerbeck, Siegen,
+Solingen, Stolberg (Rhld.)) wurden ueber `JurisdictionStagingService`
+durch korrekt AGS-gescopte Nachfolgeregeln ersetzt (dieselbe bereits
+zugeordnete Authority, `verification_status=AUTO_IMPORTED` wie die 377
+Geschwisterzeilen), die alten `ags=NULL`-Zeilen nach der etablierten
+Abloese-Konvention (`valid_to`=Vortag, `active` bleibt `True`) fuer die
+Historie erhalten. **Ergebnis: 396/396 NRW-Gemeinden mit aktiver,
+matchbarer KAMPFMITTEL-MUNICIPALITY-Regel.**
+
+Bayern (96 COUNTY-Regeln ueber die 2 Sprengkommandos) und
+Sachsen-Anhalt (bewusst offen, siehe Abschnitt 15.2) unveraendert
+geprueft und bestaetigt unveraendert korrekt/bewusst offen - kein
+Handlungsbedarf.
+
+**Lehre fuer kuenftige Sitzungen:** eine "0 Treffer bei state='X'"-Abfrage
+beweist bei diesem Datenbestand NICHT die Abwesenheit einer Regel - vor
+jeder neuen Kampagne den tatsaechlichen Bestand zusaetzlich ueber
+`ags LIKE '<Laendercode>%'` (ohne `state`-Filter) pruefen, siehe bereits
+[[feedback-ags-level-coverage-check]] und
+[[feedback-staging-dedup-null-fields]].
