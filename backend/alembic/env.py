@@ -1,8 +1,9 @@
 import os
+import ssl
 import sys
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
+from sqlalchemy import create_engine, engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
@@ -80,11 +81,27 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    url = config.get_main_option("sqlalchemy.url")
+    if url.startswith("postgresql+pg8000://"):
+        # pg8000 (reiner Python-Treiber, keine kompilierten DLLs - Workaround
+        # fuer Windows-Rechner ohne funktionierendes psycopg2-binary-Wheel)
+        # kennt "sslmode"/"ssl_context=true" als URL-Query-Parameter NICHT;
+        # diese SQLAlchemy-Version (2.0.52) wandelt das auch nicht automatisch
+        # um (opts.update(url.query) reicht den rohen String durch). Deshalb
+        # hier ein echtes ssl.SSLContext-Objekt per connect_args uebergeben,
+        # statt sich auf engine_from_config()/die URL allein zu verlassen.
+        # Betrifft NUR den pg8000-Sonderfall - Produktion (Linux/Render) nutzt
+        # weiterhin ganz normal postgresql:// mit psycopg2.
+        connectable = create_engine(
+            url, poolclass=pool.NullPool,
+            connect_args={"ssl_context": ssl.create_default_context()},
+        )
+    else:
+        connectable = engine_from_config(
+            config.get_section(config.config_ini_section, {}),
+            prefix="sqlalchemy.",
+            poolclass=pool.NullPool,
+        )
 
     with connectable.connect() as connection:
         context.configure(
