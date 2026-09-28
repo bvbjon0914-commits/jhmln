@@ -1667,3 +1667,53 @@ eine bezirkliche Aufspaltung der Erschliessungsbeitrags-Erhebung,
 anders als bei Bauaufsicht/Bodendenkmalschutz). **Damit ist die
 bundesweite ERSCHLIESSUNG-Abdeckung vollstaendig: 10749 von 10749
 Gemeinden (100 %).**
+
+## 23. Abgleich Erschließungsbeiträge: generische vs. präzise Regeln nach Merge (Hessen/NRW/Saarland)
+
+Eine parallele Session hatte, unabhängig von Kapitel 22, für Teile von
+Hessen (8 Gemeinden), Nordrhein-Westfalen (64 Gemeinden) und dem
+Saarland (alle 52 Gemeinden) je Gemeinde einzeln das konkrete
+Bauamt/die Bauverwaltung bzw. einen Eigenbetrieb recherchiert und
+wörtlich zitiert (`seed_erschliessung_{hessen,nrw,saarland}.py`), statt
+wie Kapitel 22 pauschal nur „§ 127 Abs. 1 BauGB" und eine generische
+„Gemeindeverwaltung (Erschließungsbeiträge)" zu hinterlegen. Nach dem
+Merge dieser Session (civeloq/authority-data-quality, commit 9ca366b)
+standen damit für dieselben 124 AGS zwei fachlich richtige, aber
+unterschiedlich präzise Regelsätze nebeneinander: die generische
+Sammelregel war bereits produktiv in der echten DB angewendet
+(Hessen 421/421, NRW 396/396, Saarland 52/52 – vollständige Abdeckung),
+die präziseren Skripte lagen dagegen nur als Code vor und wurden nie
+ausgeführt.
+
+Analog zum bereits früher durchgeführten Abgleich für die Stadtstaaten
+(Berlin/Bremen/Bremerhaven/Hamburg, `reconcile_erschliessung_stadtstaaten.py`,
+commit 4adbcc4 – dort ersetzte die je Bezirksamt/Amt recherchierte
+Fassung die pauschale Sammelregel) wurde ein neues Abgleichsskript
+`reconcile_erschliessung_hessen_nrw_saarland.py` gebaut: es importiert
+`ENTRIES`/`GEMEINDEN` direkt aus den drei präzisen Skripten (keine
+Datenduplizierung), staged jeden Eintrag über
+`JurisdictionStagingService.stage_entry()` und gibt ihn anschließend
+**bewusst auch bei einem `CONTRADICTS_VERIFIED`-Konflikt** frei (nicht
+nur bei `NEW`, wie es die präzisen Skripte selbst täten) – genau dieser
+Konfliktfall war für alle 124 AGS erwartet, weil die generische Regel
+für jede von ihnen bereits als VERIFIED aktiv war.
+`approve_entry()` setzt dabei automatisch `valid_to` auf der alten
+generischen Regel (Historie bleibt erhalten, kein Datenverlust, siehe
+`app/services/jurisdiction_staging.py` Zeile ~228–245); AGS, die nur in
+der generischen Kampagne vorkommen (der Großteil von Hessen/NRW), bleiben
+unverändert – dafür existiert keine bessere Alternative.
+
+Ablauf: Dry-Run gegen eine Kopie der echten SQLite-Dev-DB (124/124
+Einträge, ausnahmslos `CONTRADICTS_VERIFIED`, keine unerwarteten
+`DUPLICATE_EXACT`), danach Backup der echten DB
+(`authority_matching.db.bak_pre_erschliessung_reconcile_hessen_nrw_saarland_<Zeitstempel>`),
+danach derselbe Lauf gegen die echte DB. Ergebnis: **124 generische
+Regeln durch die präziseren Einzelrecherche-Regeln abgelöst** – Hessen
+8 (alle VERIFIED), NRW 64 (48 VERIFIED / 16 AUTO_IMPORTED, gestaffelt
+nach tatsächlicher Beleglage), Saarland 52 (19 VERIFIED / 33
+AUTO_IMPORTED). Die bundesweite ERSCHLIESSUNG-Abdeckung bleibt
+unverändert bei 10749 von 10749 Gemeinden (100 %) – dies ist eine reine
+Qualitätsverbesserung (benannte Fachbehörde statt pauschaler
+„Gemeindeverwaltung", ehrliche `verification_status`-Differenzierung
+bei NRW/Saarland), keine Abdeckungsänderung. `flake8 app/` und die
+volle Testsuite blieben grün.
