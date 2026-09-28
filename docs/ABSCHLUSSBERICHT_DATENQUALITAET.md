@@ -2085,3 +2085,135 @@ kleinere Restmengen) wurden in dieser Sitzung NICHT mit angefasst, da
 sie jeweils eigene, noch unverifizierte Root-Causes haben koennten
 (nicht zwingend derselbe "Landkreis-auf-Kreisstadt-gepinnt"-Bug) - als
 naechster Schritt fuer eine kuenftige Sitzung vorgemerkt.
+
+## 30. Alle verbleibenden Duplikat-Kategorien aus Kapitel 29 einzeln
+    diagnostiziert und, wo sicher, gefixt (Offenbach, Kassel,
+    Wasserbehoerde-Rescoping, Kataster-BW, Heilbronn/Karlsruhe,
+    KAMPFMITTEL Sachsen)
+
+Direkte Fortsetzung von Kapitel 29: fuer jede der dort zurueckgestellten
+Kategorien wurde per Read-Only-Diagnose-Agent zunaechst der Root Cause
+verifiziert, BEVOR irgendetwas angefasst wurde - denn nicht jede
+Duplikat-Gruppe ist derselbe Bug. Drei grundverschiedene, alle bereits
+bekannte Faelle traten auf:
+
+**(A) Mis-scoped-Entity-Bug (identisch zu Kapitel 20.1/29), aber an
+Einzelfaellen, die das bundesweite Skript nicht erfasst hatte:**
+- Offenbach (Hessen): "Stadt Offenbach - Untere Bauaufsichtsbehoerde"
+  war auf COUNTY-Ebene faelschlich auf ags=06438 (Landkreis Offenbachs
+  eigene AGS) gepinnt statt auf die eigene AGS 06413, wo bereits eine
+  VERIFIED korrekte Regel existiert (BAUAKTEN + BAULASTEN, 2 Regeln).
+- Kassel (Hessen): dieselbe Kreis-AGS-Verwechslung fuer "Stadt Kassel"
+  bei ALTLASTEN (1 Regel) und bei HOCHWASSERSCHUTZ/WASSERSCHUTZ
+  (2 Regeln) - korrekte Ersatzregel jeweils bereits vorhanden an der
+  eigenen AGS 06611000.
+- Heilbronn/Karlsruhe (Baden-Wuerttemberg), KATASTER: hier war der Bug
+  getarnt - "Katasteramt Heilbronn"/"Katasteramt Karlsruhe" (OHNE
+  "Landkreis"-Praefix im Namen) waren tatsaechlich die jeweiligen
+  Landkreis-Vermessungsaemter, aber auf die AGS der gleichnamigen
+  KREISFREIEN STADT gepinnt statt auf die eigene Landkreis-AGS. Beweis:
+  "Katasteramt Heilbronn" hat exakt dieselbe Adresse (Lerchenstrasse 40)
+  wie das bereits VERIFIED "Landratsamt Heilbronn - Vermessungsamt"
+  (ags=08125); "Katasteramt Karlsruhe" (Beiertheimer Allee 2) ist laut
+  offizieller LGL-Baden-Wuerttemberg-Liste "Untere Vermessungsbehoerden
+  - Landratsaemter" exakt die Adresse von Landratsamt Karlsruhes Amt fuer
+  Vermessung, Geoinformation und Flurneuordnung. Beide mis-scoped Zeilen
+  abgelaufen (2 Regeln).
+- KAMPFMITTEL Sachsen: derselbe Bug, aber ~90-fach in einer einzigen
+  Landeslieferung: fuer viele saechsische Gemeinden existierte neben der
+  eigenen, korrekten Zeile eine zweite, unter der EIGENEN AGS abgelegte
+  Zeile mit Name/Adresse einer NACHBARGEMEINDE 1:1 kopiert (z.B. ags
+  14521040/Auerbach hatte zusaetzlich eine Zeile "Auerbach" mit Adresse
+  "Am Markt 8, Burkhardtsdorf" - identisch zu Burkhardtsdorfs eigener
+  Zeile). Ein Diagnose-Agent klassifizierte alle 102 Duplikat-Gruppen
+  programmatisch per Adress-Abgleich (nicht nur Stichprobe): 92 eindeutig
+  sicher (Adresse matcht exakt eine unabhaengig existierende korrekte
+  Zeile), 10 bewusst als OFFEN zurueckgestellt, weil deren zitierte
+  Adresse zu KEINER echten Behoerde passt (z.B. drei verschiedene
+  Gemeinden zitieren alle "Tirpersdorf, Hauptstrasse 41", obwohl
+  Tirpersdorfs echte Adresse "Hauptstrasse 36" ist - ein tieferliegendes,
+  noch ungeklaertes Fehlbeschriftungsproblem mit mindestens einer
+  Cross-Kreis-Verwechslung, siehe `fix_kampfmittel_sachsen_missfiled_
+  duplikate.py`). Nur die 92 verifizierten Faelle wurden gefixt.
+
+**(B) Legitime Doppelzustaendigkeit, die aber noch identisch (statt
+nach Gebiet getrennt) gescoped war - braucht Rescoping, kein Expire:**
+- 8 Staedte (Niedersachsen: Goslar, Goettingen, Hildesheim, Celle,
+  Cuxhaven, Lueneburg - alle "grosse selbstaendige Stadt" nach NKomVG;
+  Saarland: Neunkirchen, Saarlouis - kreisweite Kombibehoerden) hatten
+  fuer HOCHWASSERSCHUTZ/WASSERSCHUTZ ihre eigene, echte Untere
+  Wasserbehoerde noch auf derselben COUNTY-AGS wie ihr Landkreis, obwohl
+  fuer BAUAKTEN/BAULASTEN genau diese Staedte bereits laengst auf ihre
+  eigene MUNICIPALITY-AGS herunterskaliert waren. Fix: dieselbe, bereits
+  bekannte Behoerde bekam eine neue MUNICIPALITY-Regel auf ihrer eigenen
+  Gemeinde-AGS (ueber `JurisdictionStagingService`, kein externer Beleg
+  noetig - die Behoerde war ja schon bekannt), die alte COUNTY-Zeile
+  wurde abgelaufen; der Landkreis behaelt seine unveraenderte COUNTY-
+  Regel (16 Regeln).
+- 7 Baden-Wuerttemberg Grosse Kreisstaedte (Goeppingen, Ludwigsburg,
+  Heidenheim, Konstanz, Loerrach, Reutlingen, Tuebingen) hatten dasselbe
+  Problem bei KATASTER, zunaechst UNDOKUMENTIERT (kein Notes-Feld) im
+  Unterschied zu den 33 Bayern-AEDBV-Faellen. Per Web-Recherche gegen
+  offizielle Quellen verifiziert: § 7 Abs. 2 Vermessungsgesetz Baden-
+  Wuerttemberg (VermG BW, in Kraft seit 1.1.2005) benennt genau diese
+  Staedte zusaetzlich zu den Landkreisen als eigene untere
+  Vermessungsbehoerde - amtlich bestaetigt durch die LGL-Baden-
+  Wuerttemberg-Liste "Untere Vermessungsbehoerden - Staedte" (Stand
+  12.09.2019). Dasselbe Rescoping angewendet (7 Regeln).
+
+**(C) Falscher Alarm - schon beim ersten Blick als legitim erkannt,
+kein Fix noetig:**
+- ALTLASTEN: 5 von 6 Duplikat-Gruppen (Goettingen, Hildesheim, Celle,
+  Cuxhaven, Lueneburg) sind dieselben "grosse selbstaendige Stadt"-
+  Sonderfaelle wie oben, bereits per Notes-Feld in der DB selbst
+  dokumentiert ("Niedersaechsischer Sonderfall: zusaetzliche
+  Zustaendigkeit der grossen selbstaendigen Stadt neben dem
+  Landkreis") - kein Rescoping-Bug hier, weil fuer ALTLASTEN (anders als
+  Wasser) beide Zeilen bewusst denselben Geltungsbereich teilen sollen.
+- HOCHWASSERSCHUTZ/WASSERSCHUTZ: 40 der 58 verbliebenen Bayern-Paare
+  sind dokumentierte, gewollte Teilzustaendigkeit nach Art. 63 BayWG
+  (z.B. kleine Klaeranlagen) neben der allgemeinen Unteren
+  Wasserbehoerde des Landratsamts - explizit im Notes-Feld belegt.
+- KATASTER: 33 der 40 Bayern-Paare sind die bekannte AEDBV-
+  Mehrkreis-Konsolidierung nach VermBezV (ein AEDBV-Amt bedient mehrere
+  Landkreise legitim) - ebenfalls im Notes-Feld dokumentiert.
+- GRUNDBUCH: alle 10 DISTRICT-Ebene-Duplikate (Essen, Stuttgart,
+  Moenchengladbach, Duisburg, Bremen, Herne, Freising-Flughafen-
+  Sonderfall) sind Grundbuchbezirke, die als judizielle Gerichtsbezirke
+  per Konstruktion NICHT deckungsgleich mit einer AGS sind - jede Zeile
+  deckt einen anderen, nicht ueberlappenden Stadtbezirk/Grundbuchbezirk
+  ab (ueberprueft: keine zwei Zeilen einer Gruppe teilen sich denselben
+  `district`-Wert). Kein Bug, keine Aenderung.
+- ERSCHLIESSUNG (1 Gruppe) und die uebrigen singulaeren MUNICIPALITY-
+  Duplikate bei ALTLASTEN/BODENDENKMALSCHUTZ/DENKMALSCHUTZ/KATASTER
+  waren allesamt Berlin (ags=11000000, 12 Bezirke) - das laengst bekannte
+  legitime Mehrfach-Zeilen-Muster.
+
+**Ergebnis:** von den nach Kapitel 29 verbliebenen ~199 Duplikat-Gruppen
+wurden 10 Einzel- bzw. Rescoping-Skripte mit insgesamt 26 gefixten
+Regeln (Offenbach 2, Kassel ALTLASTEN 1, Kassel Wasser 2, Wasserbehoerde-
+Rescoping 16, Kataster-BW-Rescoping 7 - wobei diese Zahl je nach
+Zaehlweise Ueberschneidungen hat, siehe einzelne Commits) und 92 weitere
+Regeln bei KAMPFMITTEL Sachsen gefixt (Details je in den einzelnen
+Skript-Docstrings unter `backend/scripts/`), der weit ueberwiegende Rest
+als beim ersten Blick oder nach Recherche als legitim bestaetigt und
+bewusst unangetastet gelassen. Ein erneuter Matching-Praxistest nach
+jedem einzelnen Fix bestaetigte MULTIPLE_MATCHES sinkend von 109 (Beginn
+Kapitel 29) ueber 87 (nach den urspruenglichen 144 Bauaufsicht-Regeln),
+57 (nach Offenbach/Kassel/Wasser-Rescoping/Kataster-BW/Heilbronn-
+Karlsruhe) auf 54 (nach dem KAMPFMITTEL-Fix - die Stichprobe testet nur
+je eine repraesentative Gemeinde pro Kreis, daher wirkt sich nicht jede
+der 92 gefixten Zeilen auf die 4411 Testkombinationen aus). Von den
+verbliebenen 54 sind die meisten bereits als legitim identifiziert
+(Bayern-Teilzustaendigkeit, Hamburg/Berlin ohne Strassenangabe); ein
+kleiner Rest (u.a. die 10 offenen KAMPFMITTEL-Sachsen-Faelle) bleibt
+fuer eine kuenftige Sitzung vorgemerkt.
+
+**Bewusst noch offen fuer eine kuenftige Sitzung:** die 10 KAMPFMITTEL-
+Sachsen-Faelle mit widerspruechlicher Adresse (siehe oben) - diese
+brauchen eine gezielte Untersuchung, ob es sich um eine dritte,
+noch unbekannte Fehlerklasse handelt (evtl. eine systematische
+Off-by-N-Verschiebung in der urspruenglichen Importliste), bevor
+irgendeine Korrektur vorgeschlagen wird. `flake8 app/` und die volle
+Testsuite (162 passed) blieben nach JEDEM einzelnen Fix in diesem Kapitel
+gruen.
