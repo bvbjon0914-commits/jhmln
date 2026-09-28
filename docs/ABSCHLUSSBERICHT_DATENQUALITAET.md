@@ -1425,3 +1425,86 @@ das bleibt für eine spätere Sitzung offen, ebenso wie die übrigen 6
 Länder (Berlin, Bremen, Hamburg - Stadtstaaten ohne
 Verbandsgemeinde-Konzept; Hessen, NRW, Saarland - laut Strukturrecherche
 kaum bzw. keine Hebelwirkung vorhanden).
+
+## 20. Bauakten-/Baulastenauskunft: von 6 auf praktisch alle 16 Bundesländer
+
+Eine frische Bestandsaufnahme zeigte: BAUAKTEN und BAULASTEN waren nach
+der `state`-Spalte nur in 6 Ländern "abgedeckt" - eine
+`ags`-basierte Nachzählung ergab aber, dass tatsächlich schon 210 von
+401 Kreisen (BAUAKTEN) bzw. 139 von 401 (BAULASTEN) durch ältere,
+nicht `state`-getaggte Massenimport-Regeln abgedeckt waren. Damit war
+der wirkliche Umfang dieser Welle von Anfang an kleiner als die reine
+`state`-Zählung vermuten liess - aber immer noch der mit Abstand
+grösste verbleibende Bauakten-Baulasten-Block.
+
+### 20.1 Ein zweiter echter Bug in der Konflikterkennung
+
+Beim ersten Anwenden von BAUAKTEN Bayern fiel auf, dass 80 von 106
+neuen Regeln als "NEW" durchgingen, obwohl fuer denselben AGS schon
+eine `state=NULL`-Altregel existierte - ein sofortiger Nachtest zeigte,
+dass `_find_matching_existing()` in `jurisdiction_staging.py` einen
+strikten `state`-Abgleich verlangte, der `NULL != 'Bayern'` nie als
+Treffer wertete. Ein zweiter, verwandter Bug betraf 8 von 10
+Bayern-Ausnahmegemeinden: eine Altregel hatte zusaetzlich zum AGS auch
+das Textfeld `municipality` befuellt, waehrend die neue Regel dieses
+redundante Anzeigefeld nicht setzte - wieder ein exakter
+Textvergleich, der zwei echte Duplikate als "verschieden" behandelte.
+
+**Sofort behoben** (`app/services/jurisdiction_staging.py`): sobald
+`ags` gesetzt ist, bestimmt es die Geografie bereits eindeutig - `state`
+und `municipality` werden dann nicht mehr als hartes Vergleichsfeld
+verlangt (district/postal_code/street/house_number bleiben unveraendert
+Teil des Vergleichs, damit unterschiedliche Strassen/Bezirke innerhalb
+desselben AGS weiterhin getrennt bleiben). 2 Regressionstests ergaenzt.
+Die zuerst fehlerhaft angewendete Bayern-Charge wurde vor dem Fix aus
+der echten Datenbank zurueckgerollt (Backup-Wiederherstellung) und nach
+dem Fix sauber neu angewendet.
+
+**Wichtiger Nebenfund:** eine systematische Pruefung zeigte ~374
+vorbestehende (nicht in dieser Sitzung entstandene) Paare aktiver
+Regeln mit identischem (request_type, matching_level, ags) quer durch
+ALTLASTEN, BAUAKTEN, BAULASTEN, GRUNDBUCH, HOCHWASSERSCHUTZ,
+KAMPFMITTEL, KATASTER und WASSERSCHUTZ. Da jedes Paar eine
+Einzelfallentscheidung braucht (welche der beiden Regeln ist korrekt?),
+wurde dies als eigene Aufgabe fuer eine spaetere Sitzung vorgemerkt statt
+im Vorbeigehen "geloest".
+
+### 20.2 Acht Bundesländer mit demselben Muster: Kreis + benannte Ausnahmeliste
+
+Fuer BAUAKTEN und (meist) BAULASTEN gilt bundesweit fast durchgaengig
+dasselbe Muster: Landkreise/kreisfreie Staedte sind untere
+Bauaufsichtsbehoerde, mit einer geschlossenen, amtlich benannten Liste
+von Ausnahme-Gemeinden, die trotz Kreisangehoerigkeit eine eigene
+Bauaufsichtsbehoerde fuehren. Jede Rechtsgrundlage wurde per
+Live-Browser-Abruf direkt gegen das amtliche Landesrecht-Portal
+wort-fuer-wort verifiziert:
+
+| Land | Kreis-Norm | Ausnahmen |
+|---|---|---|
+| Bayern | Art. 53 BayBO | 10 Kommunen (ZustVBau) - **kein Baulastenverzeichnis in Bayern ueberhaupt** |
+| Sachsen | §§ 57/83 SächsBO | 4 eingekreiste Staedte (Görlitz, Hoyerswerda, Plauen, Zwickau) |
+| Thüringen | §§ 60/90 ThürBO | 5 Grosse kreisangehoerige Staedte |
+| Saarland | §§ 58/83 LBO | 6 Staedte (ZustV-LBO), inkl. Landeshauptstadt Saarbrücken |
+| Hessen | §§ 60/85 HBO | 6 Sonderstatus-Staedte (§ 4a HGO) + Hanau als 6. kreisfreie Stadt seit 1.1.2026 |
+| Bremen | - | Bremen-Stadt/Bremerhaven getrennt (wie bei anderen Auskunftsarten) |
+| Hamburg | - | nur BAULASTEN (zentral beim LGV) - BAUAKTEN bleibt bewusst offen (bezirklich wie Berlin) |
+| Baden-Württemberg | § 46 LBO/§ 15 LVG | 96 Grosse Kreisstädte (Quelle: Wikipedia-Kategorie, daher Tier "schwächer") - **BAULASTEN bewusst NICHT bearbeitet**, da § 72 Abs. 3 LBO die Verzeichnisfuehrung ausdruecklich der GEMEINDE zuweist, nicht dem Kreis (ein Kreis-Ebene-Skript waere dort schlicht falsch; braeuchte eine eigene Gemeinde-Ebene-Kampagne wie ERSCHLIESSUNG) |
+| Nordrhein-Westfalen | § 57/85 BauO NRW | 167 Grosse/Mittlere kreisangehoerige Staedte (amtliche Verordnung nach § 4 GO NRW, direkt per Live-Abruf gelesen) |
+
+Ergebnis: 26+26+44+24+64+4+1+140+440 = 769 neue Regeln ueber die 9
+bearbeiteten Laender, abzueglich der jeweils schon per Altregeln
+abgedeckten Faelle (von der Konfliktpruefung korrekt erkannt und
+uebersprungen). Matching stichprobenartig verifiziert je Land,
+inklusive der neuen kreisfreien Stadt Hanau.
+
+### 20.3 Zwischenstand
+
+**BAUAKTEN ist damit von 401 auf nur noch 78 offene Kreise gesunken**
+(NI 30, RLP 18, Sachsen-Anhalt 11, Brandenburg 8, SH 7, MV 2, plus
+Hamburg/Berlin je 1 bewusst offen wegen bezirklicher Struktur) -
+**BAULASTEN von 401 auf 182** (dieselben 76 plus die bewusst
+unbearbeiteten 96 Bayern + 9 Baden-Württemberg + 1 Berlin). Fuer die
+verbleibenden 6 "einfachen" Laender (Niedersachsen, Rheinland-Pfalz,
+Sachsen-Anhalt, Brandenburg, Schleswig-Holstein, Mecklenburg-
+Vorpommern) laeuft bereits eine weitere Recherche-Welle nach demselben
+Muster.
