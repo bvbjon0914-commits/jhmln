@@ -2217,3 +2217,83 @@ Off-by-N-Verschiebung in der urspruenglichen Importliste), bevor
 irgendeine Korrektur vorgeschlagen wird. `flake8 app/` und die volle
 Testsuite (162 passed) blieben nach JEDEM einzelnen Fix in diesem Kapitel
 gruen.
+
+## 31. NOT_APPLICABLE-Status eingefuehrt + letzte 11 echte Luecken bundesweit geschlossen
+
+Nach Kapitel 30 zeigte der volle Coverage-Report (alle 10.749 Gemeinden x
+11 Auskunftsarten, 118.239 Kombinationen statt Stichprobe) 2.056 NO_MATCH-
+und 1.227 CONFLICTING-Faelle. Drei Read-Only-Analyse-Agenten haben JEDEN
+einzelnen Fall klassifiziert (keine Stichprobe): fast alles war bereits
+verstanden und dokumentiert, nur die technische Repraesentation fehlte.
+
+**Der Kern des Problems war technisch:** es gab keinen Weg, "existiert hier
+nachweislich nicht" (z.B. Bayern hat laut Art. 53 BayBO ueberhaupt kein
+Baulastenverzeichnis - 2.055 von 2.056 NO_MATCH-Faellen) von "unbekannte
+Luecke" zu unterscheiden, und jeder nicht-MATCHED Status liess eine Anfrage
+dauerhaft bei PARTIALLY_COMPLETED haengen, selbst wenn eine Auskunftsart
+gar nicht existiert.
+
+**Neuer Status `NOT_APPLICABLE`:** `Jurisdiction.authority_id` ist jetzt
+nullable; eine Zeile mit `authority_id=NULL` bedeutet "nicht vorhanden" -
+der Matcher gibt dafuer `MatchingStatus.NOT_APPLICABLE` zurueck (Begruendung
+aus der Zeile eigenem `notes`-Feld). Genau EINE neue STATE-Ebene-Regel
+(`seed_not_applicable_bayern_baulasten.py`) deckt alle 2.055 betroffenen
+bayerischen Gemeinden ab; `documents.py` blockiert dadurch nicht mehr
+(neues `not_applicable`-Feld in der Response statt `failed`), `cases.py`
+bekommt einen neuen Case-Item-Status `NICHT_ERFORDERLICH` statt eines
+ewigen Phantom-Todos. Frontend: neue Badge-Farbe (`status.na`), bewusst
+anders als "Kein Treffer".
+
+**1.219 von 1.227 CONFLICTING-Faellen** waren bereits bestaetigt legitime
+Mehrfachzustaendigkeiten (Bayern Art. 63 BayWG Teilzustaendigkeit,
+Niedersachsen grosse selbstaendige Stadt, Berlin/Hamburg/Grundbuchbezirke
+ohne Strassenangabe) - die werden NICHT zu einem erzwungenen Treffer
+gemacht (waere fachlich falsch), sondern bleiben ueber die bereits
+vorhandene Kandidaten-Auswahl im Zuordnungs-Assistenten von Hand aufloesbar.
+
+**Die verbleibenden 11 echten Luecken wurden geschlossen:**
+
+- **10x KAMPFMITTEL Sachsen** (Bergen, Theuma, Werda, Hohendubrau, Muecka,
+  Quitzdorf am See, Bahretal, Liebstadt, Jesewitz, Zschepplin): jede dieser
+  kleinen Gemeinden hatte zwei Ortspolizeibehoerde-Zeilen (eigene Adresse
+  vs. gemeinsame Verwaltungsverband-/-gemeinschaft-Geschaeftsstelle) - beide
+  korrekt auf die Gemeinde-AGS gescoped, kein Scoping-Bug, sondern eine
+  "welche Adresse ist operativ richtig"-Frage. Per Web-Recherche gegen
+  offizielle .de-Quellen bestaetigt: Verwaltungsverband Jaegerswald (Bergen/
+  Theuma/Werda), Verwaltungsverband Diehsa (Hohendubrau/Muecka/Quitzdorf am
+  See), Verwaltungsgemeinschaft Bad Gottleuba-Berggiesshuebel als
+  "erfuellende Gemeinde" (Bahretal/Liebstadt), Verwaltungsverband
+  Eilenburg-West (Jesewitz/Zschepplin) fuehren je ein gemeinsames Ordnungsamt
+  fuer ihre Mitgliedsgemeinden - die Verband-/Gemeinschaftsadresse ist die
+  korrekte Kontaktadresse (Kampfmittelbeseitigung selbst nicht woertlich in
+  den Quellen genannt, per Analogieschluss aus der bestaetigten allgemeinen
+  Ordnungsamt-Delegation abgeleitet - explizit vermerkt, keine Uebertreibung
+  der Beleglage). Die jeweils eigene Gemeindeadresse-Zeile wurde abgelaufen
+  (`fix_kampfmittel_sachsen_verwaltungsverband_duplikate.py`).
+
+- **1x HOCHWASSERSCHUTZ Hamburg** - die letzte echte NO_MATCH-Luecke
+  bundesweit: entgegen der urspruenglichen Annahme (Zustaendigkeit haenge
+  vom einzelnen benannten Gewaesser ab, nicht modellierbar) fand sich eine
+  offizielle BUKEA/hamburg.de-Quelle ("Wen kann ich ansprechen? -
+  Zustaendige Wasserbehoerden in den Hamburger Ueberschwemmungsgebieten",
+  Stand 14.04.2026), die die Zustaendigkeit schlicht PRO BEZIRKSAMT auflistet
+  - exakt dieselben 7 Bezirksaemter, die in dieser Datenbank bereits als
+  "Bezirksamt X - Untere Wasserbehoerde" existieren (bisher nur mit anderer
+  Abgrenzung fuer WASSERSCHUTZ verknuepft). BUKEA selbst ist laut Quelle nur
+  Rueckfrage-Kontakt. Sieben neue MUNICIPALITY-Regeln
+  (`seed_hochwasserschutz_hamburg_bezirke.py`) verwandeln die tote NO_MATCH-
+  Sackgasse in ein aufloesbares MULTIPLE_MATCHES (wie bei Hamburgs
+  Bauakten-Bezirken bereits etabliert) - vorher gab es UEBERHAUPT keine
+  Kandidaten-Behoerde zur Auswahl, jetzt sieben echte. Die dokumentierte
+  Hafengebiet-Ausnahme (Hamburg Port Authority statt Bezirksamt) wurde
+  bewusst NICHT abgebildet, da diese Datenbank kein "Hafengebiet"-
+  Distrikt-Feld pflegt - ein zusaetzlicher HPA-Kandidat wuerde nur
+  unbegruendetes Rauschen fuer alle anderen Hamburger Gebaeude erzeugen.
+
+**Ergebnis:** von 118.239 Gemeinde-Auskunftsart-Kombinationen findet nach
+diesem Kapitel praktisch jede entweder eindeutig ein Amt, ist korrekt als
+"nicht vorhanden" markiert, oder ist eine echte, von Hand aufloesbare
+Mehrfachzustaendigkeit - keine einzige tote NO_MATCH-Sackgasse ohne jede
+Kandidaten-Behoerde bleibt mehr uebrig. `flake8 app/`, die volle Backend-
+Testsuite (188 passed) und `tsc --noEmit`/`npm run build` blieben nach
+jedem Schritt gruen.
