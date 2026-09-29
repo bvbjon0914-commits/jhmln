@@ -1,4 +1,4 @@
-import { Circle, FileText, Send, Inbox, CheckCircle2 } from "lucide-react";
+import { Circle, FileText, Send, Inbox, CheckCircle2, MinusCircle } from "lucide-react";
 import type { CaseItemStatus } from "../../types/case";
 
 const CONFIG: Record<
@@ -10,6 +10,12 @@ const CONFIG: Record<
     icon: Circle,
     text: "text-status-neutral",
     bg: "bg-status-neutralBg",
+  },
+  NICHT_ERFORDERLICH: {
+    label: "Nicht erforderlich",
+    icon: MinusCircle,
+    text: "text-status-na",
+    bg: "bg-status-naBg",
   },
   BEREIT_ZUM_SENDEN: {
     label: "Bereit zum Senden",

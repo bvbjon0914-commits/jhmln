@@ -42,7 +42,11 @@ class Jurisdiction(Base):
 
     # Foreign Keys
     request_type_id = Column(String(50), ForeignKey("request_types.request_type_id"), nullable=False, index=True)
-    authority_id = Column(String(50), ForeignKey("authorities.authority_id"), nullable=False, index=True)
+    # nullable: eine Zeile mit authority_id IS NULL bedeutet "diese
+    # Auskunftsart existiert hier nachweislich nicht" (siehe MatchingStatus.
+    # NOT_APPLICABLE in jurisdiction_matcher.py) - kein fehlender Datensatz,
+    # sondern eine explizite fachliche Aussage.
+    authority_id = Column(String(50), ForeignKey("authorities.authority_id"), nullable=True, index=True)
 
     # ========== Geografische Zuordnung (hierarchisch) ==========
 

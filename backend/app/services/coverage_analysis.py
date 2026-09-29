@@ -58,6 +58,10 @@ CATEGORY_UNVERIFIED_OR_STALE = "UNVERIFIED_OR_STALE"
 CATEGORY_NO_MATCH = "NO_MATCH"
 CATEGORY_CONFLICTING = "CONFLICTING"
 CATEGORY_FALLBACK_ONLY = "FALLBACK_ONLY"
+# (f) NOT_APPLICABLE - explizit als "gibt es hier nicht" hinterlegt (siehe
+#     MatchingStatus.NOT_APPLICABLE), unterscheidet sich bewusst von
+#     NO_MATCH ("wir wissen es nicht") - kein Datenfehler.
+CATEGORY_NOT_APPLICABLE = "NOT_APPLICABLE"
 
 ALL_CATEGORIES = [
     CATEGORY_VERIFIED,
@@ -65,6 +69,7 @@ ALL_CATEGORIES = [
     CATEGORY_NO_MATCH,
     CATEGORY_CONFLICTING,
     CATEGORY_FALLBACK_ONLY,
+    CATEGORY_NOT_APPLICABLE,
 ]
 
 # Nur diese beiden Matching-Level gelten hier als "allgemeine Fallback-Regel"
@@ -133,6 +138,8 @@ class CoverageAnalysisService:
 
     def _classify(self, result) -> tuple:
         """Liefert (Kategorie, Begründungstext) für ein einzelnes MatchingResult."""
+        if result.matching_status == MatchingStatus.NOT_APPLICABLE:
+            return CATEGORY_NOT_APPLICABLE, result.reason
         if result.matching_status == MatchingStatus.NO_MATCH:
             return CATEGORY_NO_MATCH, result.reason
         if result.matching_status == MatchingStatus.MULTIPLE_MATCHES:

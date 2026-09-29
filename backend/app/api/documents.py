@@ -85,9 +85,21 @@ def generate_documents(
 
     generated = []
     failed = []
+    not_applicable = []
 
     for item in request_record.items:
         if payload.retry_failed_only and item.document_status == "GENERATED":
+            continue
+
+        if item.matching_status == "NOT_APPLICABLE":
+            # Kein Fehler: diese Auskunftsart existiert hier nachweislich
+            # nicht (siehe MatchingStatus.NOT_APPLICABLE) - blockiert die
+            # Anfrage nicht und zaehlt nicht als "failed".
+            not_applicable.append({
+                "request_item_id": item.request_item_id,
+                "request_type_id": item.request_type_id,
+                "reason": "Diese Auskunftsart ist hier nachweislich nicht vorhanden.",
+            })
             continue
 
         if item.matching_status != "MATCHED":
@@ -143,6 +155,7 @@ def generate_documents(
         "request_id": request_record.request_id,
         "documents": generated,
         "failed": failed,
+        "not_applicable": not_applicable,
         "timestamp": datetime.utcnow().isoformat(),
     }
 

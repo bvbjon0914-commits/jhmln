@@ -26,6 +26,11 @@ class MatchingStatus:
     REVIEW_REQUIRED = "REVIEW_REQUIRED"
     NO_MATCH = "NO_MATCH"
     MULTIPLE_MATCHES = "MULTIPLE_MATCHES"
+    # Bewusstes "gibt es hier nicht" - unterscheidet sich von NO_MATCH (wir
+    # wissen es nicht). Wird durch eine Jurisdiction-Zeile mit authority_id
+    # IS NULL ausgeloest (siehe match_authority()) - z.B. Bayern hat
+    # ueberhaupt kein Baulastenverzeichnis (Art. 53 BayBO), keine Datenluecke.
+    NOT_APPLICABLE = "NOT_APPLICABLE"
 
 
 # ========== Matching-Stufen (Hierarchie) ==========
@@ -182,6 +187,22 @@ class JurisdictionMatchingService:
                 continue
 
             jurisdiction, remaining_candidates = self._select_best_candidate(candidates)
+
+            if jurisdiction is not None and jurisdiction.authority_id is None:
+                # Explizit als "nicht vorhanden" hinterlegte Regel (siehe
+                # MatchingStatus.NOT_APPLICABLE) - kein Treffer, aber auch
+                # keine unbekannte Luecke: notes/source der Zeile tragen die
+                # fachliche Begruendung.
+                return MatchingResult(
+                    building_id=building.building_id,
+                    request_type_id=request_type_id,
+                    authority_id=None,
+                    matching_level=level,
+                    matching_status=MatchingStatus.NOT_APPLICABLE,
+                    matching_confidence=1.0,
+                    reason=jurisdiction.notes or "Diese Auskunftsart ist hier nicht vorhanden.",
+                    jurisdiction_id=jurisdiction.jurisdiction_id,
+                )
 
             if jurisdiction is not None:
                 return MatchingResult(

@@ -1,4 +1,4 @@
-import { Check, AlertTriangle, X, GitBranch } from "lucide-react";
+import { Check, AlertTriangle, X, GitBranch, MinusCircle } from "lucide-react";
 import type { MatchingStatus } from "../../types/matching";
 
 const CONFIG: Record<
@@ -28,6 +28,12 @@ const CONFIG: Record<
     icon: X,
     text: "text-status-neutral",
     bg: "bg-status-neutralBg",
+  },
+  NOT_APPLICABLE: {
+    label: "Nicht vorhanden",
+    icon: MinusCircle,
+    text: "text-status-na",
+    bg: "bg-status-naBg",
   },
 };
 

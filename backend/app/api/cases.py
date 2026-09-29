@@ -67,16 +67,24 @@ def _derive_item_status(item: RequestItem, progress: Optional[RequestItemProgres
         return "GESENDET"
     if item.document_status == "GENERATED":
         return "BEREIT_ZUM_SENDEN"
+    if item.matching_status == "NOT_APPLICABLE":
+        # Diese Auskunftsart existiert hier nachweislich nicht - kein
+        # unerledigtes Todo, sondern dauerhaft "nicht erforderlich".
+        return "NICHT_ERFORDERLICH"
     return "NICHT_BEANTRAGT"
 
 
 def _case_progress_counts(db: Session, case_id: str) -> dict:
+    # NOT_APPLICABLE-Items zaehlen bewusst nicht mit: sie durchlaufen nie den
+    # Senden/Antwort/Pruefen-Zyklus (es gibt ja nichts zu versenden), wuerden
+    # die Quote sonst dauerhaft und faelschlich als "unvollstaendig" zeigen.
     item_ids = [
         row[0]
         for row in db.query(RequestItem.request_item_id)
         .join(Request, Request.request_id == RequestItem.request_id)
         .join(CaseRequest, CaseRequest.request_id == Request.request_id)
         .filter(CaseRequest.case_id == case_id)
+        .filter(RequestItem.matching_status != "NOT_APPLICABLE")
         .all()
     ]
     total = len(item_ids)

@@ -23,6 +23,7 @@ from app.services.coverage_analysis import (  # noqa: E402
     CATEGORY_CONFLICTING,
     CATEGORY_FALLBACK_ONLY,
     CATEGORY_NO_MATCH,
+    CATEGORY_NOT_APPLICABLE,
     CATEGORY_UNVERIFIED_OR_STALE,
     CATEGORY_VERIFIED,
     CoverageAnalysisService,
@@ -51,7 +52,7 @@ def main():
 
         by_rt = {rt.name: {c: 0 for c in (
             CATEGORY_VERIFIED, CATEGORY_UNVERIFIED_OR_STALE, CATEGORY_FALLBACK_ONLY,
-            CATEGORY_NO_MATCH, CATEGORY_CONFLICTING)} for rt in request_types}
+            CATEGORY_NO_MATCH, CATEGORY_CONFLICTING, CATEGORY_NOT_APPLICABLE)} for rt in request_types}
         overall = {c: 0 for c in by_rt[request_types[0].name]}
 
         for unit in units:
@@ -81,7 +82,9 @@ def main():
                 f"({pct(counts[CATEGORY_UNVERIFIED_OR_STALE]):4.1f}%) "
                 f"FALLBACK_ONLY={counts[CATEGORY_FALLBACK_ONLY]:4d}({pct(counts[CATEGORY_FALLBACK_ONLY]):4.1f}%) "
                 f"NO_MATCH={counts[CATEGORY_NO_MATCH]:4d}({pct(counts[CATEGORY_NO_MATCH]):4.1f}%) "
-                f"CONFLICTING={counts[CATEGORY_CONFLICTING]:4d}({pct(counts[CATEGORY_CONFLICTING]):4.1f}%)"
+                f"CONFLICTING={counts[CATEGORY_CONFLICTING]:4d}({pct(counts[CATEGORY_CONFLICTING]):4.1f}%) "
+                f"NOT_APPLICABLE={counts[CATEGORY_NOT_APPLICABLE]:4d}"
+                f"({pct(counts[CATEGORY_NOT_APPLICABLE]):4.1f}%)"
             )
 
         total_all = len(units) * len(request_types)

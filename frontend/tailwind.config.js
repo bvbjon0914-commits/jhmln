@@ -27,6 +27,11 @@ export default {
           conflictBg: "#FAE6E2",
           neutral: "#7A8A91",
           neutralBg: "#EBEFF0",
+          // "Nicht vorhanden" (NOT_APPLICABLE) - bewusst ein eigener Ton statt
+          // neutral/grau, damit "wir wissen sicher: gibt's hier nicht" optisch
+          // klar von "kein Treffer" (unbekannt) unterscheidbar bleibt.
+          na: "#4F5B93",
+          naBg: "#E8E9F5",
         },
       },
       fontFamily: {

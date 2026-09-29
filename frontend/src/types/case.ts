@@ -19,6 +19,7 @@ export interface CaseListItem extends Case {
 
 export type CaseItemStatus =
   | "NICHT_BEANTRAGT"
+  | "NICHT_ERFORDERLICH"
   | "BEREIT_ZUM_SENDEN"
   | "GESENDET"
   | "ANTWORT_ERHALTEN"

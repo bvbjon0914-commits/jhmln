@@ -10,7 +10,8 @@ export type MatchingStatus =
   | "MATCHED"
   | "REVIEW_REQUIRED"
   | "NO_MATCH"
-  | "MULTIPLE_MATCHES";
+  | "MULTIPLE_MATCHES"
+  | "NOT_APPLICABLE";
 
 export type MatchingLevel =
   | "STREET_NUMBER"

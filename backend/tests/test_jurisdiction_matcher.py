@@ -230,3 +230,52 @@ class TestInactiveAndExpiredRules:
         result = matcher.match_authority(building, "GRUNDBUCH")
 
         assert result.matching_status == MatchingStatus.NO_MATCH
+
+
+class TestNotApplicableStatus:
+    """Eine Jurisdiction-Zeile mit authority_id IS NULL bedeutet 'existiert
+    hier nachweislich nicht' (siehe z.B. Bayern/BAULASTEN) - unterscheidet
+    sich bewusst von NO_MATCH (wir wissen es nicht)."""
+
+    def test_null_authority_row_yields_not_applicable(self, db_session, matcher):
+        make_jurisdiction(
+            db_session, "GRUNDBUCH", None, priority=60,
+            matching_level=MatchingLevel.STATE, state="Bayern",
+            notes="Art. 53 BayBO - kein Baulastenverzeichnis in Bayern.",
+        )
+        building = make_building(db_session, ags="09190111", state="Bayern")
+
+        result = matcher.match_authority(building, "GRUNDBUCH")
+
+        assert result.matching_status == MatchingStatus.NOT_APPLICABLE
+        assert result.authority_id is None
+        assert "Baulastenverzeichnis" in result.reason
+
+    def test_not_applicable_falls_back_to_generic_reason_without_notes(self, db_session, matcher):
+        make_jurisdiction(
+            db_session, "GRUNDBUCH", None, priority=60,
+            matching_level=MatchingLevel.STATE, state="Bayern",
+        )
+        building = make_building(db_session, ags="09190111", state="Bayern")
+
+        result = matcher.match_authority(building, "GRUNDBUCH")
+
+        assert result.matching_status == MatchingStatus.NOT_APPLICABLE
+        assert result.reason  # nie leer, auch ohne notes
+
+    def test_more_specific_match_wins_over_not_applicable(self, db_session, matcher):
+        """Monheims eigene MUNICIPALITY-Ausnahme muss vor der STATE-weiten
+        NOT_APPLICABLE-Regel gewinnen (MUNICIPALITY wird zuerst geprueft)."""
+        auth = make_authority(db_session, name="Kreisverwaltung Donau-Ries")
+        make_jurisdiction(db_session, "GRUNDBUCH", auth.authority_id, ags="09779186",
+                           priority=40, matching_level=MatchingLevel.MUNICIPALITY)
+        make_jurisdiction(
+            db_session, "GRUNDBUCH", None, priority=60,
+            matching_level=MatchingLevel.STATE, state="Bayern",
+        )
+        building = make_building(db_session, ags="09779186", state="Bayern")
+
+        result = matcher.match_authority(building, "GRUNDBUCH")
+
+        assert result.matching_status == MatchingStatus.MATCHED
+        assert result.authority_id == auth.authority_id

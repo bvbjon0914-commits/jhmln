@@ -48,6 +48,7 @@ from app.models.jurisdiction import Jurisdiction  # noqa: E402
 from app.models.request_type import RequestType, STANDARD_REQUEST_TYPES  # noqa: E402
 from app.models.administrative_unit import AdministrativeUnit  # noqa: E402
 from app.models.user import User  # noqa: E402
+from app.models.request import Request, RequestItem  # noqa: E402
 from app.services.auth import hash_password  # noqa: E402
 
 
@@ -161,6 +162,31 @@ def make_jurisdiction(db, request_type_id, authority_id, priority=100,
     db.add(j)
     db.commit()
     return j
+
+
+def make_request(db, building_id, **kwargs):
+    r = Request(
+        request_id=kwargs.pop("request_id", str(uuid.uuid4())),
+        building_id=building_id,
+        status=kwargs.pop("status", "PENDING"),
+        **kwargs,
+    )
+    db.add(r)
+    db.commit()
+    return r
+
+
+def make_request_item(db, request_id, request_type_id, matching_status="MATCHED", **kwargs):
+    item = RequestItem(
+        request_item_id=kwargs.pop("request_item_id", str(uuid.uuid4())),
+        request_id=request_id,
+        request_type_id=request_type_id,
+        matching_status=matching_status,
+        **kwargs,
+    )
+    db.add(item)
+    db.commit()
+    return item
 
 
 def make_building(db, street="Musterstraße", house_number="12",

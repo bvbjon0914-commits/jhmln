@@ -15,6 +15,7 @@ from app.services.coverage_analysis import (  # noqa: E402
     CATEGORY_CONFLICTING,
     CATEGORY_FALLBACK_ONLY,
     CATEGORY_NO_MATCH,
+    CATEGORY_NOT_APPLICABLE,
     CATEGORY_UNVERIFIED_OR_STALE,
     CATEGORY_VERIFIED,
     CoverageAnalysisService,
@@ -42,6 +43,7 @@ def main():
             fallback = row.get(CATEGORY_FALLBACK_ONLY, 0)
             no_match = row.get(CATEGORY_NO_MATCH, 0)
             conflicting = row.get(CATEGORY_CONFLICTING, 0)
+            not_applicable = row.get(CATEGORY_NOT_APPLICABLE, 0)
 
             def pct(n):
                 return 100.0 * n / total if total else 0.0
@@ -52,7 +54,8 @@ def main():
                 f"UNVERIFIED={unverified:5d}({pct(unverified):4.1f}%) "
                 f"FALLBACK_ONLY={fallback:5d}({pct(fallback):4.1f}%) "
                 f"NO_MATCH={no_match:5d}({pct(no_match):4.1f}%) "
-                f"CONFLICTING={conflicting:5d}({pct(conflicting):4.1f}%)"
+                f"CONFLICTING={conflicting:5d}({pct(conflicting):4.1f}%) "
+                f"NOT_APPLICABLE={not_applicable:5d}({pct(not_applicable):4.1f}%)"
             )
 
         overall = CoverageAnalysisService.overall_summary(entries)
