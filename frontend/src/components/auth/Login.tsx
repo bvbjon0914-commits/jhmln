@@ -2,12 +2,18 @@ import { useState } from "react";
 import { Loader2, Lock, Mail } from "lucide-react";
 import { api } from "../../services/api";
 import { errorMessage } from "../common/Toast";
+import { Register } from "./Register";
 
 export function Login({ onSuccess }: { onSuccess: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showRegister, setShowRegister] = useState(false);
+
+  if (showRegister) {
+    return <Register onBack={() => setShowRegister(false)} />;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,6 +73,14 @@ export function Login({ onSuccess }: { onSuccess: () => void }) {
         >
           {loading && <Loader2 size={14} className="animate-spin" />}
           Anmelden
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShowRegister(true)}
+          className="mt-3 w-full text-center text-xs font-medium text-brand hover:text-brand-dark"
+        >
+          Noch keinen Account? Account beantragen
         </button>
       </form>
     </div>

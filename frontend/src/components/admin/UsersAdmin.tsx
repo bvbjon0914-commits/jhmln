@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pencil, Trash2, Check, X, Loader2, Ban, CheckCircle2, Plus } from "lucide-react";
+import { Pencil, Trash2, Check, X, Loader2, Ban, CheckCircle2, Plus, Clock } from "lucide-react";
 import { api } from "../../services/api";
 import { useToast, errorMessage } from "../common/Toast";
 import { Modal } from "../common/Modal";
@@ -19,6 +19,23 @@ const EMPTY_CREATE_FORM: UserCreateInput = {
   is_main: false,
 };
 
+const STATUS_CONFIG: Record<User["status"], { label: string; text: string; bg: string }> = {
+  pending: { label: "Ausstehend", text: "text-status-review", bg: "bg-status-reviewBg" },
+  active: { label: "Aktiv", text: "text-status-matched", bg: "bg-status-matchedBg" },
+  rejected: { label: "Abgelehnt", text: "text-status-conflict", bg: "bg-status-conflictBg" },
+};
+
+function UserStatusBadge({ status }: { status: User["status"] }) {
+  const cfg = STATUS_CONFIG[status];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cfg.text} ${cfg.bg}`}
+    >
+      {cfg.label}
+    </span>
+  );
+}
+
 export function UsersAdmin() {
   const { showToast } = useToast();
   const [showInactive, setShowInactive] = useState(false);
@@ -30,6 +47,9 @@ export function UsersAdmin() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState<UserCreateInput>(EMPTY_CREATE_FORM);
   const [creating, setCreating] = useState(false);
+  const [pendingUsers, setPendingUsers] = useState<User[]>([]);
+  const [loadingPending, setLoadingPending] = useState(false);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -40,8 +60,47 @@ export function UsersAdmin() {
       .finally(() => setLoading(false));
   };
 
+  const loadPending = () => {
+    setLoadingPending(true);
+    api
+      .listUsersPaged({ status: "pending" })
+      .then((res) => setPendingUsers(res.items))
+      .catch((error) => showToast("error", errorMessage(error, "Ausstehende Genehmigungen konnten nicht geladen werden.")))
+      .finally(() => setLoadingPending(false));
+  };
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [showInactive]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(loadPending, []);
+
+  const handleApprove = async (u: User) => {
+    setReviewingId(u.user_id);
+    try {
+      await api.approveUser(u.user_id);
+      showToast("success", `"${u.full_name}" wurde freigegeben.`);
+      loadPending();
+      load();
+    } catch (error) {
+      showToast("error", errorMessage(error, "Nutzer konnte nicht freigegeben werden."));
+    } finally {
+      setReviewingId(null);
+    }
+  };
+
+  const handleReject = async (u: User) => {
+    setReviewingId(u.user_id);
+    try {
+      await api.rejectUser(u.user_id);
+      showToast("success", `"${u.full_name}" wurde abgelehnt.`);
+      loadPending();
+      load();
+    } catch (error) {
+      showToast("error", errorMessage(error, "Nutzer konnte nicht abgelehnt werden."));
+    } finally {
+      setReviewingId(null);
+    }
+  };
 
   const startEdit = (u: User) => {
     setEditingId(u.user_id);
@@ -115,6 +174,58 @@ export function UsersAdmin() {
 
   return (
     <div className="space-y-4">
+      {(loadingPending || pendingUsers.length > 0) && (
+        <div className="overflow-hidden rounded-lg border border-status-review/40 bg-status-reviewBg/40 shadow-sm">
+          <div className="flex items-center gap-1.5 border-b border-status-review/30 px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-status-review">
+            <Clock size={13} />
+            Ausstehende Genehmigungen
+          </div>
+          <div className="divide-y divide-status-review/20">
+            {loadingPending ? (
+              <div className="px-4 py-6 text-center text-ink-faint">
+                <Loader2 size={16} className="mx-auto animate-spin" />
+              </div>
+            ) : (
+              pendingUsers.map((u) => (
+                <div key={u.user_id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                  <div className="text-sm">
+                    <div className="font-medium text-ink">{u.full_name}</div>
+                    <div className="text-xs text-ink-soft">
+                      {u.email} · {u.phone} · {u.function}
+                    </div>
+                    <div className="text-xs text-ink-faint">
+                      {u.street} {u.house_number}, {u.postal_code} {u.city}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleApprove(u)}
+                      disabled={reviewingId === u.user_id}
+                      className="inline-flex items-center gap-1 rounded bg-brand px-2.5 py-1.5 text-xs font-medium text-white hover:bg-brand-dark disabled:opacity-50"
+                    >
+                      {reviewingId === u.user_id ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <Check size={12} />
+                      )}
+                      Genehmigen
+                    </button>
+                    <button
+                      onClick={() => handleReject(u)}
+                      disabled={reviewingId === u.user_id}
+                      className="inline-flex items-center gap-1 rounded border border-line px-2.5 py-1.5 text-xs font-medium text-status-conflict hover:border-status-conflict/40 disabled:opacity-50"
+                    >
+                      <X size={12} />
+                      Ablehnen
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-ink-soft">
           <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
@@ -136,6 +247,7 @@ export function UsersAdmin() {
                 <th className="px-4 py-2.5 font-medium">Telefon</th>
                 <th className="px-4 py-2.5 font-medium">Funktion</th>
                 <th className="px-4 py-2.5 font-medium">Rolle</th>
+                <th className="px-4 py-2.5 font-medium">Aktiv</th>
                 <th className="px-4 py-2.5 font-medium">Status</th>
                 <th className="w-28 px-4 py-2.5"></th>
               </tr>
@@ -143,13 +255,13 @@ export function UsersAdmin() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-ink-faint">
+                  <td colSpan={8} className="px-4 py-8 text-center text-ink-faint">
                     <Loader2 size={16} className="mx-auto animate-spin" />
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-ink-faint">
+                  <td colSpan={8} className="px-4 py-8 text-center text-ink-faint">
                     Keine Nutzer gefunden.
                   </td>
                 </tr>
@@ -157,7 +269,7 @@ export function UsersAdmin() {
                 users.map((u) =>
                   editingId === u.user_id ? (
                     <tr key={u.user_id} className="border-b border-line bg-paper/30 last:border-0">
-                      <td colSpan={7} className="px-4 py-3">
+                      <td colSpan={8} className="px-4 py-3">
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                           <input
                             value={editForm.full_name ?? ""}
@@ -267,6 +379,9 @@ export function UsersAdmin() {
                         >
                           {u.active ? "Aktiv" : "Inaktiv"}
                         </span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <UserStatusBadge status={u.status} />
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center justify-end gap-1">

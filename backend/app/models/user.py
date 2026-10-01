@@ -43,6 +43,16 @@ class User(Base):
     is_main = Column(Boolean, default=False, nullable=False)
     active = Column(Boolean, default=True, nullable=False, index=True)
 
+    # Selbstregistrierung + Admin-Freigabe: "pending" (wartet auf Freigabe),
+    # "active" (freigegeben/von einem Admin angelegt), "rejected" (abgelehnt,
+    # Zeile bleibt fuer Audit/Historie erhalten statt geloescht zu werden).
+    # Bewusst ein einfacher String statt eines DB-Enum/CHECK-Constraints -
+    # gleiches Muster wie matching_status/verification_status im Rest des
+    # Projekts.
+    status = Column(String(20), nullable=False, default="active", server_default="active", index=True)
+    reviewed_by = Column(String(50), nullable=True)  # user_id des freigebenden/ablehnenden Admins
+    reviewed_at = Column(DateTime, nullable=True)
+
     # Audit-Felder
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -72,6 +82,9 @@ class User(Base):
             "city": self.city,
             "is_main": self.is_main,
             "active": self.active,
+            "status": self.status,
+            "reviewed_by": self.reviewed_by,
+            "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "last_login_at": self.last_login_at.isoformat() if self.last_login_at else None,

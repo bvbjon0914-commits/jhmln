@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FileSearch2, Upload, Settings, LogOut, DownloadCloud, FileSpreadsheet, RotateCcw, FolderKanban } from "lucide-react";
+import { FileSearch2, Upload, Settings, LogOut, DownloadCloud, FileSpreadsheet, RotateCcw, FolderKanban, UserCircle } from "lucide-react";
 import { Stepper } from "./components/Stepper";
 import { BuildingSearch } from "./components/BuildingSearch";
 import { BuildingDetails } from "./components/BuildingDetails";
@@ -14,6 +14,7 @@ import { useToast, errorMessage } from "./components/common/Toast";
 import { ImportPage } from "./components/import/ImportPage";
 import { AdminPage } from "./components/admin/AdminPage";
 import { CasesPage } from "./components/cases/CasesPage";
+import { MyAccount } from "./components/account/MyAccount";
 import { useAuth } from "./components/auth/AuthContext";
 import { api } from "./services/api";
 import type { Building } from "./types/building";
@@ -56,8 +57,8 @@ function loadPersistedState(): PersistedState | null {
 
 function App() {
   const { showToast } = useToast();
-  const { isMain, logout } = useAuth();
-  const [view, setView] = useState<"wizard" | "import" | "admin" | "cases">("wizard");
+  const { isMain, user, logout, refresh } = useAuth();
+  const [view, setView] = useState<"wizard" | "import" | "admin" | "cases" | "account">("wizard");
   const [buildings, setBuildings] = useState<Building[]>(() => loadPersistedState()?.buildings ?? []);
   const [requestTypeIds, setRequestTypeIds] = useState<string[]>(
     () => loadPersistedState()?.requestTypeIds ?? []
@@ -331,6 +332,19 @@ function App() {
               Verwaltung
             </button>
             <button
+              onClick={() => setView("account")}
+              aria-current={view === "account" ? "page" : undefined}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                view === "account"
+                  ? "bg-brand-light/60 text-brand"
+                  : "text-ink-faint hover:text-ink"
+              }`}
+              title="Mein Account"
+            >
+              <UserCircle size={14} />
+              Mein Account
+            </button>
+            <button
               onClick={() => logout()}
               className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-ink-faint hover:text-ink"
               title="Abmelden"
@@ -352,6 +366,19 @@ function App() {
       ) : view === "admin" ? (
         <main className="mx-auto max-w-5xl px-6 py-10">
           <AdminPage isMain={isMain} />
+        </main>
+      ) : view === "account" ? (
+        <main>
+          {user && (
+            <MyAccount
+              user={user}
+              onUpdated={refresh}
+              onDeleted={() => {
+                refresh();
+                setView("wizard");
+              }}
+            />
+          )}
         </main>
       ) : (
       <main className="mx-auto max-w-4xl px-6 py-10">

@@ -2,6 +2,7 @@
 API Routes: Auth (Login-Gate)
 """
 
+import secrets
 from datetime import datetime
 from typing import Optional
 
@@ -13,6 +14,7 @@ from app.config import COOKIE_SECURE, LOGIN_RATE_LIMIT_WINDOW_SECONDS
 from app.database import get_db_session
 from app.models.settings import AppSettings
 from app.models.user import User
+from app.schemas import UserRegisterCreate
 from app.services import rate_limiter
 from app.services.auth import (
     COOKIE_NAME,
@@ -20,6 +22,7 @@ from app.services.auth import (
     check_password,
     check_user_credentials,
     create_token,
+    hash_password,
     verify_token,
 )
 
@@ -169,6 +172,61 @@ def login(payload: LoginPayload, request: Request, response: Response, db: Sessi
         max_age=60 * 60 * 24 * 30,
     )
     return {"is_main": is_main, "user": user.to_dict() if user else None}
+
+
+@router.post("/auth/register", status_code=201, tags=["Auth"])
+def register(payload: UserRegisterCreate, request: Request, db: Session = Depends(get_db_session)):
+    """
+    Öffentlich (bewusst OHNE require_login/require_main - für anonyme
+    Besucher): Selbstregistrierung eines neuen Nutzer-Accounts.
+
+    Der angelegte Account ist zunaechst NUR ein Datensatz mit
+    status="pending" und active=False - er kann sich NICHT einloggen
+    (check_user_credentials filtert auf active=True) und bekommt hier
+    bewusst KEIN Session-Cookie gesetzt. Erst ein Admin (POST
+    /users/{user_id}/approve) schaltet ihn frei. is_main/active/status
+    kommen deshalb nie aus dem Request, sondern werden hier hart gesetzt.
+    """
+    client_key = _client_key(request)
+    if rate_limiter.is_blocked(client_key):
+        raise HTTPException(
+            status_code=429,
+            detail="Zu viele Registrierungsversuche. Bitte später erneut versuchen.",
+            headers={"Retry-After": str(LOGIN_RATE_LIMIT_WINDOW_SECONDS)},
+        )
+
+    email = payload.email.strip().lower()
+    # Bewusst UNABHAENGIG vom status pruefen (pending/active/rejected) - eine
+    # E-Mail darf nur einen Account-Datensatz haben. Die Fehlermeldung bleibt
+    # absichtlich generisch, um den konkreten Status nicht nach aussen zu
+    # verraten (kein User-Enumeration-artiges Informationsleck).
+    if db.query(User).filter(User.email == email).first():
+        rate_limiter.record_failure(client_key)
+        raise HTTPException(status_code=409, detail="Für diese E-Mail-Adresse existiert bereits ein Account.")
+
+    user = User(
+        user_id=f"USR-{secrets.token_hex(6)}",
+        email=email,
+        password_hash=hash_password(payload.password),
+        full_name=payload.full_name,
+        phone=payload.phone,
+        function=payload.function,
+        street=payload.street,
+        house_number=payload.house_number,
+        postal_code=payload.postal_code,
+        city=payload.city,
+        is_main=False,
+        active=False,
+        status="pending",
+    )
+    db.add(user)
+    db.commit()
+    rate_limiter.record_success(client_key)
+
+    return {
+        "status": "pending",
+        "message": "Dein Account wurde angelegt und wartet auf Freigabe durch einen Administrator.",
+    }
 
 
 @router.post("/auth/logout", tags=["Auth"])

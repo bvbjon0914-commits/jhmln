@@ -18,7 +18,7 @@ import type { AuthStatus } from "../types/auth";
 import type { DataQualitySummary } from "../types/dataQuality";
 import type { Case, CaseListItem, CaseDetail } from "../types/case";
 import type { InboundEmailEntry, AktenzeichenLookupResult } from "../types/mailbox";
-import type { User, UserCreateInput, UserUpdateInput } from "../types/user";
+import type { User, UserCreateInput, UserUpdateInput, UserRegisterInput, UserSelfUpdateInput } from "../types/user";
 
 const client = axios.create({
   baseURL: "/api",
@@ -481,9 +481,33 @@ export const api = {
     return data;
   },
 
+  async register(payload: UserRegisterInput): Promise<{ status: string; message: string }> {
+    const { data } = await client.post<{ status: string; message: string }>(
+      "/auth/register",
+      payload
+    );
+    return data;
+  },
+
+  // ========== Mein Account (Selbstbearbeitung, jeder eingeloggte Nutzer) ==========
+
+  async getMyAccount(): Promise<User> {
+    const { data } = await client.get<User>("/users/me");
+    return data;
+  },
+
+  async updateMyAccount(patch: UserSelfUpdateInput): Promise<User> {
+    const { data } = await client.put<User>("/users/me", patch);
+    return data;
+  },
+
+  async deleteMyAccount(): Promise<void> {
+    await client.delete("/users/me");
+  },
+
   // ========== Verwaltung: Nutzer ==========
 
-  async listUsersPaged(params: { active_only?: boolean } = {}): Promise<Paged<User>> {
+  async listUsersPaged(params: { active_only?: boolean; status?: string } = {}): Promise<Paged<User>> {
     const { data, headers } = await client.get<User[]>("/users", { params });
     return paged(data, headers);
   },
@@ -505,6 +529,16 @@ export const api = {
 
   async deleteUser(userId: string): Promise<void> {
     await client.delete(`/users/${userId}`);
+  },
+
+  async approveUser(userId: string): Promise<User> {
+    const { data } = await client.post<User>(`/users/${userId}/approve`);
+    return data;
+  },
+
+  async rejectUser(userId: string): Promise<User> {
+    const { data } = await client.post<User>(`/users/${userId}/reject`);
+    return data;
   },
 
   // ========== Postfach (Phase 6: eingehende Antworten) ==========

@@ -335,6 +335,25 @@ class UserCreate(UserBase):
     password: str
 
 
+class UserRegisterCreate(BaseModel):
+    """
+    Schema fuer die oeffentliche Selbstregistrierung (POST /auth/register).
+
+    Bewusst OHNE is_main/active/status - diese Felder duerfen bei der
+    Selbstregistrierung niemals vom Client kommen, der Endpunkt setzt sie
+    serverseitig fest (is_main=False, active=False, status="pending").
+    """
+    email: EmailStr
+    password: str
+    full_name: str
+    phone: str
+    function: str
+    street: str
+    house_number: str
+    postal_code: str
+    city: str
+
+
 class UserUpdate(BaseModel):
     """Schema zum Aktualisieren eines Nutzer-Accounts"""
     email: Optional[EmailStr] = None
@@ -350,9 +369,31 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
 
 
+class UserSelfUpdate(BaseModel):
+    """
+    Schema fuer die Selbstbearbeitung des eigenen Accounts (PUT /users/me).
+
+    Bewusst OHNE is_main/active/status - ein Nutzer darf seine eigene Rolle
+    oder seinen Freigabe-Status niemals selbst aendern, das bleibt exklusiv
+    einem Admin (PUT /users/{user_id}) vorbehalten.
+    """
+    email: Optional[EmailStr] = None
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    function: Optional[str] = None
+    street: Optional[str] = None
+    house_number: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
+    password: Optional[str] = None
+
+
 class UserResponse(UserBase):
     """Antwort-Schema für Nutzer-Accounts - enthält NIEMALS password_hash"""
     user_id: str
+    status: str
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     last_login_at: Optional[datetime]
