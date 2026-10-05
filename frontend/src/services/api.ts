@@ -148,6 +148,10 @@ export const api = {
     });
   },
 
+  async removeMatchingItem(requestItemId: string): Promise<void> {
+    await client.delete(`/matching/items/${requestItemId}`);
+  },
+
   async generateDocuments(
     requestId: string,
     options?: { retryFailedOnly?: boolean }

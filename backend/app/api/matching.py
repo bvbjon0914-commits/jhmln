@@ -206,6 +206,30 @@ def manually_assign_authority(
     return item.to_dict()
 
 
+@router.delete("/matching/items/{request_item_id}", status_code=204, tags=["Matching"])
+def remove_matching_item(request_item_id: str, db: Session = Depends(get_db_session)):
+    """
+    Entfernt ein einzelnes, NICHT eindeutig zugeordnetes Ergebnis aus seiner
+    Anfrage - direkt im Zuordnungs-Assistenten, ohne das ganze Gebäude zu
+    entfernen und die Zuständigkeitsermittlung neu laufen zu lassen.
+
+    Bewusst nur für nicht-MATCHED Items: ein bereits eindeutig zugeordnetes
+    Ergebnis soll hier nicht versehentlich verschwinden können.
+    """
+    item = db.query(RequestItem).filter(RequestItem.request_item_id == request_item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail=f"RequestItem {request_item_id} nicht gefunden")
+    if item.matching_status == "MATCHED":
+        raise HTTPException(
+            status_code=409,
+            detail="Ein eindeutig zugeordnetes Ergebnis kann hier nicht entfernt werden.",
+        )
+
+    db.delete(item)
+    db.commit()
+    return None
+
+
 def _get_or_create_progress(db: Session, request_item_id: str) -> RequestItemProgress:
     item = db.query(RequestItem).filter(RequestItem.request_item_id == request_item_id).first()
     if not item:

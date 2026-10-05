@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileSearch2, Upload, Settings, LogOut, DownloadCloud, FileSpreadsheet, RotateCcw, FolderKanban, UserCircle } from "lucide-react";
 import { Stepper } from "./components/Stepper";
 import { BuildingSearch } from "./components/BuildingSearch";
 import { BuildingDetails } from "./components/BuildingDetails";
-import { BuildingMap } from "./components/BuildingMap";
 import { SelectedBuildingsList } from "./components/SelectedBuildingsList";
 import { RequestTypeSelector } from "./components/RequestTypeSelector";
 import { MatchingResults } from "./components/MatchingResults";
@@ -79,6 +78,10 @@ function App() {
   const [retryingByBuilding, setRetryingByBuilding] = useState<Record<string, boolean>>({});
   const [matchingLoading, setMatchingLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const resultsSectionRef = useRef<HTMLDivElement>(null);
+  const documentsSectionRef = useRef<HTMLDivElement>(null);
+  const prevMatchingLoading = useRef(matchingLoading);
+  const prevGenerating = useRef(generating);
 
   useEffect(() => {
     const state: PersistedState = {
@@ -142,6 +145,20 @@ function App() {
 
   const currentStep = hasAnyDocuments ? 4 : hasAnyResults ? 3 : buildings.length > 0 ? 2 : 1;
 
+  useEffect(() => {
+    if (prevMatchingLoading.current && !matchingLoading && hasAnyResults) {
+      resultsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    prevMatchingLoading.current = matchingLoading;
+  }, [matchingLoading, hasAnyResults]);
+
+  useEffect(() => {
+    if (prevGenerating.current && !generating && hasAnyDocuments) {
+      documentsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    prevGenerating.current = generating;
+  }, [generating, hasAnyDocuments]);
+
   const handleRunMatching = async () => {
     if (buildings.length === 0 || requestTypeIds.length === 0) return;
     setMatchingLoading(true);
@@ -178,6 +195,13 @@ function App() {
           ? { ...r, authority_id: authorityId, matching_status: "MATCHED", matching_confidence: 1.0 }
           : r
       ),
+    }));
+  };
+
+  const handleItemRemoved = (buildingId: string, requestItemId: string) => {
+    setResultsByBuilding((prev) => ({
+      ...prev,
+      [buildingId]: (prev[buildingId] || []).filter((r) => r.request_item_id !== requestItemId),
     }));
   };
 
@@ -415,7 +439,6 @@ function App() {
             {buildings.length === 1 && (
               <div className="mt-4 space-y-4">
                 <BuildingDetails building={buildings[0]} />
-                <BuildingMap building={buildings[0]} />
                 <button
                   onClick={() => handleRemoveBuilding(buildings[0].building_id)}
                   className="text-xs font-medium text-ink-faint hover:text-status-conflict"
@@ -458,7 +481,7 @@ function App() {
 
           {/* Schritt 3: Matching-Ergebnisse */}
           {hasAnyResults && (
-            <section className="space-y-6">
+            <section ref={resultsSectionRef} className="space-y-6">
               <h2 className="font-display text-sm font-semibold text-ink">
                 3. Zuständigkeiten prüfen
               </h2>
@@ -490,15 +513,7 @@ function App() {
                         onAssigned={(itemId, authorityId) =>
                           handleAssigned(b.building_id, itemId, authorityId)
                         }
-                      />
-                      <BuildingMap
-                        building={b}
-                        authorityRefs={results
-                          .filter((r) => r.authority_id)
-                          .map((r) => ({
-                            authorityId: r.authority_id as string,
-                            label: requestTypeNames[r.request_type_id] || r.request_type_id,
-                          }))}
+                        onRemove={(itemId) => handleItemRemoved(b.building_id, itemId)}
                       />
                     </CollapsibleSection>
                   );
@@ -529,7 +544,7 @@ function App() {
 
           {/* Schritt 4: Dokumente */}
           {hasAnyDocuments && (
-            <section className="space-y-6">
+            <section ref={documentsSectionRef} className="space-y-6">
               <h2 className="font-display text-sm font-semibold text-ink">
                 4. Schreiben herunterladen
               </h2>

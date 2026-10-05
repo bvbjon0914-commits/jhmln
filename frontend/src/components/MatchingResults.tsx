@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, Fragment } from "react";
-import { ChevronDown, Pencil, Loader2 } from "lucide-react";
+import { ChevronDown, Pencil, Loader2, Trash2 } from "lucide-react";
 import type { MatchingResult } from "../types/matching";
 import type { Authority } from "../types/authority";
 import { api } from "../services/api";
@@ -12,14 +12,16 @@ interface Props {
   results: MatchingResult[];
   requestTypeNames: Record<string, string>;
   onAssigned: (requestItemId: string, authorityId: string) => void;
+  onRemove: (requestItemId: string) => void;
 }
 
-export function MatchingResults({ results, requestTypeNames, onAssigned }: Props) {
+export function MatchingResults({ results, requestTypeNames, onAssigned, onRemove }: Props) {
   const { showToast } = useToast();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [authorities, setAuthorities] = useState<Record<string, Authority>>({});
   const [authoritiesLoading, setAuthoritiesLoading] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   useEffect(() => {
     const idsToLoad = new Set<string>();
@@ -120,17 +122,56 @@ export function MatchingResults({ results, requestTypeNames, onAssigned }: Props
                                 .join(", ")}
                             </div>
                           )}
-                        <Button
-                          variant="secondary"
-                          className="ml-auto text-xs"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditing(isEditing ? null : result.request_item_id);
-                          }}
-                        >
-                          <Pencil size={13} />
-                          Zuordnung ändern
-                        </Button>
+                        <div className="ml-auto flex items-center gap-2">
+                          <Button
+                            variant="secondary"
+                            className="text-xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditing(isEditing ? null : result.request_item_id);
+                            }}
+                          >
+                            <Pencil size={13} />
+                            Zuordnung ändern
+                          </Button>
+                          {result.matching_status !== "MATCHED" && (
+                            <Button
+                              variant="secondary"
+                              className="text-xs text-ink-faint hover:bg-status-conflictBg hover:text-status-conflict"
+                              disabled={removingId === result.request_item_id}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (
+                                  !window.confirm(
+                                    "Diese nicht eindeutige Zuordnung wirklich entfernen?"
+                                  )
+                                ) {
+                                  return;
+                                }
+                                setRemovingId(result.request_item_id);
+                                try {
+                                  await api.removeMatchingItem(result.request_item_id);
+                                  onRemove(result.request_item_id);
+                                  showToast("success", "Entfernt.");
+                                } catch (error) {
+                                  showToast(
+                                    "error",
+                                    errorMessage(error, "Konnte nicht entfernt werden.")
+                                  );
+                                } finally {
+                                  setRemovingId(null);
+                                }
+                              }}
+                            >
+                              {removingId === result.request_item_id ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <Trash2 size={13} />
+                              )}
+                              Entfernen
+                            </Button>
+                          )}
+                        </div>
                       </div>
 
                       {isEditing && (
