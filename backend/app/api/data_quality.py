@@ -12,9 +12,11 @@ from datetime import datetime, timedelta
 from operator import attrgetter
 from typing import Iterable, List, Optional, Set
 
-import pandas as pd
-from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
+from openpyxl import Workbook
+from openpyxl.cell import WriteOnlyCell
+from openpyxl.styles import Font
+from openpyxl.utils import get_column_letter
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -1154,147 +1156,130 @@ def geocode_missing_buildings(db: Session = Depends(get_db_session), _: None = D
     return {"geocoded": geocoded, "failed": len(missing) - geocoded, "remaining": remaining}
 
 
-@router.get("/data-quality/export-xlsx", tags=["DataQuality"])
-def export_data_quality_xlsx(db: Session = Depends(get_db_session)):
-    """
-    Exportiert alle Datenqualität-Kategorien als Excel-Datei mit einem
-    Arbeitsblatt pro Kategorie – zur Weitergabe an Kolleg:innen, die die
-    Lücken pflegen sollen.
-    """
+_EXPORT_CACHE_KEY = "export-xlsx"
 
-    authority_columns = [
-        "Behörde", "Abteilung", "Straße", "Hausnummer", "PLZ", "Ort",
-        "Bundesland", "E-Mail", "Telefon", "Website",
+_EXPORT_AUTHORITY_COLUMNS = [
+    "Behörde", "Abteilung", "Straße", "Hausnummer", "PLZ", "Ort",
+    "Bundesland", "E-Mail", "Telefon", "Website",
+]
+_EXPORT_BUILDING_COLUMNS = ["Straße", "Hausnummer", "PLZ", "Ort"]
+_EXPORT_JURISDICTION_COLUMNS = ["Behörde", "Auskunftsart", "AGS", "Gemeinde"]
+
+
+def _export_authority_rows(authorities: list) -> list:
+    return [
+        [
+            a.authority_name, a.department_name, a.street, a.house_number, a.postal_code,
+            a.city, a.state, a.email, a.phone, a.website,
+        ]
+        for a in authorities
     ]
 
-    def authority_rows(authorities: List[Authority]) -> List[dict]:
-        return [
-            {
-                "Behörde": a.authority_name,
-                "Abteilung": a.department_name,
-                "Straße": a.street,
-                "Hausnummer": a.house_number,
-                "PLZ": a.postal_code,
-                "Ort": a.city,
-                "Bundesland": a.state,
-                "E-Mail": a.email,
-                "Telefon": a.phone,
-                "Website": a.website,
-            }
-            for a in authorities
-        ]
 
-    building_columns = ["Straße", "Hausnummer", "PLZ", "Ort"]
+def _export_building_rows(buildings: list) -> list:
+    return [[b.street, b.house_number, b.postal_code, b.city] for b in buildings]
 
-    def building_rows(buildings: List[Building]) -> List[dict]:
-        return [
-            {
-                "Straße": b.street,
-                "Hausnummer": b.house_number,
-                "PLZ": b.postal_code,
-                "Ort": b.city,
-            }
-            for b in buildings
-        ]
 
-    jurisdiction_columns = ["Behörde", "Auskunftsart", "AGS", "Gemeinde"]
+def _export_jurisdiction_rows(jurisdictions: list, db: Session) -> list:
+    serialized = _serialize_jurisdictions(jurisdictions, db, len(jurisdictions))
+    return [[j["authority_name"], j["request_type_name"], j["ags"], j["municipality"]] for j in serialized]
 
-    def jurisdiction_rows(jurisdictions: List[Jurisdiction]) -> List[dict]:
-        serialized = _serialize_jurisdictions(jurisdictions, db, len(jurisdictions))
-        return [
-            {
-                "Behörde": j["authority_name"],
-                "Auskunftsart": j["request_type_name"],
-                "AGS": j["ags"],
-                "Gemeinde": j["municipality"],
-            }
-            for j in serialized
-        ]
 
+def _build_export_sheets(db: Session) -> List[tuple]:
+    """(Blattname, Spaltenüberschriften, Zeilen als Listen) je Kategorie."""
     duplicate_authority_groups, _ = _find_duplicate_authority_groups(db)
     duplicate_authority_items = [dup for g in duplicate_authority_groups for dup in g["remove"]]
-    duplicate_jurisdiction_groups, _ = _find_duplicate_jurisdiction_groups(db)
+    duplicate_jurisdiction_groups, _ = _find_duplicate_jurisdiction_groups(db, slim=True)
     duplicate_jurisdiction_items = [dup for g in duplicate_jurisdiction_groups for dup in g["remove"]]
     duplicate_building_groups, _ = _find_duplicate_building_groups(db)
     duplicate_building_items = [dup for g in duplicate_building_groups for dup in g["remove"]]
 
-    sheets: List[tuple] = [
-        ("Ohne E-Mail", pd.DataFrame(authority_rows(_authorities_without_email(db)), columns=authority_columns)),
+    return [
+        ("Ohne E-Mail", _EXPORT_AUTHORITY_COLUMNS, _export_authority_rows(_authorities_without_email(db))),
         (
             "Ohne Zuständigkeit",
-            pd.DataFrame(authority_rows(_authorities_without_jurisdiction(db)), columns=authority_columns),
+            _EXPORT_AUTHORITY_COLUMNS,
+            _export_authority_rows(_authorities_without_jurisdiction(db)),
         ),
-        ("Ohne Adresse", pd.DataFrame(authority_rows(_authorities_without_address(db)), columns=authority_columns)),
-        (
-            "Nicht verifiziert",
-            pd.DataFrame(authority_rows(_authorities_unverified(db)), columns=authority_columns),
-        ),
-        (
-            "Behörden-Duplikate",
-            pd.DataFrame(authority_rows(duplicate_authority_items), columns=authority_columns),
-        ),
+        ("Ohne Adresse", _EXPORT_AUTHORITY_COLUMNS, _export_authority_rows(_authorities_without_address(db))),
+        ("Nicht verifiziert", _EXPORT_AUTHORITY_COLUMNS, _export_authority_rows(_authorities_unverified(db))),
+        ("Behörden-Duplikate", _EXPORT_AUTHORITY_COLUMNS, _export_authority_rows(duplicate_authority_items)),
         (
             "Zuständigkeits-Duplikate",
-            pd.DataFrame(jurisdiction_rows(duplicate_jurisdiction_items), columns=jurisdiction_columns),
+            _EXPORT_JURISDICTION_COLUMNS,
+            _export_jurisdiction_rows(duplicate_jurisdiction_items, db),
         ),
         (
             "Verwaiste Zuständigkeiten",
-            pd.DataFrame(jurisdiction_rows(_jurisdictions_orphaned(db)), columns=jurisdiction_columns),
+            _EXPORT_JURISDICTION_COLUMNS,
+            _export_jurisdiction_rows(_jurisdictions_orphaned(db, slim=True), db),
         ),
-        (
-            "Gebäude-Duplikate",
-            pd.DataFrame(building_rows(duplicate_building_items), columns=building_columns),
-        ),
+        ("Gebäude-Duplikate", _EXPORT_BUILDING_COLUMNS, _export_building_rows(duplicate_building_items)),
         (
             "Gebäude Prüfung nötig",
-            pd.DataFrame(building_rows(_buildings_with_review_required(db)), columns=building_columns),
+            _EXPORT_BUILDING_COLUMNS,
+            _export_building_rows(_buildings_with_review_required(db)),
         ),
         (
             "Ohne Kartenkoordinaten",
-            pd.DataFrame(building_rows(_buildings_without_coordinates(db)), columns=building_columns),
+            _EXPORT_BUILDING_COLUMNS,
+            _export_building_rows(_buildings_without_coordinates(db)),
         ),
         (
             "Abdeckungslücken",
-            pd.DataFrame(
-                [
-                    {
-                        "AGS": g["ags"],
-                        "Gemeinde": g["municipality"],
-                        "Auskunftsart": g["request_type_name"],
-                        "Betroffene Gebäude": g["building_count"],
-                    }
-                    for g in _coverage_gaps(db)
-                ],
-                columns=["AGS", "Gemeinde", "Auskunftsart", "Betroffene Gebäude"],
-            ),
+            ["AGS", "Gemeinde", "Auskunftsart", "Betroffene Gebäude"],
+            [[g["ags"], g["municipality"], g["request_type_name"], g["building_count"]] for g in _coverage_gaps(db)],
         ),
         (
             "Mögliche Duplikate (ähnlich)",
-            pd.DataFrame(
-                [
-                    {
-                        "Behörde A": p["authority_name_a"],
-                        "Behörde B": p["authority_name_b"],
-                        "Ort": p["city"],
-                        "Ähnlichkeit": p["similarity"],
-                    }
-                    for p in _fuzzy_duplicate_authority_pairs(db)
-                ],
-                columns=["Behörde A", "Behörde B", "Ort", "Ähnlichkeit"],
-            ),
+            ["Behörde A", "Behörde B", "Ort", "Ähnlichkeit"],
+            [
+                [p["authority_name_a"], p["authority_name_b"], p["city"], p["similarity"]]
+                for p in _fuzzy_duplicate_authority_pairs(db)
+            ],
         ),
     ]
 
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        for sheet_name, df in sheets:
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
-    buffer.seek(0)
 
-    return StreamingResponse(
-        buffer,
-        headers={
-            "Content-Disposition": "attachment; filename=datenqualitaet_luecken.xlsx",
-            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        },
+def _render_export_xlsx(sheets: List[tuple]) -> bytes:
+    """Schreibt die Blätter mit openpyxl im write_only-Modus (Zeile für Zeile,
+    ohne Zellobjekte im Speicher). Das ist um ein Vielfaches schneller als
+    pandas.DataFrame.to_excel - bei ~100.000 Zellen der Unterschied zwischen
+    Sekunden und Minuten auf dem kleinen Produktions-Server."""
+    workbook = Workbook(write_only=True)
+    bold = Font(bold=True)
+    for sheet_name, columns, rows in sheets:
+        sheet = workbook.create_sheet(title=sheet_name)
+        for index, column in enumerate(columns, start=1):
+            sheet.column_dimensions[get_column_letter(index)].width = max(14, min(48, len(column) + 6))
+        header = []
+        for column in columns:
+            cell = WriteOnlyCell(sheet, value=column)
+            cell.font = bold
+            header.append(cell)
+        sheet.append(header)
+        for row in rows:
+            sheet.append(row)
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+@router.get("/data-quality/export-xlsx", tags=["DataQuality"])
+def export_data_quality_xlsx(refresh: bool = False, db: Session = Depends(get_db_session)):
+    """
+    Exportiert alle Datenqualität-Kategorien als Excel-Datei mit einem
+    Arbeitsblatt pro Kategorie – zur Weitergabe an Kolleg:innen, die die
+    Lücken pflegen sollen. Die fertige Datei wird (wie die Übersicht) kurz
+    zwischengespeichert; refresh=true erzwingt eine Neuberechnung.
+    """
+    content = get_or_compute(
+        _EXPORT_CACHE_KEY,
+        lambda: _render_export_xlsx(_build_export_sheets(db)),
+        refresh=refresh,
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=datenqualitaet_luecken.xlsx"},
     )

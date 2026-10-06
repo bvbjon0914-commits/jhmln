@@ -267,6 +267,7 @@ export function DataQualityAdmin({
   const [mergingJurisdictions, setMergingJurisdictions] = useState(false);
   const [mergingBuildings, setMergingBuildings] = useState(false);
   const [geocodingBuildings, setGeocodingBuildings] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const loadHeavy = async (refresh: boolean, token: number) => {
     setHeavyState("loading");
@@ -440,6 +441,25 @@ export function DataQualityAdmin({
     }
   };
 
+  const handleExportXlsx = async () => {
+    setExporting(true);
+    try {
+      const blob = await api.downloadDataQualityXlsx();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "datenqualitaet_luecken.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      showToast("error", friendlyErrorMessage(error, "Excel-Export fehlgeschlagen."));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleGeocodeMissingBuildings = async () => {
     setGeocodingBuildings(true);
     try {
@@ -498,12 +518,14 @@ export function DataQualityAdmin({
             Aktualisieren
           </Button>
           {hasGaps && (
-            <a href={api.exportDataQualityXlsxUrl()} download className="shrink-0">
-              <Button variant="secondary">
+            <Button variant="secondary" onClick={() => void handleExportXlsx()} disabled={exporting}>
+              {exporting ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
                 <FileSpreadsheet size={15} />
-                Als Excel exportieren
-              </Button>
-            </a>
+              )}
+              {exporting ? "Excel wird erstellt…" : "Als Excel exportieren"}
+            </Button>
           )}
         </div>
       </div>

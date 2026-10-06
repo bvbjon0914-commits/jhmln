@@ -370,7 +370,7 @@ function App() {
   return (
     <div className="min-h-screen">
       <header className="border-b border-line bg-surface shadow-sm">
-        <div className="mx-auto flex max-w-4xl items-center gap-3 px-6 py-4">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-6 py-4">
           <img src="/brand/mark.png" alt="Civeloq" className="h-9 w-9" />
           <div>
             <h1 className="font-display text-[15px] font-semibold leading-none text-ink">
@@ -380,7 +380,7 @@ function App() {
               Behördenzuordnung & Anschreiben-Generierung
             </p>
           </div>
-          <nav className="ml-auto flex items-center gap-1">
+          <nav className="ml-auto flex flex-wrap items-center justify-end gap-1">
             <button
               onClick={() => setView("wizard")}
               aria-current={view === "wizard" ? "page" : undefined}

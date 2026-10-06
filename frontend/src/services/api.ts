@@ -377,8 +377,21 @@ export const api = {
     return getDataQuality<DataQualityHeavy>("/data-quality/heavy", params);
   },
 
-  exportDataQualityXlsxUrl(): string {
-    return "/api/data-quality/export-xlsx";
+  /** Excel-Export als Blob: der Server braucht beim ersten Mal einige Sekunden (danach gecacht),
+   * deshalb Download per Request mit Timeout/Retry + Ladeanzeige statt eines blinden Links. */
+  async downloadDataQualityXlsx(): Promise<Blob> {
+    const request = () =>
+      client.get<Blob>("/data-quality/export-xlsx", {
+        responseType: "blob",
+        timeout: DATA_QUALITY_TIMEOUT_MS * 2,
+      });
+    try {
+      return (await request()).data;
+    } catch (error) {
+      if (!isRetryableDataQualityError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, DATA_QUALITY_RETRY_DELAY_MS));
+      return (await request()).data;
+    }
   },
 
   async clearBadGeocoding(): Promise<{ deleted: number }> {
