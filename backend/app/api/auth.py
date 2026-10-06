@@ -246,3 +246,42 @@ def set_login_required(
     settings.login_required = payload.enabled
     db.commit()
     return {"login_required": settings.login_required}
+
+
+@router.post("/auth/login-required/enable", tags=["Auth"])
+def enable_login_required(payload: LoginPayload, request: Request, db: Session = Depends(get_db_session)):
+    """
+    Öffentlich (bewusst OHNE require_login/require_main): schaltet den
+    Login-Zwang WIEDER EIN. Nötig, weil bei ausgeschaltetem Login-Zwang weder
+    ein Login-Screen noch eine Haupt-Session existiert und der Schalter sonst
+    nicht mehr aus der Oberfläche heraus zurückgestellt werden könnte.
+
+    Kann den Zwang ausschließlich einschalten (nie aus) und ist idempotent.
+    Autorisierung: mit `email` muss es ein Haupt-Account (is_main) mit
+    passendem Passwort sein, ohne `email` das alte Haupt-Passwort. Jede andere
+    Konstellation (falsches Passwort, Nicht-Haupt-Account, geteiltes Passwort)
+    ergibt dieselbe generische 401-Antwort. Es wird KEIN Session-Cookie gesetzt.
+    """
+    client_key = _client_key(request)
+    if rate_limiter.is_blocked(client_key):
+        raise HTTPException(
+            status_code=429,
+            detail="Zu viele fehlgeschlagene Login-Versuche. Bitte später erneut versuchen.",
+            headers={"Retry-After": str(LOGIN_RATE_LIMIT_WINDOW_SECONDS)},
+        )
+
+    if payload.email:
+        user = check_user_credentials(db, payload.email, payload.password)
+        authorized = user is not None and user.is_main
+    else:
+        authorized = check_password(payload.password) == "main"
+
+    if not authorized:
+        rate_limiter.record_failure(client_key)
+        raise HTTPException(status_code=401, detail="Anmeldedaten oder Berechtigung ungültig.")
+
+    rate_limiter.record_success(client_key)
+    settings = AppSettings.get_or_create(db)
+    settings.login_required = True
+    db.commit()
+    return {"login_required": True}

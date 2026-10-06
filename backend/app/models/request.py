@@ -136,6 +136,11 @@ class RequestItem(Base):
     # PENDING, GENERATED, FAILED
     document_status = Column(String(50), default="PENDING", nullable=False, index=True)
 
+    # Im Wizard vorab angekreuzte Optionen des Anschreibens (JSON-Liste von
+    # 0-basierten Indizes, z.B. '[0,2]'; NULL/leer = nichts angekreuzt).
+    # Reihenfolge der Optionen: app/services/request_options.py
+    selected_options = Column(Text, nullable=True)
+
     # ========== Audit-Felder ==========
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -170,6 +175,22 @@ class RequestItem(Base):
     def set_alternative_authorities(self, authorities: list) -> None:
         """Setzt alternative_authorities als JSON."""
         self.alternative_authorities = json.dumps(authorities) if authorities else None
+
+    def get_selected_options_list(self) -> list:
+        """Konvertiert selected_options JSON zu einer Liste von Indizes."""
+        if not self.selected_options:
+            return []
+        try:
+            value = json.loads(self.selected_options)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(value, list):
+            return []
+        return [i for i in value if isinstance(i, int) and not isinstance(i, bool)]
+
+    def set_selected_options(self, indices: list) -> None:
+        """Setzt selected_options als JSON (leere Auswahl -> NULL)."""
+        self.selected_options = json.dumps(list(indices)) if indices else None
 
     def to_dict(self) -> dict:
         """Konvertiert das Modell zu einem Dictionary."""

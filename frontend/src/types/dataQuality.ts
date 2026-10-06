@@ -95,4 +95,13 @@ export interface DataQualitySummary {
   buildings_without_coordinates: BuildingGroup;
   coverage_gaps: CoverageGapGroup;
   fuzzy_duplicate_authorities: FuzzyDuplicateGroup;
+  // true bei ?light=true: coverage_gaps/fuzzy_duplicate_authorities sind dann nur
+  // leere Platzhalter und müssen über GET /data-quality/heavy nachgeladen werden.
+  heavy_pending?: boolean;
+}
+
+// Antwort von GET /data-quality/heavy: genau die zwei teuren Gruppen.
+export interface DataQualityHeavy {
+  coverage_gaps: CoverageGapGroup;
+  fuzzy_duplicate_authorities: FuzzyDuplicateGroup;
 }

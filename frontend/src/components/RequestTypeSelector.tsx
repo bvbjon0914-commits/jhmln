@@ -7,9 +7,28 @@ interface Props {
   selected: string[];
   onChange: (ids: string[]) => void;
   hints?: Record<string, string>;
+  /** request_type_id -> ticked checkbox option indices */
+  checkboxSelections?: Record<string, number[]>;
+  onCheckboxChange?: (requestTypeId: string, next: number[]) => void;
 }
 
-export function RequestTypeSelector({ types, selected, onChange, hints = {} }: Props) {
+export function RequestTypeSelector({
+  types,
+  selected,
+  onChange,
+  hints = {},
+  checkboxSelections = {},
+  onCheckboxChange,
+}: Props) {
+  const toggleOption = (typeId: string, index: number) => {
+    if (!onCheckboxChange) return;
+    const current = checkboxSelections[typeId] ?? [];
+    const next = current.includes(index)
+      ? current.filter((i) => i !== index)
+      : [...current, index];
+    onCheckboxChange(typeId, [...next].sort((a, b) => a - b));
+  };
+
   const toggle = (id: string) => {
     if (selected.includes(id)) {
       onChange(selected.filter((s) => s !== id));
@@ -58,6 +77,9 @@ export function RequestTypeSelector({ types, selected, onChange, hints = {} }: P
           {types.map((type) => {
             const isSelected = selected.includes(type.request_type_id);
             const hint = hints[type.request_type_id];
+            const options = type.checkbox_options ?? [];
+            const ticked = checkboxSelections[type.request_type_id] ?? [];
+            const showOptions = isSelected && !!onCheckboxChange && options.length > 0;
             return (
               <div key={type.request_type_id}>
                 <button
@@ -80,6 +102,41 @@ export function RequestTypeSelector({ types, selected, onChange, hints = {} }: P
                   </span>
                   {type.name}
                 </button>
+                {showOptions && (
+                  <fieldset className="mt-1.5 ml-4 min-w-0 border-l-2 border-brand/20 pl-3 pr-1">
+                    <legend className="sr-only">
+                      {type.name}: im Schreiben vorab ankreuzen
+                    </legend>
+                    <p
+                      aria-hidden="true"
+                      className="mb-1 text-[11px] text-ink-faint"
+                    >
+                      Im Schreiben vorab ankreuzen:
+                    </p>
+                    <ul className="space-y-1">
+                      {options.map((label, idx) => {
+                        const inputId = `cbopt-${type.request_type_id}-${idx}`;
+                        return (
+                          <li key={idx}>
+                            <label
+                              htmlFor={inputId}
+                              className="flex cursor-pointer items-start gap-2 text-[12px] leading-snug text-ink-soft"
+                            >
+                              <input
+                                id={inputId}
+                                type="checkbox"
+                                checked={ticked.includes(idx)}
+                                onChange={() => toggleOption(type.request_type_id, idx)}
+                                className="mt-[3px] h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-line accent-brand"
+                              />
+                              <span className="min-w-0 break-words">{label}</span>
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </fieldset>
+                )}
                 {hint && (
                   <div className="mt-1.5 flex items-start gap-1.5 px-1 text-[11px] text-ink-faint">
                     <Info size={12} className="mt-0.5 shrink-0" />

@@ -26,10 +26,11 @@ from docx.oxml import OxmlElement
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from app.services.request_options import CHECKBOX_OPTIONS  # noqa: E402
+
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "..", "templates")
 
 GRAY = RGBColor(0x59, 0x59, 0x59)
-CHECKBOX = "☐"  # ☐
 
 
 # ---------------------------------------------------------------------------
@@ -39,7 +40,9 @@ CHECKBOX = "☐"  # ☐
 # legal_basis:   Rechtsgrundlage im Fließtext (Bundesland wird eingesetzt)
 # object_label:  "Objekt" oder "Grundstück"
 # interest_hint: Klammerbeispiel für das berechtigte Interesse
-# checkboxes:    Liste der Anfrageoptionen
+# (Die ankreuzbaren Anfrageoptionen stehen zentral in
+#  app/services/request_options.py und werden als {{ checkbox_i }}-Platzhalter
+#  gerendert - ☒/☐ je nach Auswahl beim Generieren.)
 # extra_note:    optionaler zusätzlicher Hinweisabsatz (kursiv, wie im
 #                Grundbuch-Muster die Anmerkung zu Gemarkung/Flur)
 # ---------------------------------------------------------------------------
@@ -56,7 +59,6 @@ REQUEST_TYPE_TEXTS = {
             "Eigentümerstellung, Erbfolge, Bevollmächtigung durch den Eigentümer, "
             "Verkehrswertermittlung im Auftrag"
         ),
-        "checkboxes": ["einfachen Grundbuchauszugs", "beglaubigten Grundbuchauszugs"],
         "intro": "Wir bitten um Übersendung eines:",
         "extra_note": (
             "(Gemarkung, Flur und Flurstück sind uns derzeit nicht bekannt – wir bitten "
@@ -77,11 +79,6 @@ REQUEST_TYPE_TEXTS = {
             "Eigentümerstellung, Rechtsnachfolge, Bevollmächtigung durch den Eigentümer, "
             "gutachterliche Tätigkeit"
         ),
-        "checkboxes": [
-            "Übersendung von Kopien der vorhandenen Bauakte(n) (insbesondere Baugenehmigung, genehmigte Baupläne/Lagepläne, Abnahmeprotokolle)",
-            "Mitteilung, ob und in welchem Umfang Bauakten zu diesem Objekt bei Ihnen vorliegen",
-            "Terminvereinbarung zur Einsichtnahme vor Ort in Ihren Diensträumen",
-        ],
         "intro": "Wir bitten höflich um:",
         "extra_note": None,
     },
@@ -97,10 +94,6 @@ REQUEST_TYPE_TEXTS = {
             "Eigentümerstellung, Rechtsnachfolge, Bevollmächtigung durch den Eigentümer, "
             "Vorbereitung einer Bebauung/Veräußerung"
         ),
-        "checkboxes": [
-            "Übersendung eines aktuellen Auszugs aus dem Baulastenverzeichnis",
-            "Mitteilung, ob und welche Baulasten zu diesem Grundstück eingetragen sind",
-        ],
         "intro": "Wir bitten höflich um:",
         "extra_note": None,
     },
@@ -116,10 +109,6 @@ REQUEST_TYPE_TEXTS = {
             "Eigentümerstellung, Rechtsnachfolge, Bevollmächtigung durch den Eigentümer, "
             "Vorbereitung einer Transaktion/Bebauung"
         ),
-        "checkboxes": [
-            "Mitteilung, ob das Grundstück im Altlasten-/Bodenschutzkataster erfasst ist",
-            "Übersendung vorhandener Unterlagen (Gutachten, Untersuchungsberichte)",
-        ],
         "intro": "Wir bitten höflich um:",
         "extra_note": None,
     },
@@ -135,10 +124,6 @@ REQUEST_TYPE_TEXTS = {
             "Eigentümerstellung, Rechtsnachfolge, Bevollmächtigung durch den Eigentümer, "
             "Vorbereitung einer Transaktion"
         ),
-        "checkboxes": [
-            "Mitteilung, ob Erschließungsbeiträge noch offen sind oder abgerechnet wurden",
-            "Ausstellung einer Anliegerbescheinigung (Unbedenklichkeitsbescheinigung)",
-        ],
         "intro": "Wir bitten höflich um:",
         "extra_note": None,
     },
@@ -154,10 +139,6 @@ REQUEST_TYPE_TEXTS = {
             "Eigentümerstellung, Rechtsnachfolge, Bevollmächtigung durch den Eigentümer, "
             "Vorbereitung von Umbau-/Modernisierungsmaßnahmen"
         ),
-        "checkboxes": [
-            "Mitteilung, ob das Objekt in die Denkmalliste eingetragen ist",
-            "Übersendung eines Auszugs aus der Denkmalliste bzw. relevanter Unterlagen",
-        ],
         "intro": "Wir bitten höflich um:",
         "extra_note": None,
     },
@@ -173,10 +154,6 @@ REQUEST_TYPE_TEXTS = {
             "Eigentümerstellung, Rechtsnachfolge, Bevollmächtigung durch den Eigentümer, "
             "Vorbereitung von Baumaßnahmen"
         ),
-        "checkboxes": [
-            "Mitteilung, ob Bodendenkmäler auf dem Grundstück bekannt/eingetragen sind",
-            "Übersendung relevanter Unterlagen bzw. Auflagen für Baumaßnahmen",
-        ],
         "intro": "Wir bitten höflich um:",
         "extra_note": None,
     },
@@ -193,10 +170,6 @@ REQUEST_TYPE_TEXTS = {
             "Eigentümerstellung, Rechtsnachfolge, Bevollmächtigung durch den Eigentümer, "
             "Vorbereitung einer Transaktion/Bebauung"
         ),
-        "checkboxes": [
-            "Mitteilung, ob das Grundstück in einem Wasserschutzgebiet liegt (inkl. Zone)",
-            "Übersendung geltender Schutzgebietsverordnungen/Auflagen",
-        ],
         "intro": "Wir bitten höflich um:",
         "extra_note": None,
     },
@@ -212,10 +185,6 @@ REQUEST_TYPE_TEXTS = {
             "Eigentümerstellung, Rechtsnachfolge, Bevollmächtigung durch den Eigentümer, "
             "Risikobewertung im Rahmen der Bestandsverwaltung"
         ),
-        "checkboxes": [
-            "Mitteilung, ob das Grundstück in einem Überschwemmungsgebiet liegt",
-            "Übersendung von Hochwassergefahrenkarten bzw. relevanter Unterlagen",
-        ],
         "intro": "Wir bitten höflich um:",
         "extra_note": None,
     },
@@ -232,10 +201,6 @@ REQUEST_TYPE_TEXTS = {
             "Eigentümerstellung, Rechtsnachfolge, Bevollmächtigung durch den Eigentümer, "
             "Vorbereitung von Baumaßnahmen"
         ),
-        "checkboxes": [
-            "Auswertung der Luftbilder / Mitteilung des Ergebnisses",
-            "Mitteilung, ob eine Sondierung/Räumung erforderlich ist",
-        ],
         "intro": "Wir bitten höflich um:",
         "extra_note": None,
     },
@@ -252,10 +217,6 @@ REQUEST_TYPE_TEXTS = {
             "Eigentümerstellung, Rechtsnachfolge, Bevollmächtigung durch den Eigentümer, "
             "Vermessungs-/Vermarktungszwecke"
         ),
-        "checkboxes": [
-            "Übersendung eines aktuellen Flurstücksnachweises",
-            "Übersendung eines Auszugs aus der Liegenschaftskarte",
-        ],
         "intro": "Wir bitten höflich um:",
         "extra_note": None,
     },
@@ -398,8 +359,9 @@ def build_template(code: str, texts: dict) -> str:
 
     # --- Checkboxen ---------------------------------------------------------
     doc.add_paragraph(texts["intro"])
-    for option in texts["checkboxes"]:
-        doc.add_paragraph(f"{CHECKBOX} {option}")
+    for i, option in enumerate(CHECKBOX_OPTIONS[code]):
+        # Ein einziger Run, damit docxtpl den Platzhalter ersetzen kann.
+        doc.add_paragraph(f"{{{{ checkbox_{i} }}}} {option}")
     doc.add_paragraph()
 
     # --- Gebührenhinweis -----------------------------------------------

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db_session
 from app.models.building import Building
 from app.models.request import Request
+from app.services.building_cleanup import delete_requests_with_dependents
 
 router = APIRouter()
 
@@ -80,7 +81,7 @@ def delete_request(request_id: str, db: Session = Depends(get_db_session)):
     if not request_record:
         raise HTTPException(status_code=404, detail=f"Request {request_id} nicht gefunden")
 
-    db.delete(request_record)
+    delete_requests_with_dependents(db, [request_id])
     db.commit()
     return None
 
@@ -89,10 +90,11 @@ def delete_request(request_id: str, db: Session = Depends(get_db_session)):
 def purge_orphaned_requests(db: Session = Depends(get_db_session)):
     """Löscht alle Anfragen, deren Gebäude nicht mehr existiert."""
     existing_building_ids = db.query(Building.building_id)
-    orphaned = db.query(Request).filter(Request.building_id.notin_(existing_building_ids)).all()
+    orphaned_ids = [
+        r[0] for r in db.query(Request.request_id).filter(Request.building_id.notin_(existing_building_ids)).all()
+    ]
 
-    for request_record in orphaned:
-        db.delete(request_record)
+    deleted = delete_requests_with_dependents(db, orphaned_ids)
     db.commit()
 
-    return {"deleted": len(orphaned)}
+    return {"deleted": deleted}

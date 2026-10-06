@@ -127,7 +127,10 @@ def generate_documents(
                 f"VNV-{request_sequence.year}-{request_sequence.sequence_number:04d}-"
                 f"{request_type.code}-{candidate_position}"
             )
-            doc = generator.generate_document(building, authority, request_type, aktenzeichen, sender=current_user)
+            doc = generator.generate_document(
+                building, authority, request_type, aktenzeichen, sender=current_user,
+                selected_options=item.get_selected_options_list(),
+            )
             item_position = candidate_position
             item.document_path = doc.filepath
             item.document_status = "GENERATED"

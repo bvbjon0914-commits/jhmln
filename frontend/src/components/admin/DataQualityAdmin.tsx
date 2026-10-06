@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Loader2,
   MailWarning,
@@ -13,6 +13,7 @@ import {
   LocateOff,
   AlertOctagon,
   Scan,
+  RefreshCw,
 } from "lucide-react";
 import { api } from "../../services/api";
 import { Button } from "../common/Button";
@@ -20,6 +21,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useToast, errorMessage } from "../common/Toast";
 import type {
   DataQualitySummary,
+  DataQualityHeavy,
   DataQualityGroup,
   AuthorityRef,
   BuildingRef,
@@ -28,6 +30,83 @@ import type {
   FuzzyDuplicatePairRef,
 } from "../../types/dataQuality";
 import type { Tab } from "./AdminPage";
+
+type LoadState = "loading" | "ok" | "error";
+
+const SERVER_NOT_RESPONDING_MESSAGE =
+  "Der Server antwortet nicht - er wacht ggf. gerade auf (Free-Tier). Bitte gleich erneut versuchen.";
+
+// Rohe axios-Meldungen ("Network Error", "timeout of 120000ms exceeded") sind für
+// Anwender unverständlich - meist schläft der Free-Tier-Server nur und wacht gerade auf.
+function friendlyErrorMessage(error: unknown, fallback: string): string {
+  const e = error as { code?: string; message?: string; response?: { status?: number } } | null;
+  if (e && typeof e === "object") {
+    const status = e.response?.status;
+    const noResponse = !e.response;
+    const networkLike =
+      noResponse &&
+      (e.code === "ERR_NETWORK" ||
+        e.code === "ECONNABORTED" ||
+        e.code === "ETIMEDOUT" ||
+        /network error|timeout/i.test(e.message ?? ""));
+    if (networkLike || status === 502 || status === 503 || status === 504) {
+      return SERVER_NOT_RESPONDING_MESSAGE;
+    }
+  }
+  return errorMessage(error, fallback);
+}
+
+// Platzhalter für eine Karte, deren Zahlen noch berechnet werden bzw. deren
+// Berechnung fehlgeschlagen ist - zeigt bewusst NICHT "0", das wäre ein falscher Befund.
+function PendingCard({
+  icon,
+  title,
+  description,
+  state,
+  error,
+  onRetry,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  state: "loading" | "error";
+  error: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-line bg-surface shadow-sm">
+      <div className="flex items-start gap-3 px-4 py-3.5">
+        <div className="mt-0.5 text-status-review">{icon}</div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="font-display text-sm font-semibold text-ink">{title}</h3>
+            {state === "loading" && (
+              <span aria-hidden="true" className="inline-block h-5 w-9 animate-pulse rounded-full bg-status-neutralBg" />
+            )}
+          </div>
+          <p className="mt-0.5 text-xs text-ink-faint">{description}</p>
+          {state === "loading" ? (
+            <p role="status" className="mt-2 flex items-center gap-1.5 text-xs text-ink-faint">
+              <Loader2 size={12} className="animate-spin" />
+              wird berechnet…
+            </p>
+          ) : (
+            <div role="alert" className="mt-2 space-y-1.5">
+              <p className="text-xs text-status-conflict">{error}</p>
+              <button
+                onClick={onRetry}
+                className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+              >
+                <RefreshCw size={12} />
+                Erneut versuchen
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function GroupCard<T extends { }>({
   icon,
@@ -172,8 +251,16 @@ export function DataQualityAdmin({
 } = {}) {
   const { showToast } = useToast();
   const { isMain } = useAuth();
+  // Zwei getrennte Ladevorgänge: die schnellen Kategorien ("light") erscheinen sofort,
+  // die zwei teuren (Abdeckungslücken, ähnliche Duplikate = "heavy") kommen separat nach.
   const [summary, setSummary] = useState<DataQualitySummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [lightState, setLightState] = useState<LoadState>("loading");
+  const [lightError, setLightError] = useState("");
+  const [heavy, setHeavy] = useState<DataQualityHeavy | null>(null);
+  const [heavyState, setHeavyState] = useState<LoadState>("loading");
+  const [heavyError, setHeavyError] = useState("");
+  // Nur das Ergebnis des jeweils jüngsten Ladevorgangs wird übernommen.
+  const loadToken = useRef(0);
   const [clearing, setClearing] = useState(false);
   const [merging, setMerging] = useState(false);
   const [deletingBuildings, setDeletingBuildings] = useState(false);
@@ -181,16 +268,51 @@ export function DataQualityAdmin({
   const [mergingBuildings, setMergingBuildings] = useState(false);
   const [geocodingBuildings, setGeocodingBuildings] = useState(false);
 
-  const load = () => {
-    api
-      .getDataQualitySummary()
-      .then(setSummary)
-      .catch((error) => showToast("error", errorMessage(error, "Datenqualität konnte nicht geladen werden.")))
-      .finally(() => setLoading(false));
+  const loadHeavy = async (refresh: boolean, token: number) => {
+    setHeavyState("loading");
+    setHeavyError("");
+    try {
+      const data = await api.getDataQualityHeavy({ refresh });
+      if (token !== loadToken.current) return;
+      setHeavy(data);
+      setHeavyState("ok");
+    } catch (error) {
+      if (token !== loadToken.current) return;
+      setHeavyError(friendlyErrorMessage(error, "Die Auswertung konnte nicht berechnet werden."));
+      setHeavyState("error");
+    }
+  };
+
+  const load = async (refresh = false) => {
+    const token = ++loadToken.current;
+    setLightState("loading");
+    setLightError("");
+    setHeavy(null);
+    setHeavyState("loading");
+    try {
+      const data = await api.getDataQualitySummary({ light: true, refresh });
+      if (token !== loadToken.current) return;
+      setSummary(data);
+      setLightState("ok");
+    } catch (error) {
+      if (token !== loadToken.current) return;
+      setLightError(friendlyErrorMessage(error, "Datenqualität konnte nicht geladen werden."));
+      setLightState("error");
+      return;
+    }
+    await loadHeavy(refresh, token);
+  };
+
+  // Nach einer Änderung (Zusammenführen/Löschen/Geocodieren) neu laden - ohne Server-Cache.
+  const reload = () => {
+    void load(true);
   };
 
   useEffect(() => {
-    load();
+    void load();
+    return () => {
+      loadToken.current++; // verspätete Antworten nach dem Verlassen der Seite verwerfen
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -235,7 +357,7 @@ export function DataQualityAdmin({
           ? `${result.removed} Duplikate in ${result.merged_groups} Behörden zusammengeführt.`
           : "Keine automatisch auflösbaren Duplikate gefunden."
       );
-      load();
+      reload();
     } catch (error) {
       showToast("error", errorMessage(error, "Zusammenführen fehlgeschlagen."));
     } finally {
@@ -260,7 +382,7 @@ export function DataQualityAdmin({
           ? `${result.deleted} Gebäude gelöscht.${result.skipped > 0 ? ` ${result.skipped} übersprungen (bereits in Bearbeitung).` : ""}`
           : "Keine automatisch löschbaren Gebäude gefunden."
       );
-      load();
+      reload();
     } catch (error) {
       showToast("error", errorMessage(error, "Löschen fehlgeschlagen."));
     } finally {
@@ -285,7 +407,7 @@ export function DataQualityAdmin({
           ? `${result.removed} Duplikate in ${result.merged_groups} Regeln zusammengeführt.`
           : "Keine automatisch auflösbaren Duplikate gefunden."
       );
-      load();
+      reload();
     } catch (error) {
       showToast("error", errorMessage(error, "Zusammenführen fehlgeschlagen."));
     } finally {
@@ -310,7 +432,7 @@ export function DataQualityAdmin({
           ? `${result.removed} Duplikate in ${result.merged_groups} Gebäuden zusammengeführt.`
           : "Keine automatisch auflösbaren Duplikate gefunden."
       );
-      load();
+      reload();
     } catch (error) {
       showToast("error", errorMessage(error, "Zusammenführen fehlgeschlagen."));
     } finally {
@@ -328,7 +450,7 @@ export function DataQualityAdmin({
           result.failed > 0 ? ` ${result.failed} Adresse(n) blieben ohne Treffer.` : ""
         }${result.remaining > 0 ? ` ${result.remaining} insgesamt noch offen (erneut ausführen).` : ""}`
       );
-      load();
+      reload();
     } catch (error) {
       showToast("error", errorMessage(error, "Geokodierung fehlgeschlagen."));
     } finally {
@@ -336,7 +458,18 @@ export function DataQualityAdmin({
     }
   };
 
-  if (loading) {
+  if (!summary) {
+    if (lightState === "error") {
+      return (
+        <div role="alert" className="flex flex-col items-center gap-3 py-10 text-center">
+          <p className="max-w-md text-sm text-status-conflict">{lightError}</p>
+          <Button variant="secondary" onClick={() => void load()}>
+            <RefreshCw size={14} />
+            Erneut versuchen
+          </Button>
+        </div>
+      );
+    }
     return (
       <div className="flex items-center justify-center gap-2 py-10 text-sm text-ink-faint">
         <Loader2 size={16} className="animate-spin" />
@@ -345,7 +478,7 @@ export function DataQualityAdmin({
     );
   }
 
-  if (!summary) return null;
+  const refreshing = lightState === "loading" || heavyState === "loading";
 
   const hasGaps =
     summary.authorities_without_email.count > 0 ||
@@ -359,15 +492,32 @@ export function DataQualityAdmin({
           {summary.total_authorities} aktive Behörden. Lücken hier zu schließen verhindert spätere
           Prüffälle beim Matching und fehlende E-Mail-Buttons.
         </p>
-        {hasGaps && (
-          <a href={api.exportDataQualityXlsxUrl()} download className="shrink-0">
-            <Button variant="secondary">
-              <FileSpreadsheet size={15} />
-              Als Excel exportieren
-            </Button>
-          </a>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="secondary" onClick={() => void load(true)} disabled={refreshing}>
+            <RefreshCw size={15} className={refreshing ? "animate-spin" : ""} />
+            Aktualisieren
+          </Button>
+          {hasGaps && (
+            <a href={api.exportDataQualityXlsxUrl()} download className="shrink-0">
+              <Button variant="secondary">
+                <FileSpreadsheet size={15} />
+                Als Excel exportieren
+              </Button>
+            </a>
+          )}
+        </div>
       </div>
+      {lightState === "error" && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-lg border border-line bg-status-conflictBg px-4 py-2.5 text-xs text-status-conflict"
+        >
+          <span>{lightError} Angezeigt wird der zuletzt geladene Stand.</span>
+          <button onClick={() => void load()} className="shrink-0 font-medium hover:underline">
+            Erneut versuchen
+          </button>
+        </div>
+      )}
       <div className="grid gap-3 sm:grid-cols-3">
         <GroupCard
           icon={<MailWarning size={16} />}
@@ -459,24 +609,46 @@ export function DataQualityAdmin({
           renderItem={renderBuildingRow}
           onNavigate={onNavigate ? () => onNavigate("buildings", "missing_coordinates") : undefined}
         />
-        <GroupCard
-          icon={<AlertOctagon size={16} />}
-          title="Abdeckungslücken"
-          description="Gemeinde + Auskunftsart-Kombinationen ohne Zuständigkeitsregel - eine echte Anfrage würde hier heute mit „Kein Treffer“ enden."
-          group={summary.coverage_gaps}
-          itemKey={(g) => `${g.ags}-${g.request_type_name}`}
-          renderItem={renderCoverageGapRow}
-          onNavigate={onNavigate ? () => onNavigate("jurisdictions", "coverage_gap") : undefined}
-        />
-        <GroupCard
-          icon={<Scan size={16} />}
-          title="Mögliche Duplikate (ähnlich)"
-          description="Namenspaare mit sehr ähnlicher Schreibweise (Tippfehler, Umlaut-Varianten) in derselben Stadt - von der exakten Duplikat-Erkennung nicht erfasst."
-          group={summary.fuzzy_duplicate_authorities}
-          itemKey={(p) => `${p.authority_id_a}-${p.authority_id_b}`}
-          renderItem={renderFuzzyDuplicateRow}
-          onNavigate={onNavigate ? () => onNavigate("authorities", "fuzzy_duplicate") : undefined}
-        />
+        {heavy ? (
+          <GroupCard
+            icon={<AlertOctagon size={16} />}
+            title="Abdeckungslücken"
+            description="Gemeinde + Auskunftsart-Kombinationen ohne Zuständigkeitsregel - eine echte Anfrage würde hier heute mit „Kein Treffer“ enden."
+            group={heavy.coverage_gaps}
+            itemKey={(g) => `${g.ags}-${g.request_type_name}`}
+            renderItem={renderCoverageGapRow}
+            onNavigate={onNavigate ? () => onNavigate("jurisdictions", "coverage_gap") : undefined}
+          />
+        ) : (
+          <PendingCard
+            icon={<AlertOctagon size={16} />}
+            title="Abdeckungslücken"
+            description="Gemeinde + Auskunftsart-Kombinationen ohne Zuständigkeitsregel - eine echte Anfrage würde hier heute mit „Kein Treffer“ enden."
+            state={heavyState === "error" ? "error" : "loading"}
+            error={heavyError}
+            onRetry={() => void loadHeavy(false, loadToken.current)}
+          />
+        )}
+        {heavy ? (
+          <GroupCard
+            icon={<Scan size={16} />}
+            title="Mögliche Duplikate (ähnlich)"
+            description="Namenspaare mit sehr ähnlicher Schreibweise (Tippfehler, Umlaut-Varianten) in derselben Stadt - von der exakten Duplikat-Erkennung nicht erfasst."
+            group={heavy.fuzzy_duplicate_authorities}
+            itemKey={(p) => `${p.authority_id_a}-${p.authority_id_b}`}
+            renderItem={renderFuzzyDuplicateRow}
+            onNavigate={onNavigate ? () => onNavigate("authorities", "fuzzy_duplicate") : undefined}
+          />
+        ) : (
+          <PendingCard
+            icon={<Scan size={16} />}
+            title="Mögliche Duplikate (ähnlich)"
+            description="Namenspaare mit sehr ähnlicher Schreibweise (Tippfehler, Umlaut-Varianten) in derselben Stadt - von der exakten Duplikat-Erkennung nicht erfasst."
+            state={heavyState === "error" ? "error" : "loading"}
+            error={heavyError}
+            onRetry={() => void loadHeavy(false, loadToken.current)}
+          />
+        )}
       </div>
 
       {isMain && summary.duplicate_authorities.count > 0 && (

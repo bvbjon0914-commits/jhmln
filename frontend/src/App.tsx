@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FileSearch2, Upload, Settings, LogOut, DownloadCloud, FileSpreadsheet, RotateCcw, FolderKanban, UserCircle, Trash2 } from "lucide-react";
+import { FileSearch2, Upload, Settings, LogOut, DownloadCloud, FileSpreadsheet, RotateCcw, FolderKanban, UserCircle, Trash2, Lock } from "lucide-react";
 import { Stepper } from "./components/Stepper";
 import { BuildingSearch } from "./components/BuildingSearch";
 import { BuildingDetails } from "./components/BuildingDetails";
@@ -14,6 +14,7 @@ import { ImportPage } from "./components/import/ImportPage";
 import { AdminPage } from "./components/admin/AdminPage";
 import { CasesPage } from "./components/cases/CasesPage";
 import { MyAccount } from "./components/account/MyAccount";
+import { EnableLogin } from "./components/auth/EnableLogin";
 import { useAuth } from "./components/auth/AuthContext";
 import { api } from "./services/api";
 import type { Building } from "./types/building";
@@ -30,8 +31,21 @@ function buildingLabel(b: Building): string {
   return `${b.street} ${b.house_number}, ${b.city}`;
 }
 
+// "Nicht vorhanden" (NOT_APPLICABLE) ist ein gültiges, abgeschlossenes Ergebnis und blockiert
+// weder die Generierung noch zählt es als Lücke.
+function isResolved(r: MatchingResult): boolean {
+  return r.matching_status === "MATCHED" || r.matching_status === "NOT_APPLICABLE";
+}
+
+type BulkRemoveKind = "ambiguous" | "noMatch";
+
+function matchesBulkKind(r: MatchingResult, kind: BulkRemoveKind): boolean {
+  if (kind === "noMatch") return r.matching_status === "NO_MATCH";
+  return !isResolved(r) && r.matching_status !== "NO_MATCH";
+}
+
 function matchSummary(results: MatchingResult[]): { matched: number; total: number } {
-  return { matched: results.filter((r) => r.matching_status === "MATCHED").length, total: results.length };
+  return { matched: results.filter(isResolved).length, total: results.length };
 }
 
 const STORAGE_KEY = "zustaendigkeitsfinder:wizard-state:v1";
@@ -39,6 +53,7 @@ const STORAGE_KEY = "zustaendigkeitsfinder:wizard-state:v1";
 interface PersistedState {
   buildings: Building[];
   requestTypeIds: string[];
+  checkboxSelections?: Record<string, number[]>;
   requestIds: Record<string, string>;
   resultsByBuilding: Record<string, MatchingResult[]>;
   documentsByBuilding: Record<string, GeneratedDocumentInfo[]>;
@@ -56,11 +71,14 @@ function loadPersistedState(): PersistedState | null {
 
 function App() {
   const { showToast } = useToast();
-  const { isMain, user, logout, refresh } = useAuth();
-  const [view, setView] = useState<"wizard" | "import" | "admin" | "cases" | "account">("wizard");
+  const { isMain, loginRequired, user, logout, refresh } = useAuth();
+  const [view, setView] = useState<"wizard" | "import" | "admin" | "cases" | "account" | "enable-login">("wizard");
   const [buildings, setBuildings] = useState<Building[]>(() => loadPersistedState()?.buildings ?? []);
   const [requestTypeIds, setRequestTypeIds] = useState<string[]>(
     () => loadPersistedState()?.requestTypeIds ?? []
+  );
+  const [checkboxSelections, setCheckboxSelections] = useState<Record<string, number[]>>(
+    () => loadPersistedState()?.checkboxSelections ?? {}
   );
   const [requestTypes, setRequestTypes] = useState<RequestType[]>([]);
   const [requestIds, setRequestIds] = useState<Record<string, string>>(
@@ -78,7 +96,7 @@ function App() {
   const [retryingByBuilding, setRetryingByBuilding] = useState<Record<string, boolean>>({});
   const [matchingLoading, setMatchingLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [removingAllAmbiguous, setRemovingAllAmbiguous] = useState(false);
+  const [removingBulk, setRemovingBulk] = useState<BulkRemoveKind | null>(null);
   const resultsSectionRef = useRef<HTMLDivElement>(null);
   const documentsSectionRef = useRef<HTMLDivElement>(null);
   const prevMatchingLoading = useRef(matchingLoading);
@@ -88,6 +106,7 @@ function App() {
     const state: PersistedState = {
       buildings,
       requestTypeIds,
+      checkboxSelections,
       requestIds,
       resultsByBuilding,
       documentsByBuilding,
@@ -98,7 +117,7 @@ function App() {
     } catch {
       // Speicher voll oder nicht verfügbar (z.B. privater Modus) – Persistenz einfach überspringen
     }
-  }, [buildings, requestTypeIds, requestIds, resultsByBuilding, documentsByBuilding, failedByBuilding]);
+  }, [buildings, requestTypeIds, checkboxSelections, requestIds, resultsByBuilding, documentsByBuilding, failedByBuilding]);
 
   useEffect(() => {
     api
@@ -163,13 +182,18 @@ function App() {
   const handleRunMatching = async () => {
     if (buildings.length === 0 || requestTypeIds.length === 0) return;
     setMatchingLoading(true);
+    const activeCheckboxSelections = Object.fromEntries(
+      Object.entries(checkboxSelections).filter(
+        ([typeId, indices]) => requestTypeIds.includes(typeId) && indices.length > 0
+      )
+    );
     const newRequestIds: Record<string, string> = {};
     const newResults: Record<string, MatchingResult[]> = {};
 
     await Promise.all(
       buildings.map(async (b) => {
         try {
-          const response = await api.runMatching(b.building_id, requestTypeIds);
+          const response = await api.runMatching(b.building_id, requestTypeIds, activeCheckboxSelections);
           newRequestIds[b.building_id] = response.request_id;
           newResults[b.building_id] = response.results;
         } catch (error) {
@@ -206,30 +230,27 @@ function App() {
     }));
   };
 
-  const handleRemoveAllAmbiguous = async () => {
-    const ambiguousByBuilding = Object.entries(resultsByBuilding).reduce<Record<string, string[]>>(
+  const handleRemoveBulk = async (kind: BulkRemoveKind) => {
+    const byBuilding = Object.entries(resultsByBuilding).reduce<Record<string, string[]>>(
       (acc, [buildingId, results]) => {
-        const ids = results.filter((r) => r.matching_status !== "MATCHED").map((r) => r.request_item_id);
+        const ids = results.filter((r) => matchesBulkKind(r, kind)).map((r) => r.request_item_id);
         if (ids.length > 0) acc[buildingId] = ids;
         return acc;
       },
       {}
     );
-    const total = Object.values(ambiguousByBuilding).reduce((sum, ids) => sum + ids.length, 0);
+    const total = Object.values(byBuilding).reduce((sum, ids) => sum + ids.length, 0);
     if (total === 0) return;
-    if (
-      !window.confirm(
-        `${total} nicht eindeutige Treffer wirklich entfernen? Das kann nicht rückgängig gemacht werden.`
-      )
-    ) {
+    const noun = kind === "noMatch" ? "Zuständigkeiten ohne Treffer" : "nicht eindeutige Treffer";
+    if (!window.confirm(`${total} ${noun} wirklich entfernen? Das kann nicht rückgängig gemacht werden.`)) {
       return;
     }
 
-    setRemovingAllAmbiguous(true);
+    setRemovingBulk(kind);
     let removed = 0;
     let failed = 0;
     await Promise.all(
-      Object.entries(ambiguousByBuilding).flatMap(([buildingId, itemIds]) =>
+      Object.entries(byBuilding).flatMap(([buildingId, itemIds]) =>
         itemIds.map(async (itemId) => {
           try {
             await api.removeMatchingItem(itemId);
@@ -241,13 +262,13 @@ function App() {
         })
       )
     );
-    setRemovingAllAmbiguous(false);
+    setRemovingBulk(null);
 
     if (removed > 0) {
-      showToast("success", `${removed} nicht eindeutige Treffer entfernt.`);
+      showToast("success", `${removed} ${noun} entfernt.`);
     }
     if (failed > 0) {
-      showToast("error", `${failed} Treffer konnten nicht entfernt werden.`);
+      showToast("error", `${failed} Einträge konnten nicht entfernt werden.`);
     }
   };
 
@@ -317,6 +338,7 @@ function App() {
     if (!window.confirm("Aktuelle Auswahl und Ergebnisse wirklich verwerfen?")) return;
     setBuildings([]);
     setRequestTypeIds([]);
+    setCheckboxSelections({});
     setRequestIds({});
     setResultsByBuilding({});
     setDocumentsByBuilding({});
@@ -336,14 +358,14 @@ function App() {
   );
   const allMatched =
     buildingsWithResults.length > 0 &&
-    buildingsWithResults.every((b) =>
-      resultsByBuilding[b.building_id].every((r) => r.matching_status === "MATCHED")
+    buildingsWithResults.every((b) => resultsByBuilding[b.building_id].every(isResolved));
+  const countKind = (kind: BulkRemoveKind) =>
+    buildingsWithResults.reduce(
+      (sum, b) => sum + resultsByBuilding[b.building_id].filter((r) => matchesBulkKind(r, kind)).length,
+      0
     );
-  const ambiguousCount = buildingsWithResults.reduce(
-    (sum, b) =>
-      sum + resultsByBuilding[b.building_id].filter((r) => r.matching_status !== "MATCHED").length,
-    0
-  );
+  const ambiguousCount = countKind("ambiguous");
+  const noMatchCount = countKind("noMatch");
 
   return (
     <div className="min-h-screen">
@@ -419,6 +441,21 @@ function App() {
               <UserCircle size={14} />
               Mein Account
             </button>
+            {!loginRequired && (
+              <button
+                onClick={() => setView("enable-login")}
+                aria-current={view === "enable-login" ? "page" : undefined}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  view === "enable-login"
+                    ? "bg-brand-light/60 text-brand"
+                    : "text-ink-faint hover:text-ink"
+                }`}
+                title="Login-Pflicht aktivieren"
+              >
+                <Lock size={14} />
+                Login aktivieren
+              </button>
+            )}
             <button
               onClick={() => logout()}
               className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-ink-faint hover:text-ink"
@@ -441,6 +478,14 @@ function App() {
       ) : view === "admin" ? (
         <main className="mx-auto max-w-5xl px-6 py-10">
           <AdminPage isMain={isMain} />
+        </main>
+      ) : view === "enable-login" ? (
+        <main className="mx-auto max-w-4xl px-6 py-10">
+          <EnableLogin
+            // Nur den Status neu laden: AuthGate zeigt danach direkt den Login. Die Ansicht
+            // hier umzuschalten würde noch Requests ohne Session auslösen (401-Toasts).
+            onEnabled={refresh}
+          />
         </main>
       ) : view === "account" ? (
         <main>
@@ -512,6 +557,10 @@ function App() {
                 types={requestTypes}
                 selected={requestTypeIds}
                 onChange={setRequestTypeIds}
+                checkboxSelections={checkboxSelections}
+                onCheckboxChange={(typeId, next) =>
+                  setCheckboxSelections((prev) => ({ ...prev, [typeId]: next }))
+                }
                 hints={computeSequencingHints(requestTypeIds)}
               />
               <div className="mt-4">
@@ -577,14 +626,27 @@ function App() {
                 {ambiguousCount > 0 && (
                   <Button
                     variant="secondary"
-                    onClick={handleRemoveAllAmbiguous}
-                    disabled={removingAllAmbiguous}
+                    onClick={() => handleRemoveBulk("ambiguous")}
+                    disabled={removingBulk !== null}
                     className="text-status-conflict hover:bg-status-conflictBg"
                   >
                     <Trash2 size={16} />
-                    {removingAllAmbiguous
+                    {removingBulk === "ambiguous"
                       ? "Entferne…"
                       : `${ambiguousCount} nicht eindeutige Treffer entfernen`}
+                  </Button>
+                )}
+                {noMatchCount > 0 && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => handleRemoveBulk("noMatch")}
+                    disabled={removingBulk !== null}
+                    className="text-status-conflict hover:bg-status-conflictBg"
+                  >
+                    <Trash2 size={16} />
+                    {removingBulk === "noMatch"
+                      ? "Entferne…"
+                      : `${noMatchCount} „Kein Treffer" entfernen`}
                   </Button>
                 )}
                 <a

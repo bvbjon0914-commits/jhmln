@@ -9,7 +9,8 @@ Matching als NO_MATCH/"keine E-Mail" aufzufallen.
 
 import io
 from datetime import datetime, timedelta
-from typing import List, Optional
+from operator import attrgetter
+from typing import Iterable, List, Optional, Set
 
 import pandas as pd
 from fastapi import APIRouter, Depends
@@ -23,12 +24,16 @@ from app.database import get_db_session
 from app.models.authority import Authority
 from app.models.authority_location import AuthorityLocation
 from app.models.building import Building
-from app.models.case import CaseBuilding, CaseRequest
+from app.models.case import CaseBuilding
 from app.models.jurisdiction import Jurisdiction
 from app.models.request import Request, RequestItem
 from app.models.request_item_progress import RequestItemProgress
 from app.models.request_type import RequestType
 from app.services import JurisdictionMatchingService, MatchingStatus
+from app.services.building_cleanup import delete_building_with_dependents
+from app.services.dq_cache import clear_data_quality_cache, get_or_compute
+
+__all__ = ["router", "clear_data_quality_cache"]
 
 router = APIRouter()
 
@@ -96,11 +101,80 @@ def _levenshtein(a: str, b: str) -> int:
     return previous_row[-1]
 
 
-def _name_similarity(a: str, b: str) -> float:
-    """1.0 = identisch, 0.0 = maximal unterschiedlich (normierte Levenshtein-Distanz)."""
+def _levenshtein_within(a: str, b: str, max_distance: int) -> int:
+    """
+    Wie _levenshtein, bricht aber ab, sobald die Distanz sicher größer als
+    `max_distance` ist, und liefert dann `max_distance + 1`. Ist die Distanz
+    <= max_distance, ist das Ergebnis EXAKT dieselbe Zahl wie _levenshtein.
+
+    Drei verlustfreie Abkürzungen: (1) der Längenunterschied ist eine untere
+    Schranke der Distanz; (2) gemeinsames Präfix/Suffix ändert die Distanz
+    nicht und kann abgeschnitten werden (bei Tippfehlern bleibt meist nur
+    ein winziger Rest); (3) für den Rest genügt ein schmales Band der Breite
+    2*max_distance+1 um die Diagonale (Ukkonen-Schnitt) mit frühem Abbruch.
+    """
+    if a == b:
+        return 0
+    limit = max_distance + 1
+    if abs(len(a) - len(b)) > max_distance:
+        return limit
+
+    start = 0
+    shortest = min(len(a), len(b))
+    while start < shortest and a[start] == b[start]:
+        start += 1
+    end_a, end_b = len(a), len(b)
+    while end_a > start and end_b > start and a[end_a - 1] == b[end_b - 1]:
+        end_a -= 1
+        end_b -= 1
+    a = a[start:end_a]
+    b = b[start:end_b]
+
+    if not a:
+        return min(len(b), limit)
+    if not b:
+        return min(len(a), limit)
+
+    len_a, len_b = len(a), len(b)
+    previous = [j if j <= max_distance else limit for j in range(len_b + 1)]
+    for i in range(1, len_a + 1):
+        char_a = a[i - 1]
+        low = max(1, i - max_distance)
+        high = min(len_b, i + max_distance)
+        current = [limit] * (len_b + 1)
+        best = limit
+        if i <= max_distance:
+            current[0] = i
+            best = i
+        for j in range(low, high + 1):
+            value = previous[j - 1] + (char_a != b[j - 1])
+            candidate = previous[j] + 1
+            if candidate < value:
+                value = candidate
+            candidate = current[j - 1] + 1
+            if candidate < value:
+                value = candidate
+            if value > limit:
+                value = limit
+            current[j] = value
+            if value < best:
+                best = value
+        if best > max_distance:
+            return limit
+        previous = current
+    return min(previous[len_b], limit)
+
+
+def _name_similarity(a: str, b: str, distance: Optional[int] = None) -> float:
+    """
+    1.0 = identisch, 0.0 = maximal unterschiedlich (normierte Levenshtein-Distanz).
+    `distance` kann übergeben werden, wenn die Distanz schon bekannt ist.
+    """
     if not a and not b:
         return 1.0
-    return 1 - _levenshtein(a, b) / max(len(a), len(b))
+    if distance is None:
+        distance = _levenshtein(a, b)
+    return 1 - distance / max(len(a), len(b))
 
 
 # Geografische Felder, die den fachlichen Geltungsbereich einer Zuständig-
@@ -138,13 +212,19 @@ def _serialize_jurisdictions(
     subset = jurisdictions[:limit]
     authority_ids = {j.authority_id for j in subset}
     request_type_ids = {j.request_type_id for j in subset}
+    # Nur die zwei benötigten Spalten statt voller ORM-Zeilen laden; je eine
+    # gebündelte IN-Abfrage (kein Query pro Zeile).
     authorities_by_id = {
-        a.authority_id: a.authority_name
-        for a in db.query(Authority).filter(Authority.authority_id.in_(authority_ids)).all()
+        row.authority_id: row.authority_name
+        for row in db.query(Authority.authority_id, Authority.authority_name)
+        .filter(Authority.authority_id.in_(authority_ids))
+        .all()
     } if authority_ids else {}
     request_types_by_id = {
-        rt.request_type_id: rt.name
-        for rt in db.query(RequestType).filter(RequestType.request_type_id.in_(request_type_ids)).all()
+        row.request_type_id: row.name
+        for row in db.query(RequestType.request_type_id, RequestType.name)
+        .filter(RequestType.request_type_id.in_(request_type_ids))
+        .all()
     } if request_type_ids else {}
     return [
         {
@@ -158,9 +238,31 @@ def _serialize_jurisdictions(
     ]
 
 
-def _authorities_without_email(db: Session) -> List[Authority]:
+# Spalten, die die Übersichts-Berechnung von einer Behörde tatsächlich braucht
+# (Anzeige: id/name/Ort; Duplikat-Erkennung: zusätzlich Straße). Im
+# "slim"-Modus werden nur sie geladen (als Row-Objekte mit denselben
+# Attributnamen) statt der vollen ORM-Zeile mit allen ~20 Spalten.
+_AUTHORITY_SLIM_COLUMNS = (
+    Authority.authority_id, Authority.authority_name, Authority.city, Authority.street,
+)
+
+
+def _authority_query(db: Session, slim: bool):
+    return db.query(*_AUTHORITY_SLIM_COLUMNS) if slim else db.query(Authority)
+
+
+def _active_authorities(db: Session, slim: bool = False) -> list:
+    return _authority_query(db, slim).filter(Authority.active.is_(True)).all()
+
+
+def _jurisdiction_authority_ids(db: Session) -> Set[str]:
+    """authority_id aller Behörden, auf die mindestens eine Zuständigkeitsregel zeigt."""
+    return {row[0] for row in db.query(Jurisdiction.authority_id).distinct().all()}
+
+
+def _authorities_without_email(db: Session, slim: bool = False) -> list:
     return (
-        db.query(Authority)
+        _authority_query(db, slim)
         .filter(Authority.active.is_(True))
         .filter(or_(Authority.email.is_(None), Authority.email == ""))
         .order_by(Authority.authority_name)
@@ -168,22 +270,31 @@ def _authorities_without_email(db: Session) -> List[Authority]:
     )
 
 
-def _authorities_without_jurisdiction(db: Session) -> List[Authority]:
-    referenced_ids = {row[0] for row in db.query(Jurisdiction.authority_id).distinct().all()}
-    active_authorities = db.query(Authority).filter(Authority.active.is_(True)).all()
+def _authorities_without_jurisdiction(
+    db: Session,
+    slim: bool = False,
+    active_authorities: Optional[list] = None,
+    referenced_ids: Optional[Set[str]] = None,
+) -> list:
+    """`active_authorities`/`referenced_ids` können übergeben werden, wenn der
+    Aufrufer sie ohnehin schon geladen hat (spart je eine Abfrage)."""
+    if referenced_ids is None:
+        referenced_ids = _jurisdiction_authority_ids(db)
+    if active_authorities is None:
+        active_authorities = _active_authorities(db, slim)
     without_jurisdiction = [a for a in active_authorities if a.authority_id not in referenced_ids]
     without_jurisdiction.sort(key=lambda a: a.authority_name or "")
     return without_jurisdiction
 
 
-def _authorities_without_address(db: Session) -> List[Authority]:
+def _authorities_without_address(db: Session, slim: bool = False) -> list:
     """
     Behörden ganz ohne Straße UND Ort. Wichtig: genau diese führen beim
     Kartenpin-Geocoding sonst zu einer irreführenden Auflösung auf den
     geografischen Mittelpunkt Deutschlands (siehe get_authority_location).
     """
     return (
-        db.query(Authority)
+        _authority_query(db, slim)
         .filter(Authority.active.is_(True))
         .filter(or_(Authority.street.is_(None), Authority.street == ""))
         .filter(or_(Authority.city.is_(None), Authority.city == ""))
@@ -192,11 +303,16 @@ def _authorities_without_address(db: Session) -> List[Authority]:
     )
 
 
-def _is_unlocated(a: Authority) -> bool:
+def _is_unlocated(a) -> bool:
     return not (a.street and a.street.strip()) and not (a.city and a.city.strip())
 
 
-def _find_duplicate_authority_groups(db: Session):
+def _find_duplicate_authority_groups(
+    db: Session,
+    slim: bool = False,
+    active_authorities: Optional[list] = None,
+    jurisdiction_authority_ids: Optional[Set[str]] = None,
+):
     """
     Findet Namens-Gruppen mit genau einer "unlokalisierten" Behörde (weder
     Straße noch Ort hinterlegt) und mindestens einer weiteren, aktiven
@@ -214,9 +330,17 @@ def _find_duplicate_authority_groups(db: Session):
     löschende(n) Zeile(n) nachweislich von keiner Zuständigkeitsregel und
     keinem Anfrage-Item referenziert werden - alle anderen Fälle landen in
     needs_review statt geraten zu werden.
+
+    slim=True liefert Row-Objekte (id/name/Ort/Straße) statt voller ORM-Zeilen
+    - für reine Anzeige/ID-Auswertung; die Merge-Endpunkte brauchen die
+    vollständigen Entities (slim=False). `active_authorities` und
+    `jurisdiction_authority_ids` können vom Aufrufer vorgeladen übergeben
+    werden, um doppelte Abfragen zu sparen.
     """
-    active = db.query(Authority).filter(Authority.active.is_(True)).all()
-    referenced_ids = {row[0] for row in db.query(Jurisdiction.authority_id).distinct().all()}
+    active = active_authorities if active_authorities is not None else _active_authorities(db, slim)
+    if jurisdiction_authority_ids is None:
+        jurisdiction_authority_ids = _jurisdiction_authority_ids(db)
+    referenced_ids = set(jurisdiction_authority_ids)
     referenced_ids |= {
         row[0]
         for row in db.query(RequestItem.authority_id).filter(RequestItem.authority_id.isnot(None)).distinct().all()
@@ -247,9 +371,11 @@ def _find_duplicate_authority_groups(db: Session):
     return resolvable, needs_review
 
 
-def _duplicate_authority_ids(db: Session) -> set:
+def _duplicate_authority_ids(db: Session, active_authorities: Optional[list] = None) -> set:
     """authority_id aller Behörden, die in einer erkannten Duplikat-Gruppe stecken (auflösbar oder nicht)."""
-    resolvable, needs_review = _find_duplicate_authority_groups(db)
+    resolvable, needs_review = _find_duplicate_authority_groups(
+        db, slim=True, active_authorities=active_authorities
+    )
     ids = set()
     for group in resolvable:
         ids.add(group["keep"].authority_id)
@@ -276,8 +402,8 @@ def _fuzzy_duplicate_authority_pairs(db: Session) -> List[dict]:
     ähnlichem Namen (z.B. verschiedene Fachbereiche) - das muss ein Mensch
     entscheiden.
     """
-    active = db.query(Authority).filter(Authority.active.is_(True)).all()
-    already_flagged = _duplicate_authority_ids(db)
+    active = _active_authorities(db, slim=True)
+    already_flagged = _duplicate_authority_ids(db, active_authorities=active)
 
     by_city: dict = {}
     for a in active:
@@ -286,25 +412,30 @@ def _fuzzy_duplicate_authority_pairs(db: Session) -> List[dict]:
             continue
         by_city.setdefault((a.city or "").strip().lower(), []).append((a, normalized))
 
+    max_distance = _FUZZY_MAX_EDIT_DISTANCE
     pairs = []
     for group in by_city.values():
         if len(group) < 2:
             continue
-        for i in range(len(group)):
-            a, name_a = group[i]
-            for j in range(i + 1, len(group)):
-                b, name_b = group[j]
-                if a.authority_id in already_flagged and b.authority_id in already_flagged:
-                    continue
-                if name_a == name_b:
-                    continue  # bereits über die exakte Erkennung abgedeckt
+        # Namen + Längen einmal vorab auslesen, damit die innere Schleife (bis
+        # zu ~n^2/2 Durchläufe in großen Städten) nur noch int-Vergleiche
+        # macht und die teure Distanzberechnung selten erreicht wird.
+        entries = [(a, name, len(name), a.authority_id in already_flagged) for a, name in group]
+        for i in range(len(entries)):
+            a, name_a, len_a, flagged_a = entries[i]
+            for j in range(i + 1, len(entries)):
+                b, name_b, len_b, flagged_b = entries[j]
                 # Günstiger Vorabtest: die Levenshtein-Distanz kann nie kleiner
                 # sein als der Längenunterschied - ist der allein schon zu groß,
                 # lohnt sich die teure Berechnung nicht.
-                if abs(len(name_a) - len(name_b)) > _FUZZY_MAX_EDIT_DISTANCE:
+                if abs(len_a - len_b) > max_distance:
                     continue
-                distance = _levenshtein(name_a, name_b)
-                if distance <= _FUZZY_MAX_EDIT_DISTANCE:
+                if flagged_a and flagged_b:
+                    continue
+                if name_a == name_b:
+                    continue  # bereits über die exakte Erkennung abgedeckt
+                distance = _levenshtein_within(name_a, name_b, max_distance)
+                if distance <= max_distance:
                     pairs.append(
                         {
                             "authority_id_a": a.authority_id,
@@ -312,7 +443,7 @@ def _fuzzy_duplicate_authority_pairs(db: Session) -> List[dict]:
                             "authority_id_b": b.authority_id,
                             "authority_name_b": b.authority_name,
                             "city": a.city,
-                            "similarity": round(_name_similarity(name_a, name_b), 2),
+                            "similarity": round(_name_similarity(name_a, name_b, distance), 2),
                         }
                     )
 
@@ -402,6 +533,39 @@ def _coverage_gaps(db: Session) -> List[dict]:
     if not buildings or not request_types:
         return []
 
+    # Zwei gebündelte Vorab-Abfragen (statt Matching-Abfragen pro Gebäude):
+    #
+    # 1. Auskunftsarten, für die es überhaupt keine aktive Regel gibt: jede
+    #    Matching-Stufe filtert auf request_type_id + active (siehe
+    #    JurisdictionMatchingService._base_query) - das Ergebnis ist für jedes
+    #    Gebäude zwingend NO_MATCH, die Matching-Engine muss nicht laufen.
+    # 2. AGS mit mindestens einer aktiven Regel auf Straßen- oder Bezirks-
+    #    ebene: nur dann können die Stufen STREET_NUMBER/STREET/DISTRICT
+    #    überhaupt etwas finden (sie verlangen Regel-Zeilen mit nicht-leerer
+    #    Straße bzw. nicht-leerem Bezirk in genau dieser AGS). Für alle
+    #    anderen AGS sind Straße/Hausnummer/Bezirk des Gebäudes für das
+    #    Ergebnis irrelevant und müssen nicht in den Cache-Schlüssel.
+    request_types_with_rules = {
+        row[0]
+        for row in db.query(Jurisdiction.request_type_id).filter(Jurisdiction.active.is_(True)).distinct().all()
+    }
+    building_ags = {b.ags for b in buildings}
+    ags_with_street_rules: Set[str] = set()
+    for chunk in _chunks(building_ags):
+        ags_with_street_rules.update(
+            row[0]
+            for row in db.query(Jurisdiction.ags)
+            .filter(Jurisdiction.active.is_(True), Jurisdiction.ags.in_(chunk))
+            .filter(
+                or_(
+                    (Jurisdiction.street.isnot(None)) & (Jurisdiction.street != ""),
+                    (Jurisdiction.district.isnot(None)) & (Jurisdiction.district != ""),
+                )
+            )
+            .distinct()
+            .all()
+        )
+
     matcher = JurisdictionMatchingService(db)
     gaps: dict = {}
 
@@ -422,20 +586,31 @@ def _coverage_gaps(db: Session) -> List[dict]:
     # Auditbericht-Folgebericht), reduziert die tatsächliche Last aber genau
     # für den in der Praxis häufigsten Fall: viele Gebäude teilen sich eine
     # Gemeinde und damit i.d.R. auch dieselbe Zuständigkeit.
+    #
+    # Schlüssel: Straße/Hausnummer/Bezirk nur dort, wo die AGS überhaupt
+    # Regeln auf dieser Ebene hat (siehe Punkt 2 oben) - sonst genügt ein
+    # Matching je (AGS, Bundesland, PLZ, Auskunftsart) für alle Gebäude der
+    # Gemeinde.
     result_cache: dict = {}
 
     for building in buildings:
+        if building.ags in ags_with_street_rules:
+            address_part = (building.street, building.house_number, building.district)
+        else:
+            address_part = None
         for request_type in request_types:
-            cache_key = (
-                request_type.request_type_id, building.ags, building.street,
-                building.house_number, building.district, building.postal_code,
-                building.state,
-            )
-            if cache_key in result_cache:
-                status = result_cache[cache_key]
+            if request_type.request_type_id not in request_types_with_rules:
+                status = MatchingStatus.NO_MATCH
             else:
-                status = matcher.match_authority(building, request_type.request_type_id).matching_status
-                result_cache[cache_key] = status
+                cache_key = (
+                    request_type.request_type_id, building.ags, address_part,
+                    building.postal_code, building.state,
+                )
+                if cache_key in result_cache:
+                    status = result_cache[cache_key]
+                else:
+                    status = matcher.match_authority(building, request_type.request_type_id).matching_status
+                    result_cache[cache_key] = status
 
             if status != MatchingStatus.NO_MATCH:
                 continue
@@ -465,39 +640,54 @@ def _coverage_gaps(db: Session) -> List[dict]:
     )
 
 
-def _building_has_real_progress(db: Session, building_id: str) -> bool:
+_IN_CHUNK = 500
+
+
+def _chunks(values: Iterable[str], size: int = _IN_CHUNK):
+    values = list(values)
+    for start in range(0, len(values), size):
+        yield values[start:start + size]
+
+
+def _buildings_with_real_progress(db: Session, building_ids: Iterable[str]) -> Set[str]:
     """
-    True, wenn für dieses Gebäude schon einmal ein Schreiben tatsächlich als
-    versendet markiert wurde oder eine Antwort hinterlegt ist - solche
+    Teilmenge von `building_ids`, für die schon einmal ein Schreiben tatsächlich
+    als versendet markiert wurde oder eine Antwort hinterlegt ist - solche
     Gebäude werden von der automatischen Bereinigung übersprungen, auch wenn
     das aktuelle Matching "Prüfung nötig" zeigt (nie echte Arbeit löschen).
+
+    Eine gebündelte Join-Abfrage je 500 Gebäude statt drei Abfragen pro Gebäude
+    (wichtig gegen eine entfernte Datenbank: jede Abfrage kostet einen
+    Netzwerk-Roundtrip).
     """
-    request_ids = [r[0] for r in db.query(Request.request_id).filter(Request.building_id == building_id).all()]
-    if not request_ids:
-        return False
-    item_ids = [
-        r[0]
-        for r in db.query(RequestItem.request_item_id).filter(RequestItem.request_id.in_(request_ids)).all()
-    ]
-    if not item_ids:
-        return False
-    return (
-        db.query(RequestItemProgress)
-        .filter(RequestItemProgress.request_item_id.in_(item_ids))
-        .filter(or_(RequestItemProgress.sent_at.isnot(None), RequestItemProgress.response_received_at.isnot(None)))
-        .first()
-        is not None
-    )
+    result: Set[str] = set()
+    for chunk in _chunks(building_ids):
+        rows = (
+            db.query(Request.building_id)
+            .join(RequestItem, RequestItem.request_id == Request.request_id)
+            .join(RequestItemProgress, RequestItemProgress.request_item_id == RequestItem.request_item_id)
+            .filter(Request.building_id.in_(chunk))
+            .filter(or_(RequestItemProgress.sent_at.isnot(None), RequestItemProgress.response_received_at.isnot(None)))
+            .distinct()
+            .all()
+        )
+        result.update(row[0] for row in rows)
+    return result
 
 
-def _authorities_unverified(db: Session) -> List[Authority]:
+def _building_has_real_progress(db: Session, building_id: str) -> bool:
+    """Einzel-Variante von _buildings_with_real_progress."""
+    return building_id in _buildings_with_real_progress(db, [building_id])
+
+
+def _authorities_unverified(db: Session, slim: bool = False) -> list:
     """
     Aktive Behörden, die noch nie oder vor mehr als _VERIFICATION_STALE_DAYS
     Tagen zuletzt als aktuell/korrekt bestätigt wurden.
     """
     cutoff = datetime.utcnow() - timedelta(days=_VERIFICATION_STALE_DAYS)
     return (
-        db.query(Authority)
+        _authority_query(db, slim)
         .filter(Authority.active.is_(True))
         .filter(or_(Authority.last_verified_at.is_(None), Authority.last_verified_at < cutoff))
         .order_by(Authority.authority_name)
@@ -505,18 +695,28 @@ def _authorities_unverified(db: Session) -> List[Authority]:
     )
 
 
-def _jurisdictions_orphaned(db: Session) -> List[Jurisdiction]:
+# Spalten, die die Übersicht für Zuständigkeitsregeln braucht: Anzeige
+# (_serialize_jurisdictions) plus - für die Duplikat-Erkennung - die
+# Geltungsbereichs- und Vergleichsfelder sowie created_at. Im "slim"-Modus nur
+# diese (als Row-Objekte), statt alle ~25 Spalten inkl. Textfeldern von bis zu
+# ~16.000 Regeln zu laden.
+_JURISDICTION_DISPLAY_COLUMNS = (
+    Jurisdiction.jurisdiction_id, Jurisdiction.authority_id, Jurisdiction.request_type_id,
+    Jurisdiction.ags, Jurisdiction.municipality,
+)
+
+
+def _jurisdictions_orphaned(db: Session, slim: bool = False) -> list:
     """
     Aktive Zuständigkeitsregeln, deren Behörde inzwischen deaktiviert wurde.
     Rein informativ (keine Auto-Aktion): unklar, ob die Regel deaktiviert
     oder die Behörde reaktiviert werden sollte - das muss ein Mensch
     entscheiden.
     """
-    inactive_ids = {row[0] for row in db.query(Authority.authority_id).filter(Authority.active.is_(False)).all()}
-    if not inactive_ids:
-        return []
+    inactive_ids = db.query(Authority.authority_id).filter(Authority.active.is_(False)).scalar_subquery()
+    query = db.query(*_JURISDICTION_DISPLAY_COLUMNS) if slim else db.query(Jurisdiction)
     return (
-        db.query(Jurisdiction)
+        query
         .filter(Jurisdiction.active.is_(True))
         .filter(Jurisdiction.authority_id.in_(inactive_ids))
         .order_by(Jurisdiction.jurisdiction_id)
@@ -524,7 +724,7 @@ def _jurisdictions_orphaned(db: Session) -> List[Jurisdiction]:
     )
 
 
-def _find_duplicate_jurisdiction_groups(db: Session):
+def _find_duplicate_jurisdiction_groups(db: Session, slim: bool = False):
     """
     Findet Gruppen aktiver Zuständigkeitsregeln mit identischem authority_id
     + request_type_id + identischem Geltungsbereich (_JURISDICTION_GEO_FIELDS).
@@ -536,15 +736,27 @@ def _find_duplicate_jurisdiction_groups(db: Session):
     (z.B. versehentlich zweimal importiert) -> resolvable, älteste Zeile
     bleibt erhalten. Weichen diese Felder voneinander ab, ist unklar, welche
     Zeile korrekt ist -> needs_review, nie raten.
+
+    slim=True liefert Row-Objekte mit nur den benötigten Spalten (für die
+    reine Anzeige/ID-Auswertung); die Merge-Endpunkte brauchen die
+    vollständigen Entities (slim=False).
     """
-    active = db.query(Jurisdiction).filter(Jurisdiction.active.is_(True)).all()
+    if slim:
+        columns = {c.key: c for c in _JURISDICTION_DISPLAY_COLUMNS}
+        for name in _JURISDICTION_GEO_FIELDS + _JURISDICTION_COMPARE_FIELDS + ("created_at",):
+            columns[name] = getattr(Jurisdiction, name)
+        active = db.query(*columns.values()).filter(Jurisdiction.active.is_(True)).all()
+    else:
+        active = db.query(Jurisdiction).filter(Jurisdiction.active.is_(True)).all()
 
-    def _norm(value):
-        return value.strip() if isinstance(value, str) else value
-
+    # attrgetter + Mengen-Normalisierung statt getattr je Feld: bei ~16.000
+    # Regeln x 9 Feldern ist das die heißeste Schleife dieser Funktion.
+    geo_values = attrgetter(*_JURISDICTION_GEO_FIELDS)
     groups: dict = {}
     for j in active:
-        key = (j.authority_id, j.request_type_id) + tuple(_norm(getattr(j, f)) for f in _JURISDICTION_GEO_FIELDS)
+        key = (j.authority_id, j.request_type_id) + tuple(
+            [v.strip() if isinstance(v, str) else v for v in geo_values(j)]
+        )
         groups.setdefault(key, []).append(j)
 
     resolvable = []
@@ -570,7 +782,7 @@ def _find_duplicate_jurisdiction_groups(db: Session):
 
 def _duplicate_jurisdiction_ids(db: Session) -> set:
     """jurisdiction_id aller Regeln, die in einer erkannten Duplikat-Gruppe stecken (auflösbar oder nicht)."""
-    resolvable, needs_review = _find_duplicate_jurisdiction_groups(db)
+    resolvable, needs_review = _find_duplicate_jurisdiction_groups(db, slim=True)
     ids = set()
     for group in resolvable:
         ids.add(group["keep"].jurisdiction_id)
@@ -646,26 +858,39 @@ def _duplicate_building_ids(db: Session) -> set:
     return ids
 
 
-@router.get("/data-quality/summary", tags=["DataQuality"])
-def data_quality_summary(db: Session = Depends(get_db_session)):
-    total_authorities = db.query(Authority).filter(Authority.active.is_(True)).count()
-    without_email = _authorities_without_email(db)
-    without_jurisdiction = _authorities_without_jurisdiction(db)
-    without_address = _authorities_without_address(db)
-    duplicate_groups, needs_review_groups = _find_duplicate_authority_groups(db)
+def _compute_light_summary(db: Session) -> dict:
+    """
+    Alle "billigen" Kategorien der Übersicht (ohne coverage_gaps und
+    fuzzy_duplicate_authorities, siehe _compute_heavy_summary). Verwendet die
+    "slim"-Varianten der Helfer (nur benötigte Spalten) und lädt Behörden/
+    Zuständigkeits-Referenzen nur einmal für alle Prüfungen.
+    """
+    active_authorities = _active_authorities(db, slim=True)
+    jurisdiction_authority_ids = _jurisdiction_authority_ids(db)
+
+    total_authorities = len(active_authorities)
+    without_email = _authorities_without_email(db, slim=True)
+    without_jurisdiction = _authorities_without_jurisdiction(
+        db, active_authorities=active_authorities, referenced_ids=jurisdiction_authority_ids
+    )
+    without_address = _authorities_without_address(db, slim=True)
+    duplicate_groups, needs_review_groups = _find_duplicate_authority_groups(
+        db, slim=True, active_authorities=active_authorities,
+        jurisdiction_authority_ids=jurisdiction_authority_ids,
+    )
     duplicate_items = [dup for g in duplicate_groups for dup in g["remove"]]
     review_buildings = _buildings_with_review_required(db)
-    review_buildings_skipped = sum(1 for b in review_buildings if _building_has_real_progress(db, b.building_id))
+    review_buildings_skipped = len(
+        _buildings_with_real_progress(db, [b.building_id for b in review_buildings])
+    )
 
-    unverified = _authorities_unverified(db)
-    orphaned_jurisdictions = _jurisdictions_orphaned(db)
-    dup_jurisdiction_groups, dup_jurisdiction_needs_review = _find_duplicate_jurisdiction_groups(db)
+    unverified = _authorities_unverified(db, slim=True)
+    orphaned_jurisdictions = _jurisdictions_orphaned(db, slim=True)
+    dup_jurisdiction_groups, dup_jurisdiction_needs_review = _find_duplicate_jurisdiction_groups(db, slim=True)
     dup_jurisdiction_items = [dup for g in dup_jurisdiction_groups for dup in g["remove"]]
     dup_building_groups, dup_building_needs_review = _find_duplicate_building_groups(db)
     dup_building_items = [dup for g in dup_building_groups for dup in g["remove"]]
     without_coordinates = _buildings_without_coordinates(db)
-    coverage_gaps = _coverage_gaps(db)
-    fuzzy_duplicate_authorities = _fuzzy_duplicate_authority_pairs(db)
 
     return {
         "total_authorities": total_authorities,
@@ -713,6 +938,14 @@ def data_quality_summary(db: Session = Depends(get_db_session)):
             "count": len(without_coordinates),
             "items": [_serialize_building(b) for b in without_coordinates[:MAX_ITEMS]],
         },
+    }
+
+
+def _compute_heavy_summary(db: Session) -> dict:
+    """Die zwei teuren Kategorien: Abdeckungslücken (echtes Matching) und Namens-Ähnlichkeit."""
+    coverage_gaps = _coverage_gaps(db)
+    fuzzy_duplicate_authorities = _fuzzy_duplicate_authority_pairs(db)
+    return {
         "coverage_gaps": {
             "count": len(coverage_gaps),
             "items": coverage_gaps[:MAX_ITEMS],
@@ -722,6 +955,47 @@ def data_quality_summary(db: Session = Depends(get_db_session)):
             "items": fuzzy_duplicate_authorities[:MAX_ITEMS],
         },
     }
+
+
+_LIGHT_CACHE_KEY = "summary-light"
+_HEAVY_CACHE_KEY = "summary-heavy"
+
+
+def _light_summary(db: Session, refresh: bool) -> dict:
+    return get_or_compute(_LIGHT_CACHE_KEY, lambda: _compute_light_summary(db), refresh=refresh)
+
+
+def _heavy_summary(db: Session, refresh: bool) -> dict:
+    return get_or_compute(_HEAVY_CACHE_KEY, lambda: _compute_heavy_summary(db), refresh=refresh)
+
+
+@router.get("/data-quality/summary", tags=["DataQuality"])
+def data_quality_summary(light: bool = False, refresh: bool = False, db: Session = Depends(get_db_session)):
+    """
+    Übersicht aller Datenqualitäts-Kategorien.
+
+    light=true: die zwei teuren Gruppen (coverage_gaps,
+    fuzzy_duplicate_authorities) werden NICHT berechnet, sondern als leere
+    Platzhalter ({"count": 0, "items": []}) geliefert und `heavy_pending: true`
+    gesetzt - die Zahlen dafür holt der Client separat über
+    GET /data-quality/heavy. Ohne light enthält die Antwort wie bisher alles.
+
+    refresh=true umgeht den serverseitigen Cache (siehe app/services/dq_cache.py).
+    """
+    summary = dict(_light_summary(db, refresh))
+    if light:
+        summary["coverage_gaps"] = {"count": 0, "items": []}
+        summary["fuzzy_duplicate_authorities"] = {"count": 0, "items": []}
+        summary["heavy_pending"] = True
+        return summary
+    summary.update(_heavy_summary(db, refresh))
+    return summary
+
+
+@router.get("/data-quality/heavy", tags=["DataQuality"])
+def data_quality_heavy(refresh: bool = False, db: Session = Depends(get_db_session)):
+    """Die zwei teuren Gruppen (coverage_gaps, fuzzy_duplicate_authorities) einzeln."""
+    return _heavy_summary(db, refresh)
 
 
 @router.post("/data-quality/merge-duplicate-authorities", tags=["DataQuality"])
@@ -743,11 +1017,12 @@ def merge_duplicate_authorities(db: Session = Depends(get_db_session), _: None =
             for field_name in _MERGE_FIELDS:
                 if not getattr(keep, field_name) and getattr(dup, field_name):
                     setattr(keep, field_name, getattr(dup, field_name))
-            db.delete(dup)
+            delete_building_with_dependents(db, dup.building_id)
             removed += 1
         keep.updated_at = now
 
     db.commit()
+    clear_data_quality_cache()
     return {"merged_groups": len(resolvable), "removed": removed, "needs_review": len(needs_review)}
 
 
@@ -770,6 +1045,7 @@ def merge_duplicate_jurisdictions(db: Session = Depends(get_db_session), _: None
         group["keep"].updated_at = now
 
     db.commit()
+    clear_data_quality_cache()
     return {"merged_groups": len(resolvable), "removed": removed, "needs_review": len(needs_review)}
 
 
@@ -797,6 +1073,7 @@ def merge_duplicate_buildings(db: Session = Depends(get_db_session), _: None = D
         keep.updated_at = now
 
     db.commit()
+    clear_data_quality_cache()
     return {"merged_groups": len(resolvable), "removed": removed, "needs_review": len(needs_review)}
 
 
@@ -811,39 +1088,20 @@ def delete_review_required_buildings(db: Session = Depends(get_db_session), _: N
     bleiben zur manuellen Prüfung stehen (nie echte Arbeit löschen).
     """
     candidates = _buildings_with_review_required(db)
+    buildings_with_progress = _buildings_with_real_progress(db, [b.building_id for b in candidates])
 
     deleted = 0
     skipped = 0
     for building in candidates:
-        if _building_has_real_progress(db, building.building_id):
+        if building.building_id in buildings_with_progress:
             skipped += 1
             continue
 
-        request_ids = [
-            r[0] for r in db.query(Request.request_id).filter(Request.building_id == building.building_id).all()
-        ]
-        if request_ids:
-            item_ids = [
-                r[0]
-                for r in db.query(RequestItem.request_item_id)
-                .filter(RequestItem.request_id.in_(request_ids))
-                .all()
-            ]
-            if item_ids:
-                db.query(RequestItemProgress).filter(
-                    RequestItemProgress.request_item_id.in_(item_ids)
-                ).delete(synchronize_session=False)
-            db.query(CaseRequest).filter(CaseRequest.request_id.in_(request_ids)).delete(synchronize_session=False)
-            db.query(RequestItem).filter(RequestItem.request_id.in_(request_ids)).delete(synchronize_session=False)
-            db.query(Request).filter(Request.building_id == building.building_id).delete(synchronize_session=False)
-
-        db.query(CaseBuilding).filter(CaseBuilding.building_id == building.building_id).delete(
-            synchronize_session=False
-        )
-        db.delete(building)
+        delete_building_with_dependents(db, building.building_id)
         deleted += 1
 
     db.commit()
+    clear_data_quality_cache()
     return {"deleted": deleted, "skipped": skipped}
 
 
@@ -857,7 +1115,7 @@ def clear_bad_geocoding(db: Session = Depends(get_db_session), _: None = Depends
     Fehltreffer auf, damit die Karte sie danach korrekt als "keine Adresse"
     behandelt statt einen falschen Pin zu zeigen.
     """
-    affected_ids = [a.authority_id for a in _authorities_without_address(db)]
+    affected_ids = [a.authority_id for a in _authorities_without_address(db, slim=True)]
     if not affected_ids:
         return {"deleted": 0}
 
@@ -867,6 +1125,7 @@ def clear_bad_geocoding(db: Session = Depends(get_db_session), _: None = Depends
         .delete(synchronize_session=False)
     )
     db.commit()
+    clear_data_quality_cache()
     return {"deleted": deleted}
 
 
@@ -890,6 +1149,7 @@ def geocode_missing_buildings(db: Session = Depends(get_db_session), _: None = D
         if _geocode_and_cache_building(building):
             geocoded += 1
     db.commit()
+    clear_data_quality_cache()
     remaining = len(_buildings_without_coordinates(db))
     return {"geocoded": geocoded, "failed": len(missing) - geocoded, "remaining": remaining}
 

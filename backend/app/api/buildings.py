@@ -12,8 +12,8 @@ from sqlalchemy import or_
 from app.api.data_quality import _buildings_with_review_required, _duplicate_building_ids
 from app.database import get_db_session
 from app.models.building import Building
-from app.models.request import Request
 from app.schemas import BuildingCreate, BuildingResponse, BuildingUpdate
+from app.services.building_cleanup import delete_building_with_dependents
 
 router = APIRouter()
 
@@ -109,14 +109,8 @@ def update_building(building_id: str, payload: BuildingUpdate, db: Session = Dep
 
 @router.delete("/buildings/{building_id}", status_code=204, tags=["Buildings"])
 def delete_building(building_id: str, db: Session = Depends(get_db_session)):
-    """Löscht ein Gebäude inklusive aller zugehörigen Anfragen (Historie)."""
-    building = db.query(Building).filter(Building.building_id == building_id).first()
-    if not building:
+    """Löscht ein Gebäude inklusive aller zugehörigen Anfragen (Historie) und Verknüpfungen."""
+    if not delete_building_with_dependents(db, building_id):
         raise HTTPException(status_code=404, detail=f"Gebäude {building_id} nicht gefunden")
-
-    for request in db.query(Request).filter(Request.building_id == building_id).all():
-        db.delete(request)  # kaskadiert über die Relationship auf RequestItems
-
-    db.delete(building)
     db.commit()
     return None

@@ -15,7 +15,7 @@ import type {
 } from "../types/matching";
 import type { ImportPreview, ImportSummary } from "../types/import";
 import type { AuthStatus } from "../types/auth";
-import type { DataQualitySummary } from "../types/dataQuality";
+import type { DataQualityHeavy, DataQualitySummary } from "../types/dataQuality";
 import type { Case, CaseListItem, CaseDetail } from "../types/case";
 import type { InboundEmailEntry, AktenzeichenLookupResult } from "../types/mailbox";
 import type { User, UserCreateInput, UserUpdateInput, UserRegisterInput, UserSelfUpdateInput } from "../types/user";
@@ -52,6 +52,30 @@ function paged<T>(data: T[], headers: Record<string, unknown>): Paged<T> {
   const totalHeader = headers["x-total-count"];
   const total = typeof totalHeader === "string" ? parseInt(totalHeader, 10) : data.length;
   return { items: data, total: Number.isNaN(total) ? data.length : total };
+}
+
+// Datenqualität: großzügiges Timeout + EIN automatischer Wiederholungsversuch bei
+// Netzwerkfehler/Timeout/Gateway-Fehler. Der Render-Free-Tier-Server schläft
+// nach Inaktivität ein; die erste Anfrage kann 30-60 s dauern oder scheitern,
+// ein zweiter Versuch nach dem Aufwachen gelingt dann meist.
+const DATA_QUALITY_TIMEOUT_MS = 120_000;
+const DATA_QUALITY_RETRY_DELAY_MS = 2_000;
+
+function isRetryableDataQualityError(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+  if (!error.response) return true; // Network Error / Timeout (keine Antwort erhalten)
+  return [502, 503, 504].includes(error.response.status);
+}
+
+async function getDataQuality<T>(url: string, params: Record<string, boolean>): Promise<T> {
+  const request = () => client.get<T>(url, { params, timeout: DATA_QUALITY_TIMEOUT_MS });
+  try {
+    return (await request()).data;
+  } catch (error) {
+    if (!isRetryableDataQualityError(error)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, DATA_QUALITY_RETRY_DELAY_MS));
+    return (await request()).data;
+  }
 }
 
 export const api = {
@@ -128,11 +152,13 @@ export const api = {
 
   async runMatching(
     buildingId: string,
-    requestTypeIds: string[]
+    requestTypeIds: string[],
+    checkboxSelections: Record<string, number[]> = {}
   ): Promise<MatchingResponse> {
     const { data } = await client.post<MatchingResponse>("/matching", {
       building_id: buildingId,
       request_type_ids: requestTypeIds,
+      checkbox_selections: checkboxSelections,
     });
     return data;
   },
@@ -336,9 +362,19 @@ export const api = {
 
   // ========== Verwaltung: Datenqualität ==========
 
-  async getDataQualitySummary(): Promise<DataQualitySummary> {
-    const { data } = await client.get<DataQualitySummary>("/data-quality/summary");
-    return data;
+  // light: nur die schnellen Kategorien (die zwei teuren Gruppen kommen leer, mit
+  // heavy_pending=true) - die holt getDataQualityHeavy separat. refresh umgeht den Server-Cache.
+  async getDataQualitySummary(opts: { light?: boolean; refresh?: boolean } = {}): Promise<DataQualitySummary> {
+    const params: Record<string, boolean> = {};
+    if (opts.light) params.light = true;
+    if (opts.refresh) params.refresh = true;
+    return getDataQuality<DataQualitySummary>("/data-quality/summary", params);
+  },
+
+  async getDataQualityHeavy(opts: { refresh?: boolean } = {}): Promise<DataQualityHeavy> {
+    const params: Record<string, boolean> = {};
+    if (opts.refresh) params.refresh = true;
+    return getDataQuality<DataQualityHeavy>("/data-quality/heavy", params);
   },
 
   exportDataQualityXlsxUrl(): string {
@@ -469,6 +505,15 @@ export const api = {
     const { data } = await client.post<{ is_main: boolean; user: User | null }>("/auth/login", {
       email,
       password,
+    });
+    return data;
+  },
+
+  /** Login-Pflicht wieder einschalten (öffentlich, aber nur mit Haupt-Passwort bzw. Haupt-Account). */
+  async enableLoginRequired(password: string, email?: string): Promise<{ login_required: boolean }> {
+    const { data } = await client.post<{ login_required: boolean }>("/auth/login-required/enable", {
+      password,
+      email: email || null,
     });
     return data;
   },

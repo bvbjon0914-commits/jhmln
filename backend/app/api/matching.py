@@ -9,7 +9,7 @@ import csv
 import io
 import uuid
 from datetime import datetime
-from typing import List
+from typing import Dict, List
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from fastapi.responses import StreamingResponse
@@ -24,6 +24,7 @@ from app.models.request import Request, RequestItem
 from app.models.request_item_progress import RequestItemProgress
 from app.models.request_type import RequestType
 from app.services import JurisdictionMatchingService, next_year_number
+from app.services.request_options import sanitize_selection
 
 router = APIRouter()
 
@@ -39,6 +40,10 @@ class MatchingRequestPayload(BaseModel):
     building_id: str
     request_type_ids: List[str]
     created_by: str = "anonymous"
+    # request_type_id -> 0-basierte Indizes der vorab angekreuzten Optionen des
+    # Anschreibens. Defensiv: unbekannte Auskunftsarten und ungueltige/doppelte
+    # Indizes werden beim Speichern verworfen (nie ein Fehler).
+    checkbox_selections: Dict[str, List[int]] = {}
 
 
 class ManualAssignmentPayload(BaseModel):
@@ -105,6 +110,9 @@ def run_matching(payload: MatchingRequestPayload, db: Session = Depends(get_db_s
             document_status="PENDING",
         )
         item.set_alternative_authorities(result.alternative_authorities)
+        item.set_selected_options(
+            sanitize_selection(result.request_type_id, payload.checkbox_selections.get(result.request_type_id))
+        )
         db.add(item)
 
     db.commit()

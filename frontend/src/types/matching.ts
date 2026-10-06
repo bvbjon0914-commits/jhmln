@@ -4,6 +4,8 @@ export interface RequestType {
   name: string;
   description?: string | null;
   active: boolean;
+  /** Ankreuzbare Optionen im Anschreiben (Reihenfolge = Index für checkbox_selections). */
+  checkbox_options?: string[];
 }
 
 export type MatchingStatus =

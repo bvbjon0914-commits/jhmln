@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 from docxtpl import DocxTemplate
 
@@ -17,6 +17,10 @@ from app.models.authority import Authority
 from app.models.building import Building
 from app.models.request_type import RequestType
 from app.models.user import User
+from app.services.request_options import get_checkbox_options, sanitize_selection
+
+CHECKBOX_CHECKED = "☒"
+CHECKBOX_UNCHECKED = "☐"
 
 
 @dataclass
@@ -75,6 +79,7 @@ class DocumentGenerationService:
     def build_context(
         self, building: Building, authority: Authority, request_type: RequestType, aktenzeichen: str,
         sender: Optional[User] = None,
+        selected_options: Optional[Iterable[int]] = None,
     ) -> dict:
         """
         Stellt den Platzhalter-Kontext für die Vorlage zusammen.
@@ -85,8 +90,21 @@ class DocumentGenerationService:
         ohne User-Zeile) - die sender_*-Platzhalter werden dann leer
         gerendert statt eine Exception zu werfen, konsistent mit dem
         bestehenden "authority.email or \"\""-Muster für fehlende Felder.
+
+        selected_options: 0-basierte Indizes der vorab angekreuzten Optionen
+        dieser Auskunftsart (RequestItem.selected_options). Daraus entstehen
+        die Platzhalter checkbox_0 ... checkbox_{n-1} mit "☒" (gewählt) bzw.
+        "☐" (nicht gewählt). None/leer = alles "☐".
         """
+        options = get_checkbox_options(request_type.request_type_id)
+        selected = set(sanitize_selection(request_type.request_type_id, list(selected_options or [])))
+        checkbox_context = {
+            f"checkbox_{i}": CHECKBOX_CHECKED if i in selected else CHECKBOX_UNCHECKED
+            for i in range(len(options))
+        }
+
         return {
+            **checkbox_context,
             # Behördendaten
             "authority_name": authority.authority_name or "",
             "authority_department": authority.department_name or "",
@@ -130,6 +148,7 @@ class DocumentGenerationService:
         request_type: RequestType,
         aktenzeichen: str,
         sender: Optional[User] = None,
+        selected_options: Optional[Iterable[int]] = None,
     ) -> GeneratedDocument:
         """
         Generiert ein einzelnes DOCX-Dokument.
@@ -149,7 +168,10 @@ class DocumentGenerationService:
 
         try:
             doc = DocxTemplate(str(template_path))
-            context = self.build_context(building, authority, request_type, aktenzeichen, sender=sender)
+            context = self.build_context(
+                building, authority, request_type, aktenzeichen,
+                sender=sender, selected_options=selected_options,
+            )
             doc.render(context)
         except Exception as exc:
             raise DocumentGenerationError(f"Fehler beim Rendern der Vorlage: {exc}") from exc

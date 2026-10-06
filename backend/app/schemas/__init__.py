@@ -76,6 +76,7 @@ class RequestTypeCreate(RequestTypeBase):
 class RequestTypeResponse(RequestTypeBase):
     """Antwort-Schema für Auskunftsart"""
     request_type_id: str
+    checkbox_options: List[str] = []
     created_at: datetime
     updated_at: datetime
 

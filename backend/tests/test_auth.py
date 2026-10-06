@@ -216,3 +216,117 @@ class TestSelfRegistration:
         assert user.is_main is False
         assert user.active is False
         assert user.status == "pending"
+
+
+ENABLE_URL = "/api/auth/login-required/enable"
+
+
+def _set_login_required(db_session, value: bool) -> None:
+    from app.models.settings import AppSettings
+
+    settings = AppSettings.get_or_create(db_session)
+    settings.login_required = value
+    db_session.commit()
+
+
+def _login_required(db_session) -> bool:
+    from app.models.settings import AppSettings
+
+    db_session.expire_all()
+    return AppSettings.get_or_create(db_session).login_required
+
+
+class TestEnableLoginRequired:
+    """Oeffentlicher Endpunkt, der den Login-Zwang nur wieder EINschalten kann
+    (bei ausgeschaltetem Zwang gibt es sonst keine Haupt-Session dafuer)."""
+
+    def test_main_password_enables_flag_without_cookie(self, app_client, db_session):
+        import os
+
+        _set_login_required(db_session, False)
+        assert "auth_token" not in app_client.cookies
+
+        response = app_client.post(ENABLE_URL, json={"password": os.environ["MAIN_PASSWORD"]})
+
+        assert response.status_code == 200
+        assert response.json() == {"login_required": True}
+        assert _login_required(db_session) is True
+        # Kein Session-Cookie - der Nutzer meldet sich danach normal an.
+        assert "set-cookie" not in {k.lower() for k in response.headers.keys()}
+        status = app_client.get("/api/auth/status").json()
+        assert status["login_required"] is True
+        assert status["logged_in"] is False
+
+    def test_wrong_password_rejected_and_flag_stays_off(self, app_client, db_session):
+        _set_login_required(db_session, False)
+
+        response = app_client.post(ENABLE_URL, json={"password": "falsch"})
+
+        assert response.status_code == 401
+        assert _login_required(db_session) is False
+
+    def test_shared_password_rejected(self, app_client, db_session):
+        import os
+
+        _set_login_required(db_session, False)
+
+        response = app_client.post(ENABLE_URL, json={"password": os.environ["SHARED_PASSWORD"]})
+
+        assert response.status_code == 401
+        assert _login_required(db_session) is False
+
+    def test_main_account_email_and_password_enables_flag(self, app_client, db_session):
+        make_user(db_session, email="chef@example.com", password="geheim123", is_main=True)
+        _set_login_required(db_session, False)
+
+        response = app_client.post(ENABLE_URL, json={"email": "chef@example.com", "password": "geheim123"})
+
+        assert response.status_code == 200
+        assert _login_required(db_session) is True
+
+    def test_non_main_account_rejected_with_same_message(self, app_client, db_session):
+        make_user(db_session, email="anna@example.com", password="geheim123", is_main=False)
+        _set_login_required(db_session, False)
+
+        non_main = app_client.post(ENABLE_URL, json={"email": "anna@example.com", "password": "geheim123"})
+        wrong_pw = app_client.post(ENABLE_URL, json={"email": "anna@example.com", "password": "falsch"})
+        unknown = app_client.post(ENABLE_URL, json={"email": "nobody@example.com", "password": "x"})
+
+        assert non_main.status_code == 401
+        assert non_main.json()["detail"] == wrong_pw.json()["detail"] == unknown.json()["detail"]
+        assert _login_required(db_session) is False
+
+    def test_main_password_with_email_does_not_authorize(self, app_client, db_session):
+        """Mit email greift NUR der Account-Weg, nicht das alte Haupt-Passwort."""
+        import os
+
+        _set_login_required(db_session, False)
+
+        response = app_client.post(
+            ENABLE_URL, json={"email": "nobody@example.com", "password": os.environ["MAIN_PASSWORD"]}
+        )
+
+        assert response.status_code == 401
+        assert _login_required(db_session) is False
+
+    def test_idempotent_when_already_enabled(self, app_client, db_session):
+        import os
+
+        _set_login_required(db_session, True)
+
+        response = app_client.post(ENABLE_URL, json={"password": os.environ["MAIN_PASSWORD"]})
+
+        assert response.status_code == 200
+        assert response.json() == {"login_required": True}
+        assert _login_required(db_session) is True
+
+    def test_repeated_failures_eventually_blocked(self, app_client, db_session):
+        from app.config import LOGIN_RATE_LIMIT_MAX_ATTEMPTS
+
+        _set_login_required(db_session, False)
+        last_status = None
+        for _ in range(LOGIN_RATE_LIMIT_MAX_ATTEMPTS + 2):
+            last_status = app_client.post(ENABLE_URL, json={"password": "falsch"}).status_code
+
+        assert last_status == 429
+        assert _login_required(db_session) is False

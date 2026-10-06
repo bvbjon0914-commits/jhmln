@@ -400,7 +400,10 @@ def send_bundle(
             )
 
         try:
-            doc = generator.generate_document(building, authority, request_type, aktenzeichen, sender=current_user)
+            doc = generator.generate_document(
+                building, authority, request_type, aktenzeichen, sender=current_user,
+                selected_options=item.get_selected_options_list(),
+            )
         except DocumentGenerationError as exc:
             raise HTTPException(status_code=502, detail=f"{item_id}: Dokument konnte nicht erzeugt werden: {exc}")
 

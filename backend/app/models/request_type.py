@@ -48,6 +48,13 @@ class RequestType(Base):
     def __repr__(self):
         return f"<RequestType(request_type_id={self.request_type_id}, name={self.name}, active={self.active})>"
 
+    @property
+    def checkbox_options(self) -> list:
+        """Ankreuzbare Optionen dieser Auskunftsart (Labels, in Reihenfolge)."""
+        # Lazy import: app.services importiert seinerseits die Models (Zirkularitaet).
+        from app.services.request_options import get_checkbox_options
+        return get_checkbox_options(self.request_type_id)
+
     def to_dict(self) -> dict:
         """Konvertiert das Modell zu einem Dictionary."""
         return {
