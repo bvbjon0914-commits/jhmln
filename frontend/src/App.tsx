@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FileSearch2, Upload, Settings, LogOut, DownloadCloud, FileSpreadsheet, RotateCcw, FolderKanban, UserCircle } from "lucide-react";
+import { FileSearch2, Upload, Settings, LogOut, DownloadCloud, FileSpreadsheet, RotateCcw, FolderKanban, UserCircle, Trash2 } from "lucide-react";
 import { Stepper } from "./components/Stepper";
 import { BuildingSearch } from "./components/BuildingSearch";
 import { BuildingDetails } from "./components/BuildingDetails";
@@ -78,6 +78,7 @@ function App() {
   const [retryingByBuilding, setRetryingByBuilding] = useState<Record<string, boolean>>({});
   const [matchingLoading, setMatchingLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [removingAllAmbiguous, setRemovingAllAmbiguous] = useState(false);
   const resultsSectionRef = useRef<HTMLDivElement>(null);
   const documentsSectionRef = useRef<HTMLDivElement>(null);
   const prevMatchingLoading = useRef(matchingLoading);
@@ -205,6 +206,51 @@ function App() {
     }));
   };
 
+  const handleRemoveAllAmbiguous = async () => {
+    const ambiguousByBuilding = Object.entries(resultsByBuilding).reduce<Record<string, string[]>>(
+      (acc, [buildingId, results]) => {
+        const ids = results.filter((r) => r.matching_status !== "MATCHED").map((r) => r.request_item_id);
+        if (ids.length > 0) acc[buildingId] = ids;
+        return acc;
+      },
+      {}
+    );
+    const total = Object.values(ambiguousByBuilding).reduce((sum, ids) => sum + ids.length, 0);
+    if (total === 0) return;
+    if (
+      !window.confirm(
+        `${total} nicht eindeutige Treffer wirklich entfernen? Das kann nicht rückgängig gemacht werden.`
+      )
+    ) {
+      return;
+    }
+
+    setRemovingAllAmbiguous(true);
+    let removed = 0;
+    let failed = 0;
+    await Promise.all(
+      Object.entries(ambiguousByBuilding).flatMap(([buildingId, itemIds]) =>
+        itemIds.map(async (itemId) => {
+          try {
+            await api.removeMatchingItem(itemId);
+            handleItemRemoved(buildingId, itemId);
+            removed += 1;
+          } catch {
+            failed += 1;
+          }
+        })
+      )
+    );
+    setRemovingAllAmbiguous(false);
+
+    if (removed > 0) {
+      showToast("success", `${removed} nicht eindeutige Treffer entfernt.`);
+    }
+    if (failed > 0) {
+      showToast("error", `${failed} Treffer konnten nicht entfernt werden.`);
+    }
+  };
+
   const handleGenerate = async () => {
     const entries = Object.entries(requestIds);
     if (entries.length === 0) return;
@@ -293,6 +339,11 @@ function App() {
     buildingsWithResults.every((b) =>
       resultsByBuilding[b.building_id].every((r) => r.matching_status === "MATCHED")
     );
+  const ambiguousCount = buildingsWithResults.reduce(
+    (sum, b) =>
+      sum + resultsByBuilding[b.building_id].filter((r) => r.matching_status !== "MATCHED").length,
+    0
+  );
 
   return (
     <div className="min-h-screen">
@@ -523,6 +574,19 @@ function App() {
                 <Button onClick={handleGenerate} disabled={!allMatched || generating}>
                   {generating ? "Generiere Schreiben…" : "Schreiben generieren"}
                 </Button>
+                {ambiguousCount > 0 && (
+                  <Button
+                    variant="secondary"
+                    onClick={handleRemoveAllAmbiguous}
+                    disabled={removingAllAmbiguous}
+                    className="text-status-conflict hover:bg-status-conflictBg"
+                  >
+                    <Trash2 size={16} />
+                    {removingAllAmbiguous
+                      ? "Entferne…"
+                      : `${ambiguousCount} nicht eindeutige Treffer entfernen`}
+                  </Button>
+                )}
                 <a
                   href={api.exportResultsCsvUrl(buildingsWithResults.map((b) => requestIds[b.building_id]))}
                   download
