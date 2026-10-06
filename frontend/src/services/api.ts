@@ -240,13 +240,13 @@ export const api = {
   async importJurisdictions(
     file: File,
     mapping: Record<string, string>,
-    requestTypeId: string,
+    requestTypeId?: string,
     sheet?: string
   ): Promise<ImportSummary> {
     const form = new FormData();
     form.append("file", file);
     form.append("mapping", JSON.stringify(mapping));
-    form.append("request_type_id", requestTypeId);
+    if (requestTypeId) form.append("request_type_id", requestTypeId);
     if (sheet) form.append("sheet", sheet);
     const { data } = await client.post<ImportSummary>("/import/jurisdictions", form);
     return data;

@@ -10,6 +10,7 @@ landet sie im "needs_review"-Topf statt automatisch verknüpft zu werden.
 
 import io
 import re
+import unicodedata
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -22,9 +23,61 @@ from sqlalchemy.orm import Session
 from app.models.authority import Authority
 from app.models.building import Building
 from app.models.jurisdiction import Jurisdiction
+from app.models.request_type import RequestType
 from app.services.address_normalizer import AddressNormalizer
 
 AGS_SPLIT_RE = re.compile(r"[,;/\s]+")
+
+# Länge des (normalisierten) AGS -> Zuständigkeitsebene. 2 = Bundesland,
+# 5 = Landkreis/Kreis, 8 = Gemeinde (siehe JurisdictionMatchingService).
+_AGS_LEVEL_BY_LENGTH = {2: "STATE", 5: "COUNTY", 8: "MUNICIPALITY"}
+# Excel schneidet führende Nullen ab ("05911000" -> "5911000"): diese Längen
+# werden eindeutig auf 2/5/8 Stellen aufgefüllt.
+_AGS_PAD_LENGTHS = {1: 2, 4: 5, 7: 8}
+_AGS_DIGITS_RE = re.compile(r"[0-9]+")
+
+
+def normalize_ags(value) -> Optional[str]:
+    """
+    Normalisiert einen einzelnen AGS-Wert: trimmt, entfernt ein angehängtes
+    ".0" (Excel-Zahlenformat), verlangt ausschließlich Ziffern und füllt die
+    durch Excel abgeschnittenen führenden Nullen auf (1/4/7 -> 2/5/8 Stellen).
+    Gültig sind nur 2 (Land), 5 (Kreis) und 8 (Gemeinde) Stellen; alles andere
+    liefert None (der Aufrufer macht daraus NEEDS_REVIEW - es wird nie geraten).
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if text.endswith(".0"):
+        text = text[:-2]
+    if not _AGS_DIGITS_RE.fullmatch(text):
+        return None
+    target = _AGS_PAD_LENGTHS.get(len(text))
+    if target:
+        text = text.zfill(target)
+    return text if len(text) in _AGS_LEVEL_BY_LENGTH else None
+
+
+def infer_matching_level(ags: str, default: str = "MUNICIPALITY") -> str:
+    """Leitet die Zuständigkeitsebene aus der AGS-Länge ab (2/5/8), sonst default."""
+    return _AGS_LEVEL_BY_LENGTH.get(len(ags), default)
+
+
+def _fold_umlauts(text: str) -> str:
+    """ä->ae, ö->oe, ü->ue, ß->ss, klein, ohne Leerraum."""
+    text = text.casefold().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+    return re.sub(r"\s+", "", text)
+
+
+def _strip_diacritics(text: str) -> str:
+    """ä->a, ö->o, ü->u, ß->ss, klein, ohne Leerraum (für Eingaben ohne e-Schreibweise)."""
+    text = text.casefold().replace("ß", "ss")
+    text = "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
+    return re.sub(r"\s+", "", text)
+
+
+def _request_type_keys(text: str) -> List[str]:
+    return list(dict.fromkeys([_fold_umlauts(text), _strip_diacritics(text)]))
 
 
 @dataclass
@@ -43,6 +96,9 @@ class ImportSummary:
     needs_review: int
     errors: int
     updated: int = 0
+    # Zeilen ohne Inhalt (z.B. nicht ausgefüllte Zeilen eines Export-Blattes):
+    # bewusst weder Fehler noch Prüfbedarf und ohne Eintrag in details.
+    skipped: int = 0
     details: List[ImportRowResult] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -53,6 +109,7 @@ class ImportSummary:
             "needs_review": self.needs_review,
             "errors": self.errors,
             "updated": self.updated,
+            "skipped": self.skipped,
             "details": [
                 {"row_index": d.row_index, "status": d.status, "message": d.message}
                 for d in self.details
@@ -264,11 +321,41 @@ class ImportService:
             details=details,
         )
 
+    def _build_request_type_resolver(self):
+        """
+        Liefert eine Funktion Rohwert -> request_type_id (oder None).
+
+        Akzeptiert Name, Code oder request_type_id einer Auskunftsart; der
+        Vergleich ist unabhängig von Groß-/Kleinschreibung, Leerraum und
+        Umlauten/ß ("Erschließungsbeiträge" = "erschliessungsbeitraege").
+        Aktive Auskunftsarten haben Vorrang vor inaktiven. Unbekannte Werte
+        liefern None - es wird nie geraten.
+        """
+        index: dict = {}
+        rows = self.db.query(
+            RequestType.request_type_id, RequestType.code, RequestType.name, RequestType.active
+        ).all()
+        # Inaktive zuerst eintragen, damit aktive Treffer sie bei Kollision überschreiben.
+        for rt_id, code, name, active in sorted(rows, key=lambda r: bool(r[3])):
+            for text in (name, code, rt_id):
+                if not text:
+                    continue
+                for key in _request_type_keys(text):
+                    index[key] = rt_id
+
+        def resolve(raw: str) -> Optional[str]:
+            for key in _request_type_keys(raw):
+                if key in index:
+                    return index[key]
+            return None
+
+        return resolve
+
     def import_jurisdictions(
         self,
         df: pd.DataFrame,
         mapping: dict,
-        request_type_id: str,
+        request_type_id: Optional[str] = None,
         default_priority: int = 40,
         default_matching_level: str = "MUNICIPALITY",
     ) -> ImportSummary:
@@ -279,11 +366,35 @@ class ImportService:
         Komma/Semikolon/Leerzeichen, enthalten).
 
         Pflichtfelder im Mapping: authority_name, ags.
-        request_type_id gilt für den gesamten Import-Lauf (eine Datei = eine
-        Auskunftsart), da die Auskunftsarten ein festes Set sind.
+
+        Auskunftsart: pro Zeile über die optionale Mapping-Spalte "request_type"
+        (Name, Code oder ID der Auskunftsart); ist die Zelle leer, gilt das
+        Formularfeld request_type_id als Vorgabe für den ganzen Lauf. Fehlt
+        beides: NEEDS_REVIEW "Auskunftsart fehlt"; ist der Wert unbekannt:
+        NEEDS_REVIEW "Auskunftsart unbekannt: <wert>".
+
+        Nicht ausgefüllte Zeilen (z.B. Export-Blätter der Datenqualität) werden
+        nur gezählt (summary.skipped), nicht als Fehler/Prüfbedarf geführt:
+        authority_name leer, ODER ags leer bei gemappter, leerer request_type-Zelle.
+
+        AGS: siehe normalize_ags (führende Nullen werden aufgefüllt). Ist EIN
+        AGS-Wert einer Zelle ungültig, wird die GANZE Zeile als NEEDS_REVIEW
+        geführt und nichts davon importiert (kein Teilimport, nie raten).
+
+        matching_level: ohne gemappten Wert aus der AGS-Länge abgeleitet
+        (2 STATE, 5 COUNTY, 8 MUNICIPALITY), sonst default_matching_level.
         """
         details: List[ImportRowResult] = []
-        imported = duplicates = needs_review = errors = 0
+        imported = duplicates = needs_review = errors = skipped = 0
+
+        resolve_request_type = self._build_request_type_resolver()
+        default_request_type_id: Optional[str] = None
+        if request_type_id and str(request_type_id).strip():
+            raw_default = str(request_type_id).strip()
+            # Wie bisher wird die ID des Formularfelds notfalls unverändert
+            # übernommen (rückwärtskompatibel), bevorzugt aber die aufgelöste.
+            default_request_type_id = resolve_request_type(raw_default) or raw_default
+        request_type_mapped = bool(mapping.get("request_type"))
 
         # Leichtgewichtiger Lookup (nur IDs) statt voller ORM-Objekte für
         # alle Behörden – siehe import_authorities für die Begründung.
@@ -293,12 +404,19 @@ class ImportService:
                 Authority.authority_id, Authority.authority_name, Authority.city
             ).all()
         }
-        existing_jurisdictions = {
-            (j.authority_id, j.ags)
-            for j in self.db.query(Jurisdiction.authority_id, Jurisdiction.ags).filter(
-                Jurisdiction.request_type_id == request_type_id
-            )
-        }
+        # Bestehende (authority_id, ags)-Paare je Auskunftsart, lazy geladen.
+        existing_by_request_type: dict = {}
+
+        def existing_jurisdictions_for(rt_id: str) -> set:
+            if rt_id not in existing_by_request_type:
+                existing_by_request_type[rt_id] = {
+                    (j.authority_id, j.ags)
+                    for j in self.db.query(Jurisdiction.authority_id, Jurisdiction.ags).filter(
+                        Jurisdiction.request_type_id == rt_id
+                    )
+                }
+            return existing_by_request_type[rt_id]
+
         # Innerhalb eines Batches wiederverwendetes Authority-Objekt, damit
         # dieselbe Behörde (mehrere AGS-Zeilen hintereinander) nicht bei
         # jeder Zeile neu geladen werden muss.
@@ -317,13 +435,42 @@ class ImportService:
             try:
                 name = mapped(row, "authority_name")
                 ags_raw = mapped(row, "ags")
+                request_type_cell = mapped(row, "request_type")
 
-                if not name or not ags_raw:
-                    details.append(
-                        ImportRowResult(idx, "NEEDS_REVIEW", "authority_name oder ags fehlt")
-                    )
+                # Nicht ausgefüllte Zeilen: nur zählen, kein details-Eintrag.
+                if not name or (not ags_raw and request_type_mapped and not request_type_cell):
+                    skipped += 1
+                    continue
+
+                ags_tokens = [v for v in AGS_SPLIT_RE.split(ags_raw) if v] if ags_raw else []
+                if not ags_tokens:
+                    details.append(ImportRowResult(idx, "NEEDS_REVIEW", "AGS fehlt"))
                     needs_review += 1
                     continue
+
+                invalid_ags = [t for t in ags_tokens if normalize_ags(t) is None]
+                if invalid_ags:
+                    details.append(ImportRowResult(
+                        idx, "NEEDS_REVIEW", f"AGS ungültig: {', '.join(invalid_ags)}"
+                    ))
+                    needs_review += 1
+                    continue
+                ags_values = [normalize_ags(t) for t in ags_tokens]
+
+                if request_type_cell:
+                    row_request_type_id = resolve_request_type(request_type_cell)
+                    if row_request_type_id is None:
+                        details.append(ImportRowResult(
+                            idx, "NEEDS_REVIEW", f"Auskunftsart unbekannt: {request_type_cell}"
+                        ))
+                        needs_review += 1
+                        continue
+                else:
+                    row_request_type_id = default_request_type_id
+                    if row_request_type_id is None:
+                        details.append(ImportRowResult(idx, "NEEDS_REVIEW", "Auskunftsart fehlt"))
+                        needs_review += 1
+                        continue
 
                 city = mapped(row, "city")
                 key = (name, city)
@@ -354,9 +501,9 @@ class ImportService:
                     if value:
                         setattr(authority, contact_field, value)
 
-                ags_values = [v for v in AGS_SPLIT_RE.split(ags_raw) if v]
                 priority = mapped(row, "priority")
-                matching_level = mapped(row, "matching_level") or default_matching_level
+                explicit_matching_level = mapped(row, "matching_level")
+                existing_jurisdictions = existing_jurisdictions_for(row_request_type_id)
 
                 new_count = dup_count = 0
                 for ags in ags_values:
@@ -367,12 +514,12 @@ class ImportService:
 
                     jurisdiction = Jurisdiction(
                         jurisdiction_id=str(uuid.uuid4()),
-                        request_type_id=request_type_id,
+                        request_type_id=row_request_type_id,
                         authority_id=authority_id,
                         ags=ags,
                         municipality=mapped(row, "municipality"),
                         priority=int(priority) if priority else default_priority,
-                        matching_level=matching_level,
+                        matching_level=explicit_matching_level or infer_matching_level(ags, default_matching_level),
                         source=mapped(row, "source") or "Import",
                         notes=mapped(row, "notes"),
                     )
@@ -412,6 +559,7 @@ class ImportService:
             duplicates=duplicates,
             needs_review=needs_review,
             errors=errors,
+            skipped=skipped,
             details=details,
         )
 

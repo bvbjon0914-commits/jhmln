@@ -88,7 +88,11 @@ async def import_authorities(
 async def import_jurisdictions(
     file: UploadFile = File(...),
     mapping: str = Form(..., description="JSON: {db_field: csv_column}"),
-    request_type_id: str = Form(..., description="Auskunftsart, für die dieser Import gilt"),
+    request_type_id: str = Form(
+        None,
+        description="Vorgabe-Auskunftsart für Zeilen ohne eigene Auskunftsart (optional, wenn das Mapping "
+        "eine Spalte 'request_type' enthält)",
+    ),
     sheet: str = Form(None, description="Bei mehrblättrigen Excel-Dateien: das zu lesende Arbeitsblatt"),
     db: Session = Depends(get_db_session),
 ):
@@ -102,5 +106,25 @@ async def import_jurisdictions(
     except (ValueError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    summary = service.import_jurisdictions(df, mapping_dict, request_type_id)
+    if not isinstance(mapping_dict, dict):
+        raise HTTPException(status_code=400, detail="Mapping muss ein JSON-Objekt sein")
+
+    default_request_type_id = (request_type_id or "").strip() or None
+    request_type_column = str(mapping_dict.get("request_type") or "").strip()
+    if not default_request_type_id and not request_type_column:
+        raise HTTPException(
+            status_code=400,
+            detail="Auskunftsart fehlt (Formularfeld request_type_id oder Mapping-Spalte request_type)",
+        )
+
+    # Ohne Behörden-Spalte würden alle Zeilen als "nicht ausgefüllt" übersprungen
+    # und der Import wirkte scheinbar erfolgreich - lieber laut ablehnen.
+    authority_name_column = str(mapping_dict.get("authority_name") or "")
+    if authority_name_column not in df.columns:
+        raise HTTPException(
+            status_code=400,
+            detail="Mapping-Spalte authority_name fehlt oder ist in der Datei/im Arbeitsblatt nicht vorhanden",
+        )
+
+    summary = service.import_jurisdictions(df, mapping_dict, default_request_type_id)
     return summary.to_dict()

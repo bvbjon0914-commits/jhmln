@@ -1156,7 +1156,8 @@ def geocode_missing_buildings(db: Session = Depends(get_db_session), _: None = D
     return {"geocoded": geocoded, "failed": len(missing) - geocoded, "remaining": remaining}
 
 
-_EXPORT_CACHE_KEY = "export-xlsx"
+# v2: Layout geändert (Ausfüll-Spalten + Blatt "Anleitung") - alte Cache-Einträge verwerfen.
+_EXPORT_CACHE_KEY = "export-xlsx-v2"
 
 _EXPORT_AUTHORITY_COLUMNS = [
     "Behörde", "Abteilung", "Straße", "Hausnummer", "PLZ", "Ort",
@@ -1164,6 +1165,15 @@ _EXPORT_AUTHORITY_COLUMNS = [
 ]
 _EXPORT_BUILDING_COLUMNS = ["Straße", "Hausnummer", "PLZ", "Ort"]
 _EXPORT_JURISDICTION_COLUMNS = ["Behörde", "Auskunftsart", "AGS", "Gemeinde"]
+
+# Ausfüll-Spalten: leer exportiert, vom Zuständigkeiten-Import (Datenimport ->
+# Zuständigkeiten) per Spaltenname automatisch zugeordnet und wieder eingelesen.
+_EXPORT_GAP_FILL_COLUMNS = [
+    "Behörde", "Abteilung", "Straße", "Hausnummer", "PLZ", "Ort", "E-Mail", "Telefon", "Website", "Quelle",
+]
+_EXPORT_COVERAGE_GAP_COLUMNS = ["AGS", "Gemeinde", "Auskunftsart", "Betroffene Gebäude"] + _EXPORT_GAP_FILL_COLUMNS
+_EXPORT_NO_JURISDICTION_COLUMNS = _EXPORT_AUTHORITY_COLUMNS + ["Auskunftsart", "AGS", "Gemeinde", "Quelle"]
+_EXPORT_INSTRUCTIONS_SHEET = "Anleitung"
 
 
 def _export_authority_rows(authorities: list) -> list:
@@ -1185,6 +1195,45 @@ def _export_jurisdiction_rows(jurisdictions: list, db: Session) -> list:
     return [[j["authority_name"], j["request_type_name"], j["ags"], j["municipality"]] for j in serialized]
 
 
+def _export_instruction_rows(db: Session) -> list:
+    """Text für das letzte Blatt "Anleitung" (nur Zellentext, keine Formeln)."""
+    request_type_names = [
+        name for (name,) in db.query(RequestType.name).filter(RequestType.active.is_(True)).order_by(RequestType.name)
+    ]
+    lines = [
+        "ANLEITUNG ZUM AUSFÜLLEN UND WIEDER-IMPORTIEREN",
+        "",
+        "Ausfüllen",
+        "Tragen Sie nur Zeilen ein, die Sie mit einer offiziellen Quelle belegen können. Alle anderen Zeilen "
+        "bleiben leer - leere Zeilen werden beim Import ignoriert.",
+        "Eine Zeile steht für genau eine Kombination aus Auskunftsart und AGS.",
+        "Blatt \"Abdeckungslücken\": AGS, Gemeinde und Auskunftsart sind vorausgefüllt. Ergänzen Sie die zuständige "
+        "Behörde (Behörde, Abteilung, Straße, Hausnummer, PLZ, Ort, E-Mail, Telefon, Website).",
+        "Blatt \"Ohne Zuständigkeit\": Behörde und Adresse sind vorausgefüllt (bitte Behörde und Ort NICHT ändern). "
+        "Tragen Sie in den Spalten \"Auskunftsart\" und \"AGS\" ein, wofür die Behörde zuständig ist "
+        "(AGS = 8-stellige Gemeinde-AGS, 5-stelliger Kreis oder 2-stelliges Land). Ist die Behörde für weitere "
+        "Gebiete oder Auskunftsarten zuständig, duplizieren Sie die Zeile und ändern Auskunftsart/AGS.",
+        "Spalte \"Quelle\": offizielle Quelle bzw. URL, aus der die Angabe stammt.",
+        "AGS: Excel entfernt führende Nullen (05911000 wird zu 5911000) - der Import ergänzt sie wieder. "
+        "Gültig sind 2, 5 oder 8 Ziffern.",
+        "",
+        "Wieder-Importieren (Zuständigkeiten)",
+        "Datenimport -> Zuständigkeiten -> Datei wählen -> Arbeitsblatt \"Abdeckungslücken\" bzw. "
+        "\"Ohne Zuständigkeit\" auswählen -> Spalten werden automatisch zugeordnet -> die Auskunftsart wird aus der "
+        "Spalte \"Auskunftsart\" gelesen -> Importieren.",
+        "Pro Import wird genau ein Arbeitsblatt eingelesen - führen Sie den Import für jedes ausgefüllte Blatt "
+        "einzeln durch.",
+        "",
+        "Behörden-Blätter (Ohne E-Mail, Ohne Adresse, Nicht verifiziert)",
+        "Diese Blätter werden über Datenimport -> Behörden mit der Option \"Fehlende Daten ergänzen\" wieder "
+        "eingelesen.",
+        "",
+        "Gültige Auskunftsarten (Schreibweise wie unten verwenden):",
+    ]
+    lines.extend(request_type_names)
+    return [[line] for line in lines]
+
+
 def _build_export_sheets(db: Session) -> List[tuple]:
     """(Blattname, Spaltenüberschriften, Zeilen als Listen) je Kategorie."""
     duplicate_authority_groups, _ = _find_duplicate_authority_groups(db)
@@ -1198,8 +1247,8 @@ def _build_export_sheets(db: Session) -> List[tuple]:
         ("Ohne E-Mail", _EXPORT_AUTHORITY_COLUMNS, _export_authority_rows(_authorities_without_email(db))),
         (
             "Ohne Zuständigkeit",
-            _EXPORT_AUTHORITY_COLUMNS,
-            _export_authority_rows(_authorities_without_jurisdiction(db)),
+            _EXPORT_NO_JURISDICTION_COLUMNS,
+            [row + [None] * 4 for row in _export_authority_rows(_authorities_without_jurisdiction(db))],
         ),
         ("Ohne Adresse", _EXPORT_AUTHORITY_COLUMNS, _export_authority_rows(_authorities_without_address(db))),
         ("Nicht verifiziert", _EXPORT_AUTHORITY_COLUMNS, _export_authority_rows(_authorities_unverified(db))),
@@ -1227,8 +1276,12 @@ def _build_export_sheets(db: Session) -> List[tuple]:
         ),
         (
             "Abdeckungslücken",
-            ["AGS", "Gemeinde", "Auskunftsart", "Betroffene Gebäude"],
-            [[g["ags"], g["municipality"], g["request_type_name"], g["building_count"]] for g in _coverage_gaps(db)],
+            _EXPORT_COVERAGE_GAP_COLUMNS,
+            [
+                [g["ags"], g["municipality"], g["request_type_name"], g["building_count"]]
+                + [None] * len(_EXPORT_GAP_FILL_COLUMNS)
+                for g in _coverage_gaps(db)
+            ],
         ),
         (
             "Mögliche Duplikate (ähnlich)",
@@ -1238,6 +1291,9 @@ def _build_export_sheets(db: Session) -> List[tuple]:
                 for p in _fuzzy_duplicate_authority_pairs(db)
             ],
         ),
+        # MUSS das letzte Blatt bleiben: der Import wählt bei mehrblättrigen
+        # Dateien das erste Blatt mit Inhalt - die Anleitung darf nie dazu gehören.
+        (_EXPORT_INSTRUCTIONS_SHEET, ["Anleitung"], _export_instruction_rows(db)),
     ]
 
 
@@ -1251,7 +1307,13 @@ def _render_export_xlsx(sheets: List[tuple]) -> bytes:
     for sheet_name, columns, rows in sheets:
         sheet = workbook.create_sheet(title=sheet_name)
         for index, column in enumerate(columns, start=1):
-            sheet.column_dimensions[get_column_letter(index)].width = max(14, min(48, len(column) + 6))
+            dimension = sheet.column_dimensions[get_column_letter(index)]
+            dimension.width = max(14, min(48, len(column) + 6))
+            if column == "AGS":
+                # Textformat, damit Excel beim Eintippen führende Nullen nicht abschneidet.
+                dimension.number_format = "@"
+        if columns == ["Anleitung"]:
+            sheet.column_dimensions["A"].width = 120
         header = []
         for column in columns:
             cell = WriteOnlyCell(sheet, value=column)

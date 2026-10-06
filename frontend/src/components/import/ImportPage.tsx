@@ -107,8 +107,10 @@ export function ImportPage() {
   };
 
   const missingRequired = fields.filter((f) => f.required && !mapping[f.key]);
+  const perRowRequestType = kind === "jurisdictions" && Boolean(mapping.request_type);
   const canSubmit =
-    missingRequired.length === 0 && (kind !== "jurisdictions" || requestTypeId !== "");
+    missingRequired.length === 0 &&
+    (kind !== "jurisdictions" || requestTypeId !== "" || perRowRequestType);
 
   const handleSubmit = async () => {
     if (!file || !canSubmit) return;
@@ -128,6 +130,8 @@ export function ImportPage() {
       setSubmitting(false);
     }
   };
+
+  const showSkipped = kind === "jurisdictions" && (summary?.skipped ?? 0) > 0;
 
   const reset = () => {
     setFile(null);
@@ -287,15 +291,22 @@ export function ImportPage() {
 
           {kind === "jurisdictions" && (
             <div>
+              {perRowRequestType && (
+                <p className="mb-2 text-xs text-ink-soft">
+                  Auskunftsart wird pro Zeile aus der Spalte »{mapping.request_type}« gelesen.
+                </p>
+              )}
               <label className="mb-1.5 block text-xs font-medium text-ink-soft">
-                Auskunftsart (gilt für die gesamte Datei)
+                {perRowRequestType
+                  ? "Auskunftsart (Standard, falls die Zelle leer ist)"
+                  : "Auskunftsart (gilt für die gesamte Datei)"}
               </label>
               <select
                 value={requestTypeId}
                 onChange={(e) => setRequestTypeId(e.target.value)}
                 className="w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-brand focus:outline-none"
               >
-                <option value="">— auswählen —</option>
+                <option value="">{perRowRequestType ? "— keiner —" : "— auswählen —"}</option>
                 {requestTypes.map((t) => (
                   <option key={t.request_type_id} value={t.request_type_id}>
                     {t.name}
@@ -331,6 +342,12 @@ export function ImportPage() {
                 </div>
               ))}
             </div>
+            {kind === "jurisdictions" && (
+              <p className="mt-2 text-xs text-ink-faint">
+                Ausfüll-Blätter aus dem Datenqualität-Export (z. B. „Abdeckungslücken“ oder „Ohne
+                Zuständigkeit“) können direkt importiert werden – jeweils ein Blatt pro Import-Lauf.
+              </p>
+            )}
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-line">
@@ -373,13 +390,24 @@ export function ImportPage() {
 
       {step === "result" && summary && (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <div
+            className={`grid grid-cols-2 gap-3 ${showSkipped ? "sm:grid-cols-6" : "sm:grid-cols-5"}`}
+          >
             {[
               { label: "Importiert", value: summary.imported, className: "text-status-matched" },
               { label: "Ergänzt", value: summary.updated, className: "text-status-matched" },
               { label: "Duplikate", value: summary.duplicates, className: "text-status-neutral" },
               { label: "Zur Prüfung", value: summary.needs_review, className: "text-status-review" },
               { label: "Fehler", value: summary.errors, className: "text-status-conflict" },
+              ...(showSkipped
+                ? [
+                    {
+                      label: "Übersprungen (nicht ausgefüllt)",
+                      value: summary.skipped ?? 0,
+                      className: "text-status-neutral",
+                    },
+                  ]
+                : []),
             ].map((s) => (
               <div key={s.label} className="rounded-lg border border-line bg-surface p-4 shadow-sm">
                 <div className={`text-2xl font-display font-semibold ${s.className}`}>

@@ -26,6 +26,8 @@ export interface ImportSummary {
   needs_review: number;
   errors: number;
   updated: number;
+  /** Nicht ausgefüllte Zeilen (z. B. Ausfüll-Blätter aus dem Datenqualität-Export); nicht in details aufgelistet. */
+  skipped?: number;
   details: ImportRowResult[];
 }
 
@@ -67,6 +69,7 @@ export const AUTHORITY_FIELDS: FieldSpec[] = [
 export const JURISDICTION_FIELDS: FieldSpec[] = [
   { key: "authority_name", label: "Behördenname", required: true },
   { key: "ags", label: "AGS-Schlüssel", required: true },
+  { key: "request_type", label: "Auskunftsart", required: false },
   { key: "city", label: "Ort", required: false },
   { key: "department_name", label: "Abteilung", required: false },
   { key: "street", label: "Straße", required: false },
@@ -106,7 +109,8 @@ const FIELD_ALIASES: Record<string, string[]> = {
   property_name: ["Objektname"],
   internal_reference: ["Interne Referenz"],
   notes: ["Notizen"],
-  municipality: ["Gemeindename"],
+  municipality: ["Gemeindename", "Gemeinde"],
+  request_type: ["Auskunftsart"],
   priority: ["Priorität"],
   matching_level: ["Matching-Level"],
 };
