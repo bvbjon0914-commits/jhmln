@@ -2297,3 +2297,82 @@ Mehrfachzustaendigkeit - keine einzige tote NO_MATCH-Sackgasse ohne jede
 Kandidaten-Behoerde bleibt mehr uebrig. `flake8 app/`, die volle Backend-
 Testsuite (188 passed) und `tsc --noEmit`/`npm run build` blieben nach
 jedem Schritt gruen.
+
+
+## 32. NRW: Kontaktdaten für Erschließungsbeiträge und Bodendenkmalschutz vervollständigt
+
+**Auftrag:** "Erschließungsbeiträge in NRW prüfen und vervollständigen", dann
+"dasselbe für Bodendenkmalschutzauskunft". Zielbild des Nutzers: *für jede
+beliebige Adresse in NRW wird jede Auskunftsart zugeordnet*.
+
+**Messung vorab (Ist-Stand, lokale Entwicklungs-DB):**
+- Zuordnung ist in NRW bereits vollständig: alle 396 Gemeinden × 11
+  Auskunftsarten = 4.356 Kombinationen sind eindeutig zugeordnet (kein
+  NO_MATCH, kein CONFLICTING). Gegengeprüft mit vollständiger Adresse
+  (Straße, Hausnummer, PLZ) über die echte Matching-Engine: 4.356/4.356
+  MATCHED. Die eigentliche Lücke ist die **Qualität**: rund 1.890 der
+  NRW-Regeln sind noch `AUTO_IMPORTED` (nicht amtlich bestätigt), und bei den hier bearbeiteten Auskunftsarten fehlten
+  Anschrift/E-Mail/Telefon/Webseite der zuständigen Stelle.
+- ERSCHLIESSUNG: 64 gültige Regeln mit Behörde ohne Straße/PLZ/E-Mail
+  (48 VERIFIED, 16 AUTO_IMPORTED). BODENDENKMALSCHUTZ: 53 Kreis-/Stadt-Regeln
+  auf 36 Behörden (50 VERIFIED, 3 AUTO_IMPORTED), bei ~28 Behörden ohne
+  Anschrift und E-Mail. Die Zuordnung selbst (Kreise → Obere Denkmalbehörde,
+  kreisfreie Städte → Bezirksregierung) war korrekt.
+
+**Vorgehen:** 12 parallele, rein lesende Web-Recherche-Agenten (8 Pakete
+Erschließung à 7-10 Gemeinden, 4 Pakete Bodendenkmal à 9 Behörden). Regeln:
+nur amtliche Seiten, jede Angabe mit URL, Zuständigkeit muss ausdrücklich
+auf der Seite stehen, allgemeine Verwaltungs-E-Mails nie als
+Abteilungskontakt, keine Erfindungen. Ergebnisse je Eintrag:
+CONFIRMED_UNIT / UNIT_NAMED_CENTRAL_ADDRESS / NO_EXPLICIT_UNIT / OFFEN
+(Bodendenkmal zusätzlich WRONG_UNIT).
+Erschließung: 40 bestätigt, 12 mit Zentraladresse, 7 ohne benannte Stelle,
+5 offen.
+
+**Umsetzung** (`backend/scripts/complete_nrw_kontakte.py` + Daten
+`erschliessung_nrw_kontakte.json`, `bodendenkmal_nrw_kontakte.json`):
+Standard ist DRY-RUN, `--apply` schreibt; es werden **nur leere Felder
+gefüllt, nichts Vorhandenes überschrieben** (Abweichung = gemeldeter
+Konflikt); jeder Eintrag trägt den erwarteten Behördennamen, bei
+Abweichung wird übersprungen (schützt vor DB-Stand-Unterschieden zwischen
+lokal und Neon); idempotent (zweiter Lauf ändert nichts).
+- Erschließung (63 geändert): 39 × VERIFY (Kontakt ergänzt; bei
+  AUTO_IMPORTED bzw. abweichender gespeicherter Stelle Authority
+  umbenannt + Regel VERIFIED mit amtlicher Quell-URL), 14 × FILL (Zuständigkeit
+  nur indirekt/Zentraladresse: nur Kontakt ergänzt, Status bleibt),
+  7 × GENERIC (keine amtliche Seite stützt die gespeicherte Abteilung → zurück
+  auf die allgemeine Verwaltung, § 127 BauGB, Status bleibt AUTO_IMPORTED:
+  Wülfrath, Breckerfeld, Herdecke, Wetter, Finnentrop, Kirchhundem,
+  Lennestadt), 3 × ADDR_ONLY (Mettmann, Kaarst, Solingen: nur amtliche
+  Verwaltungsanschrift), 1 × NONE (Bonn: Seiten für Abrufe gesperrt).
+  Auf VERIFIED hochgestuft: Hilden, Ennepetal, Gevelsberg, Sprockhövel,
+  Drolshagen, Olpe. Geprüfte ERSCHLIESSUNG-Regeln in NRW: **380 → 386**.
+- Bodendenkmal (36 Behörden): 31 × FILL, 5 × ADDR_ONLY (Rhein-Erft,
+  Ennepe-Ruhr, Mettmann, Minden-Lübbecke, Herford - Abteilung nicht belegt).
+  Keine Statusänderung (die 3 AUTO_IMPORTED-Regeln hatten nur schwache oder
+  keine Belege).
+- Sicherung: `authority_matching.db.bak_pre_nrw_kontakte_20261007`.
+- Nach dem Lauf weiterhin 4.356/4.356 Kombinationen zugeordnet.
+
+**Bewusst nicht übernommen / offen für manuelle Prüfung:**
+- Bottrop: drei verschiedene amtliche Anschriften (Gerichtsstraße 10,
+  Ernst-Wilczok-Platz 1, Luise-Hensel-Straße 1) → keine übernommen.
+- Krefeld (Oberschlesienstraße 16 vs. Parkstraße 10), Bochum (PLZ 44777 laut
+  Seite, 44787 üblich), Köln (Zeughausstraße 2-8 laut Seite, DB 2-10),
+  Arnsberg (Seibertzstraße 2 laut Seite, DB 1), Bezirksregierung Düsseldorf
+  (E-Mail denkmalschutz@ vs. bodendenkmalschutz@): DB-Wert blieb, Abweichung im
+  Lauf-Log als Konflikt gemeldet.
+- Düren (Bodendenkmal): vom Agenten aus verschleierter Adresse rekonstruierte
+  E-Mail wurde nicht übernommen.
+- Bonn und Solingen: Stadtseiten sind für automatische Abrufe gesperrt - nicht
+  verifizierbar, nur Anschrift (Solingen) bzw. nichts (Bonn) ergänzt.
+- Kreis Steinfurt: laut offizieller Seite ist der Kreis nur für 14 Gemeinden
+  Obere Denkmalbehörde, für 10 weitere die Bezirksregierung Münster. Die
+  Regel steht auf Kreisebene für alle - **mögliche echte Fehlzuordnung für
+  diese 10 Gemeinden, separat zu klären**.
+- Münster, Bielefeld, Odenthal, Dormagen, Wenden, Heiligenhaus: Zuständigkeit
+  nur implizit/indirekt belegt, daher nur Kontakt ergänzt, kein Statuswechsel.
+
+**Rollout Produktion:** nur durch den Nutzer selbst (Neon wird von dieser
+Umgebung aus nicht angefasst): zuerst Dry-Run, dann `--apply` mit
+`DATABASE_URL` auf Neon, siehe Chat-Anleitung.
