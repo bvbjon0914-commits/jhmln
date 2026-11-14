@@ -82,6 +82,7 @@ export interface DuplicateJurisdictionsGroup extends JurisdictionGroup {
 }
 
 export interface DataQualitySummary {
+  contact_gaps?: { count: number; items: (AuthorityRef & { request_type_id: string; request_type_name: string; contact_status: string })[] };
   total_authorities: number;
   authorities_without_email: DataQualityGroup;
   authorities_without_jurisdiction: DataQualityGroup;

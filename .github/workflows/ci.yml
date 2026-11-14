@@ -40,6 +40,12 @@ jobs:
         # blockierend, damit echte künftige Regressionen trotzdem auffallen,
         # ohne die Pipeline durch bekanntes Rauschen dauerhaft rot zu machen.
 
+      - name: Word-Vorlagen erstellen (wie im Render-Build)
+        working-directory: backend
+        run: python scripts/generate_templates.py
+        env:
+          DATABASE_URL: "sqlite:///./ci_template_setup.db"
+
       - name: Tests (pytest)
         working-directory: backend
         run: python -m pytest tests/ -v

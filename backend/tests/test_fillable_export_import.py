@@ -461,7 +461,7 @@ class TestImportApi:
 EXPECTED_SHEET_ORDER = [
     "Ohne E-Mail", "Ohne Zuständigkeit", "Ohne Adresse", "Nicht verifiziert", "Behörden-Duplikate",
     "Zuständigkeits-Duplikate", "Verwaiste Zuständigkeiten", "Gebäude-Duplikate", "Gebäude Prüfung nötig",
-    "Ohne Kartenkoordinaten", "Abdeckungslücken", "Mögliche Duplikate (ähnlich)", "Anleitung",
+    "Ohne Kartenkoordinaten", "Abdeckungslücken", "Mögliche Duplikate (ähnlich)", "Fachkontakte prüfen", "Anleitung",
 ]
 AUTHORITY_HEADERS = ["Behörde", "Abteilung", "Straße", "Hausnummer", "PLZ", "Ort", "Bundesland", "E-Mail",
                      "Telefon", "Website"]
@@ -479,6 +479,7 @@ EXPECTED_HEADERS = {
     "Abdeckungslücken": ["AGS", "Gemeinde", "Auskunftsart", "Betroffene Gebäude", "Behörde", "Abteilung",
                          "Straße", "Hausnummer", "PLZ", "Ort", "E-Mail", "Telefon", "Website", "Quelle"],
     "Mögliche Duplikate (ähnlich)": ["Behörde A", "Behörde B", "Ort", "Ähnlichkeit"],
+    "Fachkontakte prüfen": ["Auskunftsart", "AGS", "Gemeinde", "Behörde", "Abteilung", "Straße", "Hausnummer", "PLZ", "Ort", "E-Mail", "Telefon", "Website", "Quelle", "Kontaktstatus"],
     "Anleitung": ["Anleitung"],
 }
 
@@ -642,7 +643,14 @@ class TestRoundtrip:
 
         db.expire_all()
         koeln_auth = db.query(Authority).filter_by(authority_name="Bauaktenarchiv Köln", city="Köln").one()
-        assert koeln_auth.email == "bauakten@koeln.example"
+        from app.models.authority_contact_channel import AuthorityContactChannel
+        assert koeln_auth.email is None
+        contact = db.query(AuthorityContactChannel).filter_by(
+            authority_id=koeln_auth.authority_id, request_type_id="BAUAKTEN",
+        ).one()
+        assert contact.value == "bauakten@koeln.example"
+        assert contact.source_url == "https://www.stadt-koeln.example/bauakten"
+        assert contact.last_verified_at is None
         assert (koeln_auth.street, koeln_auth.house_number, koeln_auth.postal_code) == ("Archivstraße", "7", "50667")
         assert koeln_auth.source == "https://www.stadt-koeln.example/bauakten"
         (j1,) = db.query(Jurisdiction).filter_by(authority_id=koeln_auth.authority_id).all()

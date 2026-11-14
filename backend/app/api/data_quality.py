@@ -24,6 +24,7 @@ from app.api.auth import require_main
 from app.api.geo import _geocode_and_cache_building
 from app.database import get_db_session
 from app.models.authority import Authority
+from app.models.authority_contact_channel import AuthorityContactChannel
 from app.models.authority_location import AuthorityLocation
 from app.models.building import Building
 from app.models.case import CaseBuilding
@@ -34,6 +35,7 @@ from app.models.request_type import RequestType
 from app.services import JurisdictionMatchingService, MatchingStatus
 from app.services.building_cleanup import delete_building_with_dependents
 from app.services.dq_cache import clear_data_quality_cache, get_or_compute
+from app.services.contact_resolver import ContactResolver
 
 __all__ = ["router", "clear_data_quality_cache"]
 
@@ -272,6 +274,48 @@ def _authorities_without_email(db: Session, slim: bool = False) -> list:
     )
 
 
+def _contact_gaps(db: Session) -> list:
+    """One review task per authority/service, with all referenced areas.
+
+    A populated flat email does not prove an email route for a service.
+    Both rules and channels are batch-loaded, never queried once per rule.
+    """
+    rows = db.query(Authority, Jurisdiction.request_type_id, Jurisdiction.ags, Jurisdiction.municipality).join(
+        Jurisdiction, Jurisdiction.authority_id == Authority.authority_id,
+    ).filter(Authority.active.is_(True), Jurisdiction.active.is_(True)).all()
+    resolver = ContactResolver(db, {a.authority_id for a, _, _, _ in rows})
+    type_names = dict(db.query(RequestType.request_type_id, RequestType.name).all())
+    groups = {}
+    for authority, request_type_id, ags, municipality in rows:
+        key = (authority.authority_id, request_type_id)
+        if key not in groups:
+            contact = resolver.resolve(authority, request_type_id)
+            if contact.can_send:
+                groups[key] = None
+            else:
+                groups[key] = {
+                    "authority": authority, "authority_id": authority.authority_id,
+                    "authority_name": authority.authority_name, "city": authority.city,
+                    "request_type_id": request_type_id,
+                    "request_type_name": type_names.get(request_type_id, request_type_id),
+                    "contact_status": contact.status, "email": contact.email or contact.fallback_email,
+                    "source_url": contact.source_url, "areas": set(), "municipalities": set(),
+                }
+        group = groups[key]
+        if group is not None:
+            if ags:
+                group["areas"].add(ags)
+            if municipality:
+                group["municipalities"].add(municipality)
+    gaps = []
+    for group in groups.values():
+        if group is not None:
+            group["ags"] = ",".join(sorted(group.pop("areas")))
+            group["municipality"] = ", ".join(sorted(group.pop("municipalities")))
+            gaps.append(group)
+    return sorted(gaps, key=lambda g: (g["authority_name"], g["request_type_id"]))
+
+
 def _authorities_without_jurisdiction(
     db: Session,
     slim: bool = False,
@@ -343,6 +387,8 @@ def _find_duplicate_authority_groups(
     if jurisdiction_authority_ids is None:
         jurisdiction_authority_ids = _jurisdiction_authority_ids(db)
     referenced_ids = set(jurisdiction_authority_ids)
+    # Contact evidence must not be lost in an automatic name-based merge.
+    referenced_ids |= {row[0] for row in db.query(AuthorityContactChannel.authority_id).distinct().all()}
     referenced_ids |= {
         row[0]
         for row in db.query(RequestItem.authority_id).filter(RequestItem.authority_id.isnot(None)).distinct().all()
@@ -872,6 +918,7 @@ def _compute_light_summary(db: Session) -> dict:
 
     total_authorities = len(active_authorities)
     without_email = _authorities_without_email(db, slim=True)
+    contact_gaps = _contact_gaps(db)
     without_jurisdiction = _authorities_without_jurisdiction(
         db, active_authorities=active_authorities, referenced_ids=jurisdiction_authority_ids
     )
@@ -896,6 +943,10 @@ def _compute_light_summary(db: Session) -> dict:
 
     return {
         "total_authorities": total_authorities,
+        "contact_gaps": {
+            "count": len(contact_gaps),
+            "items": [{k: v for k, v in g.items() if k != "authority"} for g in contact_gaps[:MAX_ITEMS]],
+        },
         "authorities_without_email": {
             "count": len(without_email),
             "items": [_serialize(a) for a in without_email[:MAX_ITEMS]],
@@ -1214,6 +1265,9 @@ def _export_instruction_rows(db: Session) -> list:
         "(AGS = 8-stellige Gemeinde-AGS, 5-stelliger Kreis oder 2-stelliges Land). Ist die Behörde für weitere "
         "Gebiete oder Auskunftsarten zuständig, duplizieren Sie die Zeile und ändern Auskunftsart/AGS.",
         "Spalte \"Quelle\": offizielle Quelle bzw. URL, aus der die Angabe stammt.",
+        "Blatt \"Fachkontakte prüfen\": eine Zeile je Behörde und Auskunftsart. Eine allgemeine Adresse "
+        "gilt nicht als geprüfter Fachkontakt. Neue Kontakte werden beim Zuständigkeitsimport als ungeprüfte "
+        "Kandidaten gespeichert; anschließend in der Behördenbearbeitung mit Quellenlink prüfen.",
         "AGS: Excel entfernt führende Nullen (05911000 wird zu 5911000) - der Import ergänzt sie wieder. "
         "Gültig sind 2, 5 oder 8 Ziffern.",
         "",
@@ -1290,6 +1344,15 @@ def _build_export_sheets(db: Session) -> List[tuple]:
                 [p["authority_name_a"], p["authority_name_b"], p["city"], p["similarity"]]
                 for p in _fuzzy_duplicate_authority_pairs(db)
             ],
+        ),
+        (
+            "Fachkontakte prüfen",
+            ["Auskunftsart", "AGS", "Gemeinde", "Behörde", "Abteilung", "Straße", "Hausnummer",
+             "PLZ", "Ort", "E-Mail", "Telefon", "Website", "Quelle", "Kontaktstatus"],
+            [[g["request_type_id"], g["ags"], g["municipality"], g["authority_name"],
+              g["authority"].department_name, g["authority"].street, g["authority"].house_number,
+              g["authority"].postal_code, g["city"], g["email"], g["authority"].phone,
+              g["authority"].website, g["source_url"], g["contact_status"]] for g in _contact_gaps(db)],
         ),
         # MUSS das letzte Blatt bleiben: der Import wählt bei mehrblättrigen
         # Dateien das erste Blatt mit Inhalt - die Anleitung darf nie dazu gehören.

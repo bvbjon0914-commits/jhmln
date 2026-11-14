@@ -4,6 +4,8 @@ import { api } from "../../services/api";
 import { useToast, errorMessage } from "../common/Toast";
 import { Pagination } from "../common/Pagination";
 import { FilterChip } from "../common/FilterChip";
+import { AuthorityEmailContacts } from "./AuthorityEmailContacts";
+import { useAuth } from "../auth/AuthContext";
 import { GERMAN_STATES } from "../../types/germanStates";
 import type { Authority, AuthorityUpdateInput } from "../../types/authority";
 import type { AdminFilterRequest } from "../../types/adminFilter";
@@ -18,6 +20,7 @@ export function AuthoritiesAdmin({
   onShowJurisdictions?: (authorityId: string) => void;
 } = {}) {
   const { showToast } = useToast();
+  const { isMain } = useAuth();
   const [search, setSearch] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [stateFilter, setStateFilter] = useState("");
@@ -298,7 +301,7 @@ export function AuthoritiesAdmin({
                           <input
                             value={editForm.email ?? ""}
                             onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
-                            placeholder="E-Mail"
+                            placeholder="Allgemeine E-Mail (Zentrale)"
                             className="rounded border border-line px-2 py-1.5 text-sm focus:border-brand focus:outline-none"
                           />
                           <input
@@ -314,6 +317,7 @@ export function AuthoritiesAdmin({
                             className="rounded border border-line px-2 py-1.5 text-sm focus:border-brand focus:outline-none"
                           />
                         </div>
+                        {isMain && <AuthorityEmailContacts key={a.authority_id} authorityId={a.authority_id} />}
                         <div className="mt-2 flex gap-2">
                           <button
                             onClick={() => saveEdit(a.authority_id)}

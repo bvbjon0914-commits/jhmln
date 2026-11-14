@@ -1,4 +1,5 @@
 import type { Building } from "./building";
+import type { ResolvedContact } from "./authority";
 
 export type CaseStatus = "OPEN" | "CLOSED";
 
@@ -26,6 +27,7 @@ export type CaseItemStatus =
   | "GEPRUEFT";
 
 export interface CaseRequestItem {
+  contact?: ResolvedContact;
   request_item_id: string;
   request_id: string;
   building_id: string;
