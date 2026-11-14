@@ -4,6 +4,7 @@ import type { MatchingResult } from "../types/matching";
 import type { Authority } from "../types/authority";
 import { api } from "../services/api";
 import { StatusBadge } from "./common/StatusBadge";
+import { ContactStatus } from "./common/ContactStatus";
 import { JurisdictionTrail } from "./JurisdictionTrail";
 import { Button } from "./common/Button";
 import { useToast, errorMessage } from "./common/Toast";
@@ -95,6 +96,7 @@ export function MatchingResults({ results, requestTypeNames, onAssigned, onRemov
                   </td>
                   <td className="px-4 py-3.5">
                     <StatusBadge status={result.matching_status} />
+                    {result.matching_status === "MATCHED" && <ContactStatus contact={result.contact} />}
                   </td>
                   <td className="px-4 py-3.5 text-ink-faint">
                     <ChevronDown

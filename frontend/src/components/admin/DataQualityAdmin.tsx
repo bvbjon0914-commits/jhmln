@@ -501,6 +501,7 @@ export function DataQualityAdmin({
   const refreshing = lightState === "loading" || heavyState === "loading";
 
   const hasGaps =
+    (summary.contact_gaps?.count ?? 0) > 0 ||
     summary.authorities_without_email.count > 0 ||
     summary.authorities_without_jurisdiction.count > 0 ||
     summary.authorities_without_address.count > 0;
@@ -541,6 +542,14 @@ export function DataQualityAdmin({
         </div>
       )}
       <div className="grid gap-3 sm:grid-cols-3">
+        {summary.contact_gaps && <GroupCard
+          icon={<MailWarning size={16} />}
+          title="Fachkontakte prüfen"
+          description="Für diese Kombinationen aus Behörde und Auskunftsart fehlt ein eindeutig ausgewählter, geprüfter E-Mail-Kontakt. Allgemeine Postfächer bleiben sichtbar."
+          group={summary.contact_gaps}
+          itemKey={(a) => `${a.authority_id}:${a.request_type_id}`}
+          renderItem={(a) => <span>{a.authority_name} · {a.request_type_name}</span>}
+        />}
         <GroupCard
           icon={<MailWarning size={16} />}
           title="Behörden ohne E-Mail"

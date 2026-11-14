@@ -6,6 +6,7 @@ import { api } from "../services/api";
 import { Button } from "./common/Button";
 import { useToast, errorMessage } from "./common/Toast";
 import { DocumentPreviewModal } from "./DocumentPreviewModal";
+import { ContactStatus } from "./common/ContactStatus";
 
 interface FailedDocument {
   request_item_id: string;
@@ -48,7 +49,7 @@ export function GeneratedDocuments({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documents]);
 
-  const mailtoUrl = (doc: GeneratedDocumentInfo, authority?: Authority) => {
+  const mailtoUrl = (doc: GeneratedDocumentInfo) => {
     const requestTypeName = requestTypeNames[doc.request_type_id] || doc.request_type_id;
     const subject = `Anfrage: ${requestTypeName}`;
     const body = [
@@ -59,18 +60,18 @@ export function GeneratedDocuments({
       "",
       "Mit freundlichen Grüßen",
     ].join("\n");
-    return `mailto:${authority?.email ?? ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    return `mailto:${doc.contact?.can_send ? doc.contact.email ?? "" : ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   };
 
   const handleOpenAllEmails = () => {
-    const withEmail = documents.filter((d) => authorities[d.authority_id]?.email);
+    const withEmail = documents.filter((d) => d.contact?.can_send && d.contact.email);
     if (withEmail.length === 0) {
       showToast("error", "Für keines dieser Schreiben ist eine E-Mail-Adresse hinterlegt.");
       return;
     }
     withEmail.forEach((doc, i) => {
       setTimeout(() => {
-        window.open(mailtoUrl(doc, authorities[doc.authority_id]), "_blank");
+        window.open(mailtoUrl(doc), "_blank");
       }, i * 400);
     });
     const withoutEmail = documents.length - withEmail.length;
@@ -115,7 +116,7 @@ export function GeneratedDocuments({
               Generierte Schreiben ({documents.length})
             </h3>
             <div className="flex items-center gap-2">
-              {documents.some((d) => authorities[d.authority_id]?.email) && (
+              {documents.some((d) => d.contact?.can_send && d.contact.email) && (
                 <Button variant="secondary" onClick={handleOpenAllEmails}>
                   <Mail size={15} />
                   Alle E-Mails öffnen
@@ -153,14 +154,14 @@ export function GeneratedDocuments({
                       {authority && (
                         <div className="mt-0.5 truncate text-xs text-ink-soft">
                           {authority.authority_name}
-                          {authority.email && <span className="text-ink-faint"> · {authority.email}</span>}
                         </div>
                       )}
+                      <ContactStatus contact={doc.contact} />
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
-                    {authority?.email ? (
-                      <a href={mailtoUrl(doc, authority)}>
+                    {doc.contact?.can_send && doc.contact.email ? (
+                      <a href={mailtoUrl(doc)}>
                         <Button variant="ghost" className="text-xs" title="E-Mail an die Behörde öffnen">
                           <Mail size={14} />
                           E-Mail
@@ -169,9 +170,9 @@ export function GeneratedDocuments({
                     ) : (
                       <span
                         className="px-2 text-xs text-ink-faint"
-                        title="Keine E-Mail-Adresse für diese Behörde hinterlegt"
+                        title="Zuerst einen belegten Fachkontakt für diese Auskunft prüfen"
                       >
-                        Keine E-Mail
+                        Fachkontakt prüfen
                       </span>
                     )}
                     <Button

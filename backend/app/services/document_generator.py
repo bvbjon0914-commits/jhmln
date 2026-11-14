@@ -80,6 +80,7 @@ class DocumentGenerationService:
         self, building: Building, authority: Authority, request_type: RequestType, aktenzeichen: str,
         sender: Optional[User] = None,
         selected_options: Optional[Iterable[int]] = None,
+        recipient_email: Optional[str] = None,
     ) -> dict:
         """
         Stellt den Platzhalter-Kontext für die Vorlage zusammen.
@@ -112,7 +113,7 @@ class DocumentGenerationService:
             "authority_house_number": authority.house_number or "",
             "authority_postal_code": authority.postal_code or "",
             "authority_city": authority.city or "",
-            "authority_email": authority.email or "",
+            "authority_email": (authority.email or "") if recipient_email is None else recipient_email,
             "authority_phone": authority.phone or "",
 
             # Gebäudedaten
@@ -149,6 +150,7 @@ class DocumentGenerationService:
         aktenzeichen: str,
         sender: Optional[User] = None,
         selected_options: Optional[Iterable[int]] = None,
+        recipient_email: Optional[str] = None,
     ) -> GeneratedDocument:
         """
         Generiert ein einzelnes DOCX-Dokument.
@@ -170,7 +172,7 @@ class DocumentGenerationService:
             doc = DocxTemplate(str(template_path))
             context = self.build_context(
                 building, authority, request_type, aktenzeichen,
-                sender=sender, selected_options=selected_options,
+                sender=sender, selected_options=selected_options, recipient_email=recipient_email,
             )
             doc.render(context)
         except Exception as exc:

@@ -25,6 +25,7 @@ from app.models.request_item_progress import RequestItemProgress
 from app.models.request_type import RequestType
 from app.services import JurisdictionMatchingService, next_year_number
 from app.services.request_options import sanitize_selection
+from app.services.contact_resolver import ContactResolver
 
 router = APIRouter()
 
@@ -118,11 +119,16 @@ def run_matching(payload: MatchingRequestPayload, db: Session = Depends(get_db_s
     db.commit()
     db.refresh(request_record)
 
+    authority_ids = {r.authority_id for r in results if r.authority_id}
+    authorities = {a.authority_id: a for a in db.query(Authority).filter(Authority.authority_id.in_(authority_ids)).all()}
+    contacts = ContactResolver(db, authority_ids)
+
     return {
         "request_id": request_record.request_id,
         "building_id": building.building_id,
         "results": [
-            {**result.to_dict(), "request_item_id": item.request_item_id}
+            {**result.to_dict(), "request_item_id": item.request_item_id,
+             "contact": contacts.resolve(authorities.get(result.authority_id), result.request_type_id).to_dict()}
             for result, item in zip(results, request_record.items)
         ],
         "timestamp": datetime.utcnow().isoformat(),
@@ -151,9 +157,10 @@ def export_results_csv(
     buffer.write("﻿")  # UTF-8 BOM, damit Excel Umlaute korrekt anzeigt
     writer = csv.writer(buffer, delimiter=";")
     writer.writerow(
-        ["Gebäude", "AGS", "Auskunftsart", "Status", "Zugeordnete Behörde", "Behörde E-Mail", "Manuell geändert"]
+        ["Gebäude", "AGS", "Auskunftsart", "Status", "Zugeordnete Behörde", "Behörde E-Mail", "Manuell geändert", "Kontaktstatus"]
     )
 
+    contacts = ContactResolver(db, {i.authority_id for r in request_records for i in r.items if i.authority_id})
     for request_record in request_records:
         building = db.query(Building).filter(Building.building_id == request_record.building_id).first()
         building_label = f"{building.street} {building.house_number}, {building.city}" if building else request_record.building_id
@@ -166,6 +173,7 @@ def export_results_csv(
                 if item.authority_id
                 else None
             )
+            contact = contacts.resolve(authority, item.request_type_id)
             writer.writerow(
                 [
                     building_label,
@@ -173,8 +181,9 @@ def export_results_csv(
                     request_type.name if request_type else item.request_type_id,
                     STATUS_LABELS.get(item.matching_status, item.matching_status),
                     authority.authority_name if authority else "",
-                    authority.email if authority and authority.email else "",
+                    contact.email if contact.can_send else "",
                     "Ja" if item.manually_changed else "",
+                    contact.status,
                 ]
             )
 

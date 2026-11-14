@@ -18,6 +18,7 @@ import { RequestTypeSelector } from "../RequestTypeSelector";
 import { useToast, errorMessage } from "../common/Toast";
 import { useAuth } from "../auth/AuthContext";
 import { ProgressBadge } from "./ProgressBadge";
+import { ContactStatus } from "../common/ContactStatus";
 import type { CaseDetail, CaseRequestItem } from "../../types/case";
 import type { RequestType } from "../../types/matching";
 import { computeSequencingHints } from "../../types/sequencing";
@@ -202,9 +203,10 @@ function AuthorityBundlesSection({
   const matched = items.filter((i) => i.matching_status === "MATCHED" && i.authority_id);
   const groups = new Map<string, CaseRequestItem[]>();
   for (const item of matched) {
-    const list = groups.get(item.authority_id!) ?? [];
+    const key = JSON.stringify([item.authority_id, item.authority_email?.toLowerCase() ?? item.request_type_id]);
+    const list = groups.get(key) ?? [];
     list.push(item);
-    groups.set(item.authority_id!, list);
+    groups.set(key, list);
   }
 
   // Nur zeigen, wenn es entweder eine echte Bündelungs-Situation ist (2+
@@ -288,9 +290,7 @@ function AuthorityBundlesSection({
                 {group.length} Anfrage{group.length === 1 ? "" : "n"} ·{" "}
                 {group.map((i) => i.aktenzeichen || i.request_type_name).join(", ")}
               </div>
-              {!group[0].authority_email && (
-                <div className="mt-1 text-xs text-status-conflict">Keine E-Mail-Adresse hinterlegt</div>
-              )}
+              <ContactStatus contact={group[0].contact} />
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {needsGeneration && (

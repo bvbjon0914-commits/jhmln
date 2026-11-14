@@ -217,7 +217,7 @@ function App() {
       ...prev,
       [buildingId]: (prev[buildingId] || []).map((r) =>
         r.request_item_id === requestItemId
-          ? { ...r, authority_id: authorityId, matching_status: "MATCHED", matching_confidence: 1.0 }
+          ? { ...r, authority_id: authorityId, contact: undefined, matching_status: "MATCHED", matching_confidence: 1.0 }
           : r
       ),
     }));

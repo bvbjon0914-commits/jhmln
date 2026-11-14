@@ -31,6 +31,7 @@ from app.models.request_item_progress import RequestItemProgress
 from app.models.request_type import RequestType
 from app.models.user import User
 from app.services import DocumentGenerationService, DocumentGenerationError, MailgunError, send_email
+from app.services.contact_resolver import ContactResolver
 
 router = APIRouter()
 
@@ -177,11 +178,13 @@ def get_case(case_id: str, db: Session = Depends(get_db_session)):
         for r in db.query(RequestItemReference).filter(RequestItemReference.request_item_id.in_(item_ids)).all()
     } if item_ids else {}
 
+    contacts = ContactResolver(db, authority_ids)
     items = []
     for item, building_id in rows:
         request_type = request_types_by_id.get(item.request_type_id)
         authority = authorities_by_id.get(item.authority_id) if item.authority_id else None
         progress = progress_by_item_id.get(item.request_item_id)
+        contact = contacts.resolve(authority, item.request_type_id)
 
         items.append({
             "request_item_id": item.request_item_id,
@@ -191,7 +194,8 @@ def get_case(case_id: str, db: Session = Depends(get_db_session)):
             "request_type_name": request_type.name if request_type else item.request_type_id,
             "authority_id": item.authority_id,
             "authority_name": authority.authority_name if authority else None,
-            "authority_email": authority.email if authority else None,
+            "authority_email": contact.email if contact.can_send else None,
+            "contact": contact.to_dict(),
             "matching_status": item.matching_status,
             "document_status": item.document_status,
             "status": _derive_item_status(item, progress),
@@ -361,8 +365,13 @@ def send_bundle(
     if len(authority_ids) != 1 or None in authority_ids:
         raise HTTPException(status_code=400, detail="Alle Items im Bündel müssen dieselbe Behörde haben")
     authority = db.query(Authority).filter(Authority.authority_id == authority_ids.pop()).first()
-    if not authority or not authority.email:
-        raise HTTPException(status_code=400, detail="Für diese Behörde ist keine E-Mail-Adresse hinterlegt")
+    contacts = ContactResolver(db, [authority.authority_id] if authority else [])
+    recipients = [contacts.resolve(authority, items_by_id[i].request_type_id) for i in payload.request_item_ids]
+    if not all(c.can_send for c in recipients):
+        raise HTTPException(status_code=400, detail="Für mindestens eine Auskunft fehlt ein geprüfter, belegter E-Mail-Kontakt. Bitte den Fachkontakt prüfen.")
+    if len({c.email.casefold() for c in recipients}) != 1:
+        raise HTTPException(status_code=400, detail="Die Auskunftsarten haben unterschiedliche E-Mail-Empfänger und müssen getrennt versendet werden.")
+    recipient_email = recipients[0].email
 
     request_ids = {items_by_id[i].request_id for i in payload.request_item_ids}
     requests_by_id = {r.request_id: r for r in db.query(Request).filter(Request.request_id.in_(request_ids)).all()}
@@ -403,6 +412,7 @@ def send_bundle(
             doc = generator.generate_document(
                 building, authority, request_type, aktenzeichen, sender=current_user,
                 selected_options=item.get_selected_options_list(),
+                recipient_email=recipient_email,
             )
         except DocumentGenerationError as exc:
             raise HTTPException(status_code=502, detail=f"{item_id}: Dokument konnte nicht erzeugt werden: {exc}")
@@ -422,7 +432,7 @@ def send_bundle(
     )
 
     try:
-        result = send_email(to=authority.email, subject=subject, text=text, attachments=attachments)
+        result = send_email(to=recipient_email, subject=subject, text=text, attachments=attachments)
     except MailgunError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 

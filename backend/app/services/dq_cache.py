@@ -34,6 +34,7 @@ from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from app.models.authority import Authority
+from app.models.authority_contact_channel import AuthorityContactChannel
 from app.models.building import Building
 from app.models.case import CaseBuilding, CaseRequest
 from app.models.jurisdiction import Jurisdiction
@@ -140,7 +141,7 @@ def get_or_compute(key: str, compute: Callable[[], Any], refresh: bool = False) 
 # ---------------------------------------------------------------------------
 
 _RELEVANT_MODELS = (
-    Authority, Building, CaseBuilding, CaseRequest, Jurisdiction,
+    Authority, AuthorityContactChannel, Building, CaseBuilding, CaseRequest, Jurisdiction,
     Request, RequestItem, RequestItemProgress, RequestType,
 )
 _DIRTY_FLAG = "dq_cache_dirty"

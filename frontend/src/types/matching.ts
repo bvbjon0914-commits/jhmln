@@ -25,6 +25,7 @@ export type MatchingLevel =
   | "POSTAL_CODE";
 
 export interface MatchingResult {
+  contact?: ResolvedContact;
   building_id: string;
   request_type_id: string;
   authority_id: string | null;
@@ -45,6 +46,7 @@ export interface MatchingResponse {
 }
 
 export interface GeneratedDocumentInfo {
+  contact?: ResolvedContact;
   request_item_id: string;
   request_type_id: string;
   authority_id: string;
@@ -59,3 +61,4 @@ export interface DocumentGenerationResponse {
   failed: { request_item_id: string; request_type_id: string; reason: string }[];
   timestamp: string;
 }
+import type { ResolvedContact } from "./authority";

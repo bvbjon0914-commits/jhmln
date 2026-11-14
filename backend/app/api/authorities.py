@@ -8,14 +8,93 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
+from pydantic import BaseModel, Field
 
 from app.api.data_quality import _duplicate_authority_ids, _VERIFICATION_STALE_DAYS
+from app.api.auth import get_current_user, require_main
 from app.database import get_db_session
 from app.models.authority import Authority
+from app.models.authority_contact_channel import AuthorityContactChannel, ChannelType
+from app.models.request_type import RequestType
+from app.models.user import User
+from app.services.contact_resolver import is_source_url, normalize_email
+from app.services.dq_cache import clear_data_quality_cache
 from app.models.jurisdiction import Jurisdiction
 from app.schemas import AuthorityCreate, AuthorityResponse, AuthorityUpdate
 
 router = APIRouter()
+
+
+class EmailContactPayload(BaseModel):
+    request_type_id: str = Field(min_length=1, max_length=50)
+    value: str = Field(min_length=1, max_length=255)
+    source_url: Optional[str] = Field(default=None, max_length=4096)
+    preferred: bool = False
+    active: bool = True
+    verified: bool = False
+
+
+@router.get("/authorities/{authority_id}/email-contacts", tags=["Authorities"])
+def list_email_contacts(authority_id: str, db: Session = Depends(get_db_session)):
+    if not db.query(Authority).filter_by(authority_id=authority_id).first():
+        raise HTTPException(status_code=404, detail="Behörde nicht gefunden")
+    return [c.to_dict() for c in db.query(AuthorityContactChannel).filter_by(
+        authority_id=authority_id, channel_type=ChannelType.EMAIL,
+    ).order_by(AuthorityContactChannel.id).all()]
+
+
+def _save_email_contact(db, authority_id, payload, current_user, channel=None):
+    if not db.query(Authority).filter_by(authority_id=authority_id).first():
+        raise HTTPException(status_code=404, detail="Behörde nicht gefunden")
+    if not db.query(RequestType).filter_by(request_type_id=payload.request_type_id, active=True).first():
+        raise HTTPException(status_code=422, detail="Unbekannte oder inaktive Auskunftsart")
+    email = normalize_email(payload.value)
+    if email is None:
+        raise HTTPException(status_code=422, detail="Ungültige E-Mail-Adresse")
+    source_url = (payload.source_url or "").strip() or None
+    if (source_url and not is_source_url(source_url)) or (payload.verified and not source_url):
+        raise HTTPException(status_code=422, detail="Für die Prüfung ist eine HTTP(S)-Quellen-URL erforderlich")
+    if channel is None:
+        channel = AuthorityContactChannel(authority_id=authority_id, channel_type=ChannelType.EMAIL)
+        db.add(channel)
+    channel.request_type_id = payload.request_type_id
+    channel.value = email
+    channel.source_url = source_url
+    # source is a short label (VARCHAR(255)); preserve full URLs in source_url.
+    channel.source = "Manuell geprüfte Quelle" if payload.verified else "Manuelle Eingabe"
+    channel.preferred = payload.preferred
+    channel.active = payload.active
+    channel.last_verified_at = datetime.utcnow() if payload.verified else None
+    channel.verified_by = (current_user.email if current_user else "Haupt-Account") if payload.verified else None
+    db.commit()
+    db.refresh(channel)
+    clear_data_quality_cache()
+    return channel.to_dict()
+
+
+@router.post("/authorities/{authority_id}/email-contacts", status_code=201, tags=["Authorities"])
+def create_email_contact(
+    authority_id: str, payload: EmailContactPayload,
+    db: Session = Depends(get_db_session),
+    current_user: Optional[User] = Depends(get_current_user),
+    _: None = Depends(require_main),
+):
+    return _save_email_contact(db, authority_id, payload, current_user)
+
+
+@router.put("/authorities/{authority_id}/email-contacts/{channel_id}", tags=["Authorities"])
+def update_email_contact(
+    authority_id: str, channel_id: int, payload: EmailContactPayload,
+    db: Session = Depends(get_db_session),
+    current_user: Optional[User] = Depends(get_current_user),
+    _: None = Depends(require_main),
+):
+    channel = db.query(AuthorityContactChannel).filter_by(
+        id=channel_id, authority_id=authority_id, channel_type=ChannelType.EMAIL,
+    ).first()
+    if channel is None:
+        raise HTTPException(status_code=404, detail="Kontakt nicht gefunden")
+    return _save_email_contact(db, authority_id, payload, current_user, channel)
 
 
 @router.get("/authorities", response_model=List[AuthorityResponse], tags=["Authorities"])
@@ -145,11 +224,12 @@ def delete_authority(authority_id: str, db: Session = Depends(get_db_session)):
         raise HTTPException(status_code=404, detail=f"Behörde {authority_id} nicht gefunden")
 
     jurisdiction_count = db.query(Jurisdiction).filter(Jurisdiction.authority_id == authority_id).count()
-    if jurisdiction_count > 0:
+    contact_count = db.query(AuthorityContactChannel).filter_by(authority_id=authority_id).count()
+    if jurisdiction_count > 0 or contact_count > 0:
         raise HTTPException(
             status_code=409,
             detail=(
-                f"{jurisdiction_count} Zuständigkeitsregel(n) verweisen noch auf diese Behörde. "
+                f"{jurisdiction_count} Zuständigkeitsregel(n) und {contact_count} Kontaktweg(e) verweisen noch auf diese Behörde. "
                 "Erst diese löschen oder die Behörde stattdessen deaktivieren."
             ),
         )

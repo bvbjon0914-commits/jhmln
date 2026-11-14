@@ -1,5 +1,30 @@
 # 🏛️ Authority Matching System
 
+## Fachkontakte je Auskunftsart
+
+Die allgemeine E-Mail einer Behörde ist ein Ausweichkontakt für die Recherche.
+Für E-Mail-Versand und E-Mail-Links wird ein aktiver Kontakt für die konkrete
+Auskunftsart benötigt, mit Quellen-URL und einer höchstens 365 Tage alten,
+expliziten Prüfung. Eine allgemeine Adresse kann dafür verwendet werden, wenn
+sie für genau diese Leistung als Eingang bestätigt wurde.
+
+1. Als Haupt-Account in der **Behördenverwaltung** die Behörde bearbeiten.
+2. Unter **E-Mail-Kontakte je Auskunftsart** Auskunft, Adresse und amtliche
+   Quelle hinterlegen. Die Prüfung nur nach dem Quellenabgleich bestätigen.
+3. Bei mehreren gültigen Empfängern einen bevorzugten Kontakt festlegen.
+   Ungeklärte Konflikte werden nicht automatisch aufgelöst.
+
+Zuständigkeitsimporte speichern E-Mails als ungeprüfte Kontakte je Auskunftsart
+und überschreiben damit nicht mehr die allgemeine Behördenadresse. Die
+Datenqualität enthält die Kategorie und das Excel-Blatt **Fachkontakte prüfen**.
+Bestehende allgemeine Adressen werden nicht automatisch zu Fachkontakten
+hochgestuft; vor produktivem E-Mail-Versand müssen die benötigten Kontakte
+geprüft werden. Dokumente können weiterhin ohne bestätigte E-Mail entstehen.
+
+Die vorhandene Tabelle `authority_contact_channels` wird verwendet; eine
+Schemaänderung oder automatische Änderung des bisherigen Datenbestands ist
+für diese Erweiterung nicht erforderlich.
+
 **Automatische Ermittlung zuständiger Behörden für Gebäudeadressen mit automatisierter Dokumentgenerierung**
 
 ---

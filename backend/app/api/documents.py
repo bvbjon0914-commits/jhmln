@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.api.auth import get_current_user
 from app.config import GENERATED_DIR, TEMPLATES_DIR
 from app.database import get_db_session
+from app.services.contact_resolver import ContactResolver
 from app.models.aktenzeichen import RequestItemReference, RequestSequence
 from app.models.authority import Authority
 from app.models.building import Building
@@ -86,6 +87,7 @@ def generate_documents(
     generated = []
     failed = []
     not_applicable = []
+    contacts = ContactResolver(db, [i.authority_id for i in request_record.items if i.authority_id])
 
     for item in request_record.items:
         if payload.retry_failed_only and item.document_status == "GENERATED":
@@ -121,6 +123,7 @@ def generate_documents(
             })
             continue
 
+        contact = contacts.resolve(authority, item.request_type_id)
         try:
             candidate_position = item_position + 1
             aktenzeichen = (
@@ -130,6 +133,7 @@ def generate_documents(
             doc = generator.generate_document(
                 building, authority, request_type, aktenzeichen, sender=current_user,
                 selected_options=item.get_selected_options_list(),
+                recipient_email=contact.email if contact.can_send else "",
             )
             item_position = candidate_position
             item.document_path = doc.filepath
@@ -142,6 +146,7 @@ def generate_documents(
                 "filename": doc.filename,
                 "filepath": doc.filepath,
                 "aktenzeichen": aktenzeichen,
+                "contact": contact.to_dict(),
             })
         except DocumentGenerationError as exc:
             item.document_status = "FAILED"

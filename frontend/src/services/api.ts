@@ -5,7 +5,7 @@ import type {
   BuildingUpdateInput,
   GeoResolveResponse,
 } from "../types/building";
-import type { Authority, AuthorityUpdateInput } from "../types/authority";
+import type { Authority, AuthorityUpdateInput, EmailContact, EmailContactInput } from "../types/authority";
 import type { Jurisdiction, JurisdictionUpdateInput } from "../types/jurisdiction";
 import type { RequestRecord } from "../types/request";
 import type {
@@ -79,6 +79,16 @@ async function getDataQuality<T>(url: string, params: Record<string, boolean>): 
 }
 
 export const api = {
+  async listEmailContacts(authorityId: string): Promise<EmailContact[]> {
+    return (await client.get(`/authorities/${authorityId}/email-contacts`)).data;
+  },
+
+  async saveEmailContact(authorityId: string, payload: EmailContactInput, id?: number): Promise<EmailContact> {
+    const path = `/authorities/${authorityId}/email-contacts`;
+    return (id === undefined
+      ? await client.post(path, payload)
+      : await client.put(`${path}/${id}`, payload)).data;
+  },
   async searchBuildings(query: string): Promise<Building[]> {
     const { data } = await client.get<Building[]>("/buildings", {
       params: query ? { search: query } : {},

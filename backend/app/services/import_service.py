@@ -21,10 +21,12 @@ from sqlalchemy import or_, update, func, bindparam
 from sqlalchemy.orm import Session
 
 from app.models.authority import Authority
+from app.models.authority_contact_channel import AuthorityContactChannel, ChannelType
 from app.models.building import Building
 from app.models.jurisdiction import Jurisdiction
 from app.models.request_type import RequestType
 from app.services.address_normalizer import AddressNormalizer
+from app.services.contact_resolver import is_source_url, normalize_email
 
 AGS_SPLIT_RE = re.compile(r"[,;/\s]+")
 
@@ -385,7 +387,7 @@ class ImportService:
         (2 STATE, 5 COUNTY, 8 MUNICIPALITY), sonst default_matching_level.
         """
         details: List[ImportRowResult] = []
-        imported = duplicates = needs_review = errors = skipped = 0
+        imported = duplicates = needs_review = errors = skipped = updated = 0
 
         resolve_request_type = self._build_request_type_resolver()
         default_request_type_id: Optional[str] = None
@@ -421,6 +423,14 @@ class ImportService:
         # dieselbe Behörde (mehrere AGS-Zeilen hintereinander) nicht bei
         # jeder Zeile neu geladen werden muss.
         batch_authority_cache: dict = {}
+        # Type-bound email candidates are separate from the shared authority.
+        # Keep reviewed and inactive entries intact when importing again.
+        known_contacts = {
+            (c.authority_id, c.request_type_id, c.value.strip().casefold())
+            for c in self.db.query(AuthorityContactChannel).filter(
+                AuthorityContactChannel.channel_type == ChannelType.EMAIL
+            ).all()
+        }
 
         def mapped(row, field_name: str) -> Optional[str]:
             col = mapping.get(field_name, "")
@@ -472,9 +482,27 @@ class ImportService:
                         needs_review += 1
                         continue
 
+                raw_email = mapped(row, "email")
+                email = normalize_email(raw_email)
+                if raw_email and not email:
+                    details.append(ImportRowResult(idx, "NEEDS_REVIEW", "E-Mail-Adresse ungültig"))
+                    needs_review += 1
+                    continue
+                priority = mapped(row, "priority")
+                try:
+                    row_priority = int(priority) if priority else default_priority
+                except ValueError:
+                    details.append(ImportRowResult(idx, "NEEDS_REVIEW", "Priorität ungültig"))
+                    needs_review += 1
+                    continue
+
                 city = mapped(row, "city")
                 key = (name, city)
                 authority_id = authority_ids_by_key.get(key)
+                source = mapped(row, "source") or "Import"
+                source_url = mapped(row, "source_url")
+                if not source_url and is_source_url(source):
+                    source_url = source
 
                 if authority_id is None:
                     authority_id = str(uuid.uuid4())
@@ -482,7 +510,7 @@ class ImportService:
                         authority_id=authority_id,
                         authority_name=name,
                         city=city,
-                        source=mapped(row, "source") or "Import",
+                        source=source[:255],
                     )
                     self.db.add(authority)
                     authority_ids_by_key[key] = authority_id
@@ -495,11 +523,25 @@ class ImportService:
 
                 for contact_field in (
                     "department_name", "street", "house_number", "postal_code",
-                    "state", "email", "phone", "website",
+                    "state", "phone", "website",
                 ):
                     value = mapped(row, contact_field)
                     if value:
                         setattr(authority, contact_field, value)
+
+                contact_added = False
+                if email:
+                    contact_key = (authority_id, row_request_type_id, email.casefold())
+                    if contact_key not in known_contacts:
+                        self.db.add(AuthorityContactChannel(
+                            authority_id=authority_id, request_type_id=row_request_type_id,
+                            channel_type=ChannelType.EMAIL, value=email,
+                            source=source[:255], source_url=source_url,
+                            # A spreadsheet does not establish independent review.
+                            preferred=False, active=True,
+                        ))
+                        known_contacts.add(contact_key)
+                        contact_added = True
 
                 priority = mapped(row, "priority")
                 explicit_matching_level = mapped(row, "matching_level")
@@ -518,16 +560,20 @@ class ImportService:
                         authority_id=authority_id,
                         ags=ags,
                         municipality=mapped(row, "municipality"),
-                        priority=int(priority) if priority else default_priority,
+                        priority=row_priority,
                         matching_level=explicit_matching_level or infer_matching_level(ags, default_matching_level),
-                        source=mapped(row, "source") or "Import",
+                        source=source[:255],
+                        source_url=source_url if is_source_url(source_url) else None,
                         notes=mapped(row, "notes"),
                     )
                     self.db.add(jurisdiction)
                     existing_jurisdictions.add(jkey)
                     new_count += 1
 
-                if new_count == 0:
+                if new_count == 0 and contact_added:
+                    details.append(ImportRowResult(idx, "UPDATED", "E-Mail-Kandidat für diese Auskunft ergänzt; Quellenprüfung erforderlich"))
+                    updated += 1
+                elif new_count == 0:
                     details.append(
                         ImportRowResult(idx, "DUPLICATE", f"Alle {dup_count} AGS bereits verknüpft")
                     )
@@ -560,6 +606,7 @@ class ImportService:
             needs_review=needs_review,
             errors=errors,
             skipped=skipped,
+            updated=updated,
             details=details,
         )
 
