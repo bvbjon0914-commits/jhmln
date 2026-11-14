@@ -1347,7 +1347,8 @@ def _build_export_sheets(db: Session) -> List[tuple]:
         ),
         (
             "Fachkontakte prüfen",
-            ["Auskunftsart", "AGS", "Gemeinde", "Behörde", "Abteilung", "Straße", "Hausnummer", "PLZ", "Ort", "E-Mail", "Telefon", "Website", "Quelle", "Kontaktstatus"],
+            ["Auskunftsart", "AGS", "Gemeinde", "Behörde", "Abteilung", "Straße", "Hausnummer",
+             "PLZ", "Ort", "E-Mail", "Telefon", "Website", "Quelle", "Kontaktstatus"],
             [[g["request_type_id"], g["ags"], g["municipality"], g["authority_name"],
               g["authority"].department_name, g["authority"].street, g["authority"].house_number,
               g["authority"].postal_code, g["city"], g["email"], g["authority"].phone,

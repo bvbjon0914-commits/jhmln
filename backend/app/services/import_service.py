@@ -571,7 +571,9 @@ class ImportService:
                     new_count += 1
 
                 if new_count == 0 and contact_added:
-                    details.append(ImportRowResult(idx, "UPDATED", "E-Mail-Kandidat für diese Auskunft ergänzt; Quellenprüfung erforderlich"))
+                    details.append(ImportRowResult(
+                        idx, "UPDATED", "E-Mail-Kandidat für diese Auskunft ergänzt; Quellenprüfung erforderlich",
+                    ))
                     updated += 1
                 elif new_count == 0:
                     details.append(

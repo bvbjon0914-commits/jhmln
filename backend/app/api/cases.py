@@ -368,9 +368,15 @@ def send_bundle(
     contacts = ContactResolver(db, [authority.authority_id] if authority else [])
     recipients = [contacts.resolve(authority, items_by_id[i].request_type_id) for i in payload.request_item_ids]
     if not all(c.can_send for c in recipients):
-        raise HTTPException(status_code=400, detail="Für mindestens eine Auskunft fehlt ein geprüfter, belegter E-Mail-Kontakt. Bitte den Fachkontakt prüfen.")
+        raise HTTPException(
+            status_code=400,
+            detail="Für mindestens eine Auskunft fehlt ein geprüfter, belegter E-Mail-Kontakt. Bitte den Fachkontakt prüfen.",
+        )
     if len({c.email.casefold() for c in recipients}) != 1:
-        raise HTTPException(status_code=400, detail="Die Auskunftsarten haben unterschiedliche E-Mail-Empfänger und müssen getrennt versendet werden.")
+        raise HTTPException(
+            status_code=400,
+            detail="Die Auskunftsarten haben unterschiedliche E-Mail-Empfänger und müssen getrennt versendet werden.",
+        )
     recipient_email = recipients[0].email
 
     request_ids = {items_by_id[i].request_id for i in payload.request_item_ids}

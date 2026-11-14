@@ -229,7 +229,8 @@ def delete_authority(authority_id: str, db: Session = Depends(get_db_session)):
         raise HTTPException(
             status_code=409,
             detail=(
-                f"{jurisdiction_count} Zuständigkeitsregel(n) und {contact_count} Kontaktweg(e) verweisen noch auf diese Behörde. "
+                f"{jurisdiction_count} Zuständigkeitsregel(n) und {contact_count} Kontaktweg(e) "
+                "verweisen noch auf diese Behörde. "
                 "Erst diese löschen oder die Behörde stattdessen deaktivieren."
             ),
         )
