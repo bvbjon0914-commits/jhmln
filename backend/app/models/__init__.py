@@ -18,6 +18,7 @@ from .inbound_email import InboundEmail, InboundEmailAttachment
 from .authority_contact_channel import AuthorityContactChannel, ChannelType
 from .jurisdiction_staging import JurisdictionStagingEntry, StagingStatus, ConflictType
 from .user import User
+from .contact_review import ContactReview
 
 __all__ = [
     "Building",
@@ -47,5 +48,6 @@ __all__ = [
     "StagingStatus",
     "ConflictType",
     "User",
+    "ContactReview",
     "STANDARD_REQUEST_TYPES",
 ]

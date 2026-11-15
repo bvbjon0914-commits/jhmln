@@ -1,4 +1,5 @@
 import axios from "axios";
+import type { ContactReviewPage, ContactReviewImport, ReviewDecision } from "../types/contactReview";
 import type {
   Building,
   BuildingCreateInput,
@@ -79,6 +80,19 @@ async function getDataQuality<T>(url: string, params: Record<string, boolean>): 
 }
 
 export const api = {
+  async listContactReviews(params: { status?: string; request_type_id?: string; search?: string; offset?: number }): Promise<ContactReviewPage> {
+    return (await client.get("/contact-reviews", { params })).data;
+  },
+  async importContactReviews(file: File): Promise<ContactReviewImport> {
+    const body = new FormData(); body.append("file", file);
+    return (await client.post("/contact-reviews/import", body)).data;
+  },
+  async decideContactReview(id: string, payload: { decision: ReviewDecision; version: number; source_checked: boolean; preferred: boolean; comment: string }): Promise<void> {
+    await client.post(`/contact-reviews/${id}/decision`, payload);
+  },
+  async exportContactResearch(): Promise<Blob> {
+    return (await client.get("/contact-reviews/export-needs", { responseType: "blob" })).data;
+  },
   async listEmailContacts(authorityId: string): Promise<EmailContact[]> {
     return (await client.get(`/authorities/${authorityId}/email-contacts`)).data;
   },

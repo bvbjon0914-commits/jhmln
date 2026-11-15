@@ -479,7 +479,7 @@ EXPECTED_HEADERS = {
     "Abdeckungslücken": ["AGS", "Gemeinde", "Auskunftsart", "Betroffene Gebäude", "Behörde", "Abteilung",
                          "Straße", "Hausnummer", "PLZ", "Ort", "E-Mail", "Telefon", "Website", "Quelle"],
     "Mögliche Duplikate (ähnlich)": ["Behörde A", "Behörde B", "Ort", "Ähnlichkeit"],
-    "Fachkontakte prüfen": ["Auskunftsart", "AGS", "Gemeinde", "Behörde", "Abteilung", "Straße", "Hausnummer", "PLZ", "Ort", "E-Mail", "Telefon", "Website", "Quelle", "Kontaktstatus"],
+    "Fachkontakte prüfen": ["Auskunftsart", "AGS", "Gemeinde", "Behörde", "Abteilung", "Straße", "Hausnummer", "PLZ", "Ort", "E-Mail", "Telefon", "Website", "Quelle", "Kontaktstatus", "Behörden-ID"],
     "Anleitung": ["Anleitung"],
 }
 

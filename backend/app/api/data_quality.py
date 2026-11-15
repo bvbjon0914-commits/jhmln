@@ -25,6 +25,7 @@ from app.api.geo import _geocode_and_cache_building
 from app.database import get_db_session
 from app.models.authority import Authority
 from app.models.authority_contact_channel import AuthorityContactChannel
+from app.models.contact_review import ContactReview
 from app.models.authority_location import AuthorityLocation
 from app.models.building import Building
 from app.models.case import CaseBuilding
@@ -389,6 +390,7 @@ def _find_duplicate_authority_groups(
     referenced_ids = set(jurisdiction_authority_ids)
     # Contact evidence must not be lost in an automatic name-based merge.
     referenced_ids |= {row[0] for row in db.query(AuthorityContactChannel.authority_id).distinct().all()}
+    referenced_ids |= {row[0] for row in db.query(ContactReview.authority_id).distinct().all()}
     referenced_ids |= {
         row[0]
         for row in db.query(RequestItem.authority_id).filter(RequestItem.authority_id.isnot(None)).distinct().all()
@@ -1348,11 +1350,12 @@ def _build_export_sheets(db: Session) -> List[tuple]:
         (
             "Fachkontakte prüfen",
             ["Auskunftsart", "AGS", "Gemeinde", "Behörde", "Abteilung", "Straße", "Hausnummer",
-             "PLZ", "Ort", "E-Mail", "Telefon", "Website", "Quelle", "Kontaktstatus"],
+             "PLZ", "Ort", "E-Mail", "Telefon", "Website", "Quelle", "Kontaktstatus", "Behörden-ID"],
             [[g["request_type_id"], g["ags"], g["municipality"], g["authority_name"],
               g["authority"].department_name, g["authority"].street, g["authority"].house_number,
               g["authority"].postal_code, g["city"], g["email"], g["authority"].phone,
-              g["authority"].website, g["source_url"], g["contact_status"]] for g in _contact_gaps(db)],
+              g["authority"].website, g["source_url"], g["contact_status"],
+              g["authority"].authority_id] for g in _contact_gaps(db)],
         ),
         # MUSS das letzte Blatt bleiben: der Import wählt bei mehrblättrigen
         # Dateien das erste Blatt mit Inhalt - die Anleitung darf nie dazu gehören.

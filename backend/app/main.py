@@ -23,7 +23,7 @@ from app.database import init_db
 from app.api import (
     buildings, authorities, request_types, matching, documents, requests_api,
     imports, geo, jurisdictions, auth, data_quality, cases, data_sources, mailbox_inbound,
-    users,
+    users, contact_reviews,
 )
 from app.api.auth import require_login
 
@@ -206,6 +206,7 @@ _versioned_routers = [
     (auth.router, None),  # öffentlich (Login selbst darf nicht gesperrt sein)
     (buildings.router, protected),
     (authorities.router, protected),
+    (contact_reviews.router, protected),
     (request_types.router, protected),
     (matching.router, protected),
     (documents.router, protected),

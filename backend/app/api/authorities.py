@@ -17,6 +17,7 @@ from app.models.authority import Authority
 from app.models.authority_contact_channel import AuthorityContactChannel, ChannelType
 from app.models.request_type import RequestType
 from app.models.user import User
+from app.models.contact_review import ContactReview
 from app.services.contact_resolver import is_source_url, normalize_email
 from app.services.dq_cache import clear_data_quality_cache
 from app.models.jurisdiction import Jurisdiction
@@ -225,11 +226,13 @@ def delete_authority(authority_id: str, db: Session = Depends(get_db_session)):
 
     jurisdiction_count = db.query(Jurisdiction).filter(Jurisdiction.authority_id == authority_id).count()
     contact_count = db.query(AuthorityContactChannel).filter_by(authority_id=authority_id).count()
-    if jurisdiction_count > 0 or contact_count > 0:
+    review_count = db.query(ContactReview).filter_by(authority_id=authority_id).count()
+    if jurisdiction_count > 0 or contact_count > 0 or review_count > 0:
         raise HTTPException(
             status_code=409,
             detail=(
-                f"{jurisdiction_count} Zuständigkeitsregel(n) und {contact_count} Kontaktweg(e) "
+                f"{jurisdiction_count} Zuständigkeitsregel(n), {contact_count} Kontaktweg(e) "
+                f"und {review_count} Kontaktprüfung(en) "
                 "verweisen noch auf diese Behörde. "
                 "Erst diese löschen oder die Behörde stattdessen deaktivieren."
             ),
