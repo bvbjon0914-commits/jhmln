@@ -7,6 +7,7 @@ import { DataQualityAdmin } from "./DataQualityAdmin";
 import { MailboxAdmin } from "./MailboxAdmin";
 import { SettingsAdmin } from "./SettingsAdmin";
 import { UsersAdmin } from "./UsersAdmin";
+import { ContactReviewAdmin } from "./ContactReviewAdmin";
 import type { AdminFilterRequest } from "../../types/adminFilter";
 
 export type Tab =
@@ -15,6 +16,7 @@ export type Tab =
   | "jurisdictions"
   | "requests"
   | "data-quality"
+  | "contact-review"
   | "mailbox"
   | "users"
   | "settings";
@@ -44,6 +46,7 @@ export function AdminPage({ isMain }: { isMain: boolean }) {
     { value: "jurisdictions", label: "Zuständigkeiten" },
     { value: "requests", label: "Anfragen" },
     { value: "data-quality", label: "Datenqualität" },
+    ...(isMain ? [{ value: "contact-review" as Tab, label: "Kontaktprüfung" }] : []),
     ...(isMain ? [{ value: "mailbox" as Tab, label: "Postfach" }] : []),
     ...(isMain ? [{ value: "users" as Tab, label: "Nutzer" }] : []),
     ...(isMain ? [{ value: "settings" as Tab, label: "Einstellungen" }] : []),
@@ -58,7 +61,7 @@ export function AdminPage({ isMain }: { isMain: boolean }) {
         </p>
       </div>
 
-      <div className="flex gap-1 border-b border-line">
+      <div className="flex gap-1 overflow-x-auto border-b border-line">
         {tabs.map((t) => (
           <button
             key={t.value}
@@ -90,6 +93,7 @@ export function AdminPage({ isMain }: { isMain: boolean }) {
       {tab === "jurisdictions" && <JurisdictionsAdmin initialFilter={pendingFilter} />}
       {tab === "requests" && <RequestsAdmin initialFilter={pendingFilter} />}
       {tab === "data-quality" && <DataQualityAdmin onNavigate={navigateWithFilter} />}
+      {tab === "contact-review" && isMain && <ContactReviewAdmin />}
       {tab === "mailbox" && isMain && <MailboxAdmin />}
       {tab === "users" && isMain && <UsersAdmin />}
       {tab === "settings" && isMain && <SettingsAdmin />}
